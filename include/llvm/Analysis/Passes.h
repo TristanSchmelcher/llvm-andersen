@@ -88,6 +88,13 @@ namespace llvm {
 
   //===--------------------------------------------------------------------===//
   //
+  // createLazyAndersenAliasAnalysisPass - This pass implements a lazy version
+  // of Andersen's algorithm for alias analysis.
+  //
+  FunctionPass *createLazyAndersenAliasAnalysisPass();
+
+  //===--------------------------------------------------------------------===//
+  //
   // createObjCARCAliasAnalysisPass - This pass implements ObjC-ARC-based
   // alias analysis.
   //

@@ -145,6 +145,7 @@ void initializeIntervalPartitionPass(PassRegistry&);
 void initializeJumpThreadingPass(PassRegistry&);
 void initializeLCSSAPass(PassRegistry&);
 void initializeLICMPass(PassRegistry&);
+void initializeLazyAndersenAliasAnalysisPass(PassRegistry&);
 void initializeLazyValueInfoPass(PassRegistry&);
 void initializeLibCallAliasAnalysisPass(PassRegistry&);
 void initializeLintPass(PassRegistry&);
