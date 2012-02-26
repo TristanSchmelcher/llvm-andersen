@@ -6,6 +6,7 @@ add_llvm_library(LLVMipa
   GlobalsModRef.cpp
   IPA.cpp
   InlineCost.cpp
+  LazyAndersen.cpp
   LazyAndersenAliasAnalysis.cpp
   )
 

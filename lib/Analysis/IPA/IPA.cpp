@@ -25,6 +25,7 @@ void llvm::initializeIPA(PassRegistry &Registry) {
   initializeCallGraphViewerPass(Registry);
   initializeFindUsedTypesPass(Registry);
   initializeGlobalsModRefPass(Registry);
+  initializeLazyAndersenPass(Registry);
   initializeLazyAndersenAliasAnalysisPass(Registry);
 }
 

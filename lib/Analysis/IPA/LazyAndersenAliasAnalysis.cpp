@@ -7,28 +7,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the LazyAndersenAliasAnalysis pass, which implements a
-// subset-based and context-, flow-, and field-insensitive alias analysis
-// approach based on a lazy version of Andersen's algorithm.
+// This file defines the LazyAndersenAliasAnalysis pass, which is an alias
+// analysis implementation that uses LazyAndersen queries.
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "lazy-andersen-aa"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/LazyAndersen.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Pass.h"
-#include <stdio.h>
 using namespace llvm;
 
 namespace {
-  /// LazyAndersenAliasAnalysis - An alias analysis implementation based on a
-  /// lazy version of Andersen's algorithm.
-  class LazyAndersenAliasAnalysis : public FunctionPass, public AliasAnalysis {
+  /// LazyAndersenAliasAnalysis - An alias analysis implementation that uses
+  /// LazyAndersen queries.
+  class LazyAndersenAliasAnalysis : public ModulePass, public AliasAnalysis {
+    LazyAndersen *LA;
 
   public:
     static char ID; // Class identification, replacement for typeinfo
-    LazyAndersenAliasAnalysis() : FunctionPass(ID) {
+    LazyAndersenAliasAnalysis() : ModulePass(ID), LA(0) {
+      initializeLazyAndersenAliasAnalysisPass(*PassRegistry::getPassRegistry());
     }
 
+  private:
     /// getAdjustedAnalysisPointer - This method is used when a pass implements
     /// an analysis interface through multiple inheritance.  If needed, it
     /// should override this to adjust the this pointer as needed for the
@@ -39,9 +42,8 @@ namespace {
       return this;
     }
 
-  private:
     virtual void getAnalysisUsage(AnalysisUsage &AU) const;
-    virtual bool runOnFunction(Function &F);
+    virtual bool runOnModule(Module &M);
     virtual AliasResult alias(const Location &LocA, const Location &LocB);
     virtual bool pointsToConstantMemory(const Location &Loc, bool OrLocal);
     virtual void deleteValue(Value *V);
@@ -59,25 +61,28 @@ namespace {
 // Register this pass...
 char LazyAndersenAliasAnalysis::ID = 0;
 // TODO: What do these three bools mean?
-INITIALIZE_AG_PASS(LazyAndersenAliasAnalysis, AliasAnalysis, "lazy-andersen-aa",
-                   "Lazy Andersen's Algorithm-based Alias Analysis", false,
-                   true, false)
+INITIALIZE_AG_PASS_BEGIN(LazyAndersenAliasAnalysis, AliasAnalysis,
+                         "lazy-andersen-aa",
+                         "LazyAndersen-based Alias Analysis", false, true,
+                         false)
+INITIALIZE_PASS_DEPENDENCY(LazyAndersen)
+INITIALIZE_AG_PASS_END(LazyAndersenAliasAnalysis, AliasAnalysis,
+                       "lazy-andersen-aa", "LazyAndersen-based Alias Analysis",
+                       false, true, false)
 
-FunctionPass *llvm::createLazyAndersenAliasAnalysisPass() {
+ModulePass *llvm::createLazyAndersenAliasAnalysisPass() {
   return new LazyAndersenAliasAnalysis();
 }
 
-void
-LazyAndersenAliasAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
+void LazyAndersenAliasAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.addRequiredTransitive<LazyAndersen>();
   AU.setPreservesAll();
   AliasAnalysis::getAnalysisUsage(AU);
 }
 
-bool
-LazyAndersenAliasAnalysis::runOnFunction(Function &F) {
+bool LazyAndersenAliasAnalysis::runOnModule(Module &M) {
   InitializeAliasAnalysis(this);
-  printf("Run\n");
-  // TODO
+  LA = &getAnalysis<LazyAndersen>();
   return false;
 }
 
