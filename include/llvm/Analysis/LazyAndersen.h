@@ -18,9 +18,12 @@
 #include "llvm/Pass.h"
 
 namespace llvm {
+  class LazyAndersenData;
+
   /// LazyAndersen - An LLVM pass which implements a lazy version of Andersen's
   /// algorithm for points-to analysis.
   class LazyAndersen : public ModulePass {
+    LazyAndersenData *Data;
 
   public:
     static char ID; // Pass identification, replacement for typeid
