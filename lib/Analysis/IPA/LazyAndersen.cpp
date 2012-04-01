@@ -18,7 +18,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
-//#include "llvm/ADT/IntrusiveRefCntPtr.h"
+#include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/Support/InstVisitor.h"
 #include "llvm/User.h"
 #include "llvm/Value.h"
@@ -31,66 +31,144 @@ INITIALIZE_PASS(LazyAndersen, "lazy-andersen",
                 "Lazy Andersen's Algorithm for Points-To Analysis", false, true)
 
 namespace {
+  class HalfRelationBase;
+}
+
+namespace llvm {
+  template<>
+  struct ilist_traits<HalfRelationBase>
+      : public ilist_default_traits<HalfRelationBase> {
+    mutable ilist_half_node<HalfRelationBase> Sentinel;
+
+  public:
+    HalfRelationBase *createSentinel() const;
+
+    void destroySentinel(HalfRelationBase *) const {}
+
+    HalfRelationBase *provideInitialHead() const {
+      return createSentinel();
+    }
+
+    HalfRelationBase *ensureHead(HalfRelationBase *) const {
+      return createSentinel();
+    }
+
+    static void noteHead(HalfRelationBase *, HalfRelationBase *) {}
+
+    void addNodeToList(HalfRelationBase *node);
+
+    void removeNodeFromList(HalfRelationBase *node);
+
+    void transferNodesFromList(
+        ilist_node_traits<HalfRelationBase> &that,
+        ilist_iterator<HalfRelationBase> first,
+        ilist_iterator<HalfRelationBase> last);
+  };
+}
+
+namespace {
+  typedef ilist<HalfRelationBase> HalfRelationBaseList;
+
+  class HalfRelationBase : private ilist_node<HalfRelationBase> {
+    friend struct ilist_nextprev_traits<HalfRelationBase>;
+    friend struct ilist_node_traits<HalfRelationBase>;
+    friend struct ilist_traits<HalfRelationBase>;
+
+  protected:
+    HalfRelationBaseList *List;
+
+    HalfRelationBase(HalfRelationBaseList *InitialList) : List(0) {
+      assert(InitialList);
+      InitialList->push_back(this);
+      assert(List == InitialList);
+    }
+
+    // virtual so that deleteNode in ilist_node_traits will delete the whole
+    // Relation object.
+    virtual ~HalfRelationBase() {
+      if (List) {
+        List->remove(HalfRelationBaseList::iterator(this));
+        assert(!List);
+      }
+    }
+
+  private:
+    void added(HalfRelationBaseList *ToList) {
+      assert(!List);
+      List = ToList;
+    }
+
+    void removed(HalfRelationBaseList *FromList) {
+      assert(List == FromList);
+      List = 0;
+    }
+
+    void transferred(HalfRelationBaseList *ToList,
+        HalfRelationBaseList *FromList) {
+      assert(List == FromList);
+      List = ToList;
+    }
+  };
+}
+
+namespace llvm {
+  inline HalfRelationBase *ilist_traits<HalfRelationBase>::createSentinel()
+      const {
+    return static_cast<HalfRelationBase *>(&Sentinel);
+  }
+
+  inline void ilist_traits<HalfRelationBase>::addNodeToList(
+      HalfRelationBase *node) {
+    node->added(static_cast<HalfRelationBaseList *>(this));
+  }
+
+  inline void ilist_traits<HalfRelationBase>::removeNodeFromList(
+      HalfRelationBase *node) {
+    node->removed(static_cast<HalfRelationBaseList *>(this));
+  }
+
+  inline void ilist_traits<HalfRelationBase>::transferNodesFromList(
+      ilist_node_traits<HalfRelationBase> &that,
+      ilist_iterator<HalfRelationBase> first,
+      ilist_iterator<HalfRelationBase> last) {
+    for (ilist_iterator<HalfRelationBase> i = first; i != last; i++) {
+      i->transferred(static_cast<HalfRelationBaseList *>(this),
+          static_cast<HalfRelationBaseList *>(&that));
+    }
+  }
+}
+
+namespace {
   enum RelationDirection {
     INCOMING,
     OUTGOING
   };
 
   template<RelationDirection direction>
-  class HalfRelation;
-}
-
-namespace llvm {
-  // Specialize ilist_traits to use a ghostly sentinel.
-  template<RelationDirection direction>
-  struct ilist_traits<HalfRelation<direction> >
-      : public ilist_default_traits<HalfRelation<direction> > {
-    mutable ilist_half_node<HalfRelation<direction> > Sentinel;
-
-  public:
-    HalfRelation<direction> *createSentinel() const {
-      return static_cast<HalfRelation<direction> *>(&Sentinel);
-    }
-
-    void destroySentinel(HalfRelation<direction> *) const {}
-
-    HalfRelation<direction> *provideInitialHead() const {
-      return createSentinel();
-    }
-
-    HalfRelation<direction> *ensureHead(HalfRelation<direction> *) const {
-      return createSentinel();
-    }
-
-    static void noteHead(HalfRelation<direction> *, HalfRelation<direction> *) {
-    }
-
-    // Called by ilist destructor; do nothing.
-    // TODO: Should we cast to Relation and delete it? Probably not, the destructor would
-    // call remove(). in ilist.h, deleteNode() is called from erase() which already does
-    // remove(), and calling remove() again will fail. But we could zero the VA field and
-    // then delete so that it doesn't try to unlink again. Or we could unlink the other
-    // direction and then delete and have the HalfRelation destructor be a no-op. There is
-    // a removeFromList and addToList method on ilist_default_traits that we can override to
-    // set/unset the List pointer.
-    static void deleteNode(HalfRelation<direction> *) {}
+  class HalfRelationList : public HalfRelationBaseList {
   };
-}
 
-namespace {
   class ValueAnalysis :
-      private ilist<HalfRelation<INCOMING> >,
-      private ilist<HalfRelation<OUTGOING> > {
-    template<RelationDirection direction>
-    friend class HalfRelation;
-    friend class Relation;
+      private RefCountedBase<ValueAnalysis>,
+      private HalfRelationList<INCOMING>,
+      private HalfRelationList<OUTGOING> {
+    template<RelationDirection direction> friend class HalfRelation;
+    friend struct IntrusiveRefCntPtrInfo<ValueAnalysis>;
+    friend class RefCountedBase<ValueAnalysis>;
     const Value *V;
 
   public:
     ValueAnalysis(const Value *V) : V(V) {}
+
+  protected:
+    ~ValueAnalysis() {}
   };
 
+  typedef IntrusiveRefCntPtr<ValueAnalysis> ValueAnalysisRef;
+
   // A ValueAnalysis for an address that points to a single specific zone.
+  // TODO: Replace with a static method to create a base ValueAnalysis with its
+  // points-to set precreated.
   class SingularValueAnalysis : public ValueAnalysis {
   public:
     SingularValueAnalysis(const Value *V) : ValueAnalysis(V) {}
@@ -99,33 +177,19 @@ namespace {
   ValueAnalysis *const EmptyValueAnalysis = 0;
 
   template<RelationDirection direction>
-  class HalfRelation : private ilist_node<HalfRelation<direction> > {
-    friend class ilist_nextprev_traits<HalfRelation>;
-    friend class ilist_traits<HalfRelation>;
+  class HalfRelation : public HalfRelationBase {
+  public:
+    HalfRelation(ValueAnalysis *VA)
+      : HalfRelationBase(static_cast<HalfRelationList<direction> *>(VA)) {}
+
+    ValueAnalysis *getValueAnalysis() const {
+      assert(List);
+      return static_cast<ValueAnalysis *>(
+          static_cast<HalfRelationList<direction> *>(List));
+    }
 
   protected:
-    ilist<HalfRelation> *List;
-
-    HalfRelation(ilist<HalfRelation> *List) : List(List) {
-      assert(List && "List missing");
-      link();
-    }
-
-    ~HalfRelation() {
-      unlink();
-    }
-
-    void link() {
-      List->push_back(this);
-    }
-
-    void unlink() {
-      List->remove(typename ilist<HalfRelation>::iterator(this));
-    }
-
-    ValueAnalysis *getValueAnalysis() {
-      return static_cast<ValueAnalysis *>(List);
-    }
+    ~HalfRelation() {}
   };
 
   // A Relation is a directed edge in the analysis graph.
@@ -192,8 +256,8 @@ namespace {
 namespace llvm {
   class LazyAndersenData {
   public:
-    // TODO: Should this be a ValueMap? Should the ValueAnalysis be refcounted?
-    typedef DenseMap<const Value *, ValueAnalysis *> ValueToAnalysisMap;
+    // TODO: Should this be a ValueMap?
+    typedef DenseMap<const Value *, ValueAnalysisRef> ValueToAnalysisMap;
     ValueToAnalysisMap ValueAnalyses;
   };
 }
@@ -331,7 +395,7 @@ namespace {
           Data->ValueAnalyses.find(V);
       if (i != Data->ValueAnalyses.end()) {
         // Previously analyzed.
-        return i->second;
+        return i->second.getPtr();
       }
       // Else analyze now.
       assert(!isa<Instruction>(V) && "Instruction used before executed");
