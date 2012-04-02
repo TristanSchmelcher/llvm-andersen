@@ -230,6 +230,7 @@ namespace {
     Relation(ValueAnalysis *Src, ValueAnalysis *Dst)
       : HalfRelation<INCOMING>(Src), HalfRelation<OUTGOING>(Dst) {}
 
+    virtual const char *getRelationName() const = 0;
     virtual ~Relation() {}
   };
 
@@ -238,6 +239,10 @@ namespace {
     DependsOnRelation(ValueAnalysis *DependentValueAnalyis,
         ValueAnalysis *IndependentValueAnalysis)
       : Relation(DependentValueAnalyis, IndependentValueAnalysis) {}
+
+    virtual const char *getRelationName() const {
+      return "depends on";
+    }
   };
 
   class LoadedFromRelation : public Relation {
@@ -245,6 +250,10 @@ namespace {
     LoadedFromRelation(ValueAnalysis *LoadedValueAnalyis,
         ValueAnalysis *AddressValueAnalysis)
       : Relation(LoadedValueAnalyis, AddressValueAnalysis) {}
+
+    virtual const char *getRelationName() const {
+      return "loaded from";
+    }
   };
 
   class StoredToRelation : public Relation {
@@ -252,6 +261,10 @@ namespace {
     StoredToRelation(ValueAnalysis *StoredValueAnalyis,
         ValueAnalysis *AddressValueAnalysis)
       : Relation(StoredValueAnalyis, AddressValueAnalysis) {}
+
+    virtual const char *getRelationName() const {
+      return "stored to";
+    }
   };
 
   class ReturnedFromCalleeRelation : public Relation {
@@ -259,6 +272,10 @@ namespace {
     ReturnedFromCalleeRelation(ValueAnalysis *ReturnedValueAnalyis,
         ValueAnalysis *CalledValueAnalysis)
       : Relation(ReturnedValueAnalyis, CalledValueAnalysis) {}
+
+    virtual const char *getRelationName() const {
+      return "returned from callee";
+    }
   };
 
   class ArgumentToCalleeRelation : public Relation {
@@ -266,6 +283,10 @@ namespace {
     ArgumentToCalleeRelation(ValueAnalysis *ArgumentValueAnalyis,
         ValueAnalysis *CalledValueAnalysis)
       : Relation(ArgumentValueAnalyis, CalledValueAnalysis) {}
+
+    virtual const char *getRelationName() const {
+      return "argument to callee";
+    }
   };
 
   class ArgumentFromCallerRelation : public Relation {
@@ -273,6 +294,10 @@ namespace {
     ArgumentFromCallerRelation(ValueAnalysis *ArgumentValueAnalyis,
         ValueAnalysis *FunctionValueAnalysis)
       : Relation(ArgumentValueAnalyis, FunctionValueAnalysis) {}
+
+    virtual const char *getRelationName() const {
+      return "argument from caller";
+    }
   };
 
   class ReturnedToCallerRelation : public Relation {
@@ -280,6 +305,10 @@ namespace {
     ReturnedToCallerRelation(ValueAnalysis *ReturnedValueAnalyis,
         ValueAnalysis *FunctionValueAnalysis)
       : Relation(ReturnedValueAnalyis, FunctionValueAnalysis) {}
+
+    virtual const char *getRelationName() const {
+      return "returned to caller";
+    }
   };
 }
 
@@ -520,7 +549,7 @@ void LazyAndersen::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
 
-// Iterators used exclusively for the graph traits classes below.
+// Helpers used exclusively for the graph traits classes below.
 namespace {
   template<typename OriginalIteratorTy, typename ValueTy,
       typename AdapterFunctorTy>
@@ -537,6 +566,9 @@ namespace {
 
     forward_iterator_adapter() {}
     forward_iterator_adapter(const OriginalIteratorTy &i) : i(i) {}
+
+    OriginalIteratorTy &wrappedIterator() { return i; }
+    const OriginalIteratorTy &wrappedIterator() const { return i; }
 
     value_type operator*() const {
       return AdapterFunctor(*i);
@@ -573,10 +605,10 @@ namespace {
         const ValueToAnalysisMap::value_type *, AdapterFunctor> iterator;
   };
 
-  class OutgoingHalfRelationIteratorAdapter {
+  class IncomingHalfRelationIteratorAdapter {
     struct AdapterFunctor {
       ValueToAnalysisMap::value_type *operator()(const HalfRelationBase &HR) const {
-        ValueAnalysis *VA = static_cast<const HalfRelation<OUTGOING> *>(&HR)
+        ValueAnalysis *VA = static_cast<const HalfRelation<INCOMING> *>(&HR)
             ->getOtherHalf()->getValueAnalysis();
         return &*VA->getMap()->find(VA->getValue());
       }
@@ -586,6 +618,24 @@ namespace {
     typedef forward_iterator_adapter<HalfRelationBaseList::iterator,
         ValueToAnalysisMap::value_type *, AdapterFunctor> iterator;
   };
+
+  // Trim functions taken from
+  // http://stackoverflow.com/questions/216823/whats-the-best-way-to-trim-stdstring
+  inline std::string &ltrim(std::string &s) {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(
+        std::ptr_fun<int, int>(std::isspace))));
+    return s;
+  }
+
+  inline std::string &rtrim(std::string &s) {
+    s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(
+        std::ptr_fun<int, int>(std::isspace))).base(), s.end());
+    return s;
+  }
+
+  inline std::string &trim(std::string &s) {
+    return ltrim(rtrim(s));
+  }
 }
 
 // Graph traits specializations used exclusively for WriteGraph().
@@ -594,26 +644,18 @@ namespace llvm {
   struct GraphTraits<ValueToAnalysisMap> {
     typedef const ValueToAnalysisMap::value_type NodeType;
     typedef ValueToAnalysisMapIteratorAdapter::iterator nodes_iterator;
-    typedef OutgoingHalfRelationIteratorAdapter::iterator ChildIteratorType;
+    typedef IncomingHalfRelationIteratorAdapter::iterator ChildIteratorType;
 
     static ChildIteratorType child_begin(NodeType *Node) {
       ValueAnalysis *VA = Node->second.getPtr();
-      if (VA) {
-        return ChildIteratorType(static_cast<HalfRelationList<OUTGOING> *>(VA)
-            ->begin());
-      } else {
-        return ChildIteratorType();
-      }
+      return ChildIteratorType(static_cast<HalfRelationList<INCOMING> *>(VA)
+          ->begin());
     }
 
     static ChildIteratorType child_end(NodeType *Node) {
       ValueAnalysis *VA = Node->second.getPtr();
-      if (VA) {
-        return ChildIteratorType(static_cast<HalfRelationList<OUTGOING> *>(VA)
-            ->end());
-      } else {
-        return ChildIteratorType();
-      }
+      return ChildIteratorType(static_cast<HalfRelationList<INCOMING> *>(VA)
+          ->end());
     }
 
     static nodes_iterator nodes_begin(const ValueToAnalysisMap &Map) {
@@ -626,20 +668,51 @@ namespace llvm {
   };
 
   template<>
-  struct DOTGraphTraits<ValueToAnalysisMap> : DefaultDOTGraphTraits {
-    DOTGraphTraits(bool simple = false) : DefaultDOTGraphTraits(simple) {}
-
-    std::string getNodeLabel(const ValueToAnalysisMap::value_type *Node,
-        const ValueToAnalysisMap &Map) {
-      const Value *V = Node->first;
-      if (V->hasName()) {
-        return V->getName();
-      } else {
-        std::ostringstream OSS;
+  class DOTGraphTraits<ValueToAnalysisMap> : public DefaultDOTGraphTraits {
+    static std::string getPrintedValue(const Value *V) {
+      std::ostringstream OSS;
+      {
         raw_os_ostream OS(OSS);
         V->print(OS);
-        return OSS.str();
       }
+      return OSS.str();
+    }
+
+    static const size_t MaxPrintedSize = 16;
+
+  public:
+    DOTGraphTraits(bool simple = false) : DefaultDOTGraphTraits(simple) {}
+
+    std::string getNodeLabel(GraphTraits<ValueToAnalysisMap>::NodeType *Node,
+        const ValueToAnalysisMap &Map) {
+      const Value *V = Node->first;
+      std::ostringstream OSS;
+      {
+        std::string PrintedValue(getPrintedValue(V));
+        trim(PrintedValue);
+        if (PrintedValue.size() > MaxPrintedSize) {
+          PrintedValue.erase(MaxPrintedSize);
+          rtrim(PrintedValue);
+          OSS << PrintedValue << " ...";
+        } else {
+          OSS << PrintedValue;
+        }
+      }
+      if (V->hasName()) {
+        OSS << " (" << V->getName().str() << ')';
+      }
+      return OSS.str();
+    }
+
+    static std::string getEdgeSourceLabel(
+        GraphTraits<ValueToAnalysisMap>::NodeType *Node,
+        const GraphTraits<ValueToAnalysisMap>::ChildIteratorType &i) {
+      return static_cast<Relation *>(static_cast<HalfRelation<INCOMING> *>(
+          &*i.wrappedIterator()))->getRelationName();
+    }
+
+    static bool isNodeHidden(GraphTraits<ValueToAnalysisMap>::NodeType *Node) {
+      return !Node->second.getPtr() || Node->first != Node->second->getValue();
     }
   };
 }
@@ -650,3 +723,13 @@ void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
       Twine("LazyAndersen analysis results for module ")
           + M->getModuleIdentifier());
 }
+
+#ifndef NDEBUG
+// For use from debugger.
+namespace llvm {
+  void viewLazyAndersenGraph(LazyAndersenData *Data) {
+    ViewGraph(Data->ValueAnalyses, "LazyAndersen", false,
+        "LazyAndersen analysis results");
+  }
+}
+#endif
