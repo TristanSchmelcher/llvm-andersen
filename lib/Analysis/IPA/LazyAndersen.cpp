@@ -19,14 +19,15 @@
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/InstVisitor.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/User.h"
 #include "llvm/Value.h"
+
 #include <sstream>
 
-#include <stdio.h>
 using namespace llvm;
 
 char LazyAndersen::ID = 0;
@@ -320,19 +321,25 @@ namespace llvm {
 }
 
 namespace {
-  class FunctionVisitor : private InstVisitor<FunctionVisitor> {
-    friend class InstVisitor<FunctionVisitor>;
+  class Analyze : private InstVisitor<Analyze> {
+    typedef SmallVector<std::pair<const PHINode *, ValueAnalysis *>, 3>
+        PHINodeWorkVector;
+    friend class InstVisitor<Analyze>;
+    PHINodeWorkVector PHINodeWork;
     LazyAndersenData *Data;
     Function *CurrentFunction;
 
   public:
-    FunctionVisitor(LazyAndersenData *Data) : Data(Data) {}
-
-    void run(Function &F) {
-      CurrentFunction = &F;
-      // TODO: Handle var arg functions.
-      visit(F);
+    Analyze(Module &M) : Data(new LazyAndersenData()) {
+      for (Module::iterator i = M.begin(); i != M.end(); ++i) {
+        Function &F(*i);
+        CurrentFunction = &F;
+        visit(F);
+        processPHINodes();
+      }
     }
+
+    LazyAndersenData *getResults() const { return Data; }
 
   private:
     void visitReturnInst(ReturnInst &I) {
@@ -387,7 +394,24 @@ namespace {
     }
 
     void visitPHINode(PHINode &I) {
-      // TODO
+      ValueAnalysis *PHIAnalysis = cache(&I, createValueAnalysis(&I));
+      PHINodeWork.push_back(PHINodeWorkVector::value_type(&I, PHIAnalysis));
+    }
+
+    void processPHINodes() {
+      for (PHINodeWorkVector::const_iterator i = PHINodeWork.begin();
+           i != PHINodeWork.end(); ++i) {
+        const PHINode *PHI = i->first;
+        ValueAnalysis *PHIAnalysis = i->second;
+        for (PHINode::const_op_iterator i = PHI->op_begin(); i != PHI->op_end();
+            ++i) {
+          ValueAnalysis *OperandAnalysis = analyzeValue(*i);
+          if (OperandAnalysis) {
+            new DependsOnRelation(PHIAnalysis, OperandAnalysis);
+          }
+        }
+      }
+      PHINodeWork.clear();
     }
 
     void visitCallInst(CallInst &I) {
@@ -412,13 +436,7 @@ namespace {
           }
         }
       }
-      FunctionType *FunctionTy;
-      Type *CalledTy = CalledValue->getType();
-      if (!(FunctionTy = dyn_cast<FunctionType>(CalledTy))) {
-        FunctionTy = cast<FunctionType>(cast<PointerType>(CalledTy)
-            ->getPointerElementType());
-      }
-      if (!FunctionTy->getReturnType()->isVoidTy()) {
+      if (!I.getType()->isVoidTy()) {
         ValueAnalysis *ReturnedValueAnalysis;
         if (CalledValueAnalysis) {
           ReturnedValueAnalysis = createValueAnalysis(&I);
@@ -530,13 +548,8 @@ LazyAndersen::LazyAndersen()
 
 bool LazyAndersen::runOnModule(Module &M) {
   assert(!Data);
-  Data = new LazyAndersenData();
-  FunctionVisitor Visitor(Data);
-  for (Module::iterator i = M.begin(); i != M.end(); ++i) {
-    Visitor.run(*i);
-  }
-  // TODO
-  printf("foo\n");
+  Data = Analyze(M).getResults();
+  print(dbgs(), &M);
   return false;
 }
 
@@ -715,6 +728,13 @@ namespace llvm {
       return !Node->second.getPtr() || Node->first != Node->second->getValue();
     }
   };
+
+#ifndef NDEBUG
+  void viewLazyAndersenGraph(LazyAndersenData *Data) {
+    ViewGraph(Data->ValueAnalyses, "LazyAndersen", false,
+        "LazyAndersen analysis results");
+  }
+#endif
 }
 
 void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
@@ -722,14 +742,8 @@ void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
   WriteGraph(OS, Data->ValueAnalyses, false,
       Twine("LazyAndersen analysis results for module ")
           + M->getModuleIdentifier());
-}
-
 #ifndef NDEBUG
-// For use from debugger.
-namespace llvm {
-  void viewLazyAndersenGraph(LazyAndersenData *Data) {
-    ViewGraph(Data->ValueAnalyses, "LazyAndersen", false,
-        "LazyAndersen analysis results");
-  }
-}
+  // In debug mode, also display the graph.
+  viewLazyAndersenGraph(Data);
 #endif
+}
