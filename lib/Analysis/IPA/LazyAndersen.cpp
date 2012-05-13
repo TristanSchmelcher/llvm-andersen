@@ -321,6 +321,27 @@ namespace llvm {
 }
 
 namespace {
+  // Wrapper for the methods of CallInst and InvokeInst that ought to be
+  // inherited from a common interface but aren't. :/
+  class CallOrInvokeInstWrapperInterface {
+  public:
+    virtual const Value *getCalledValue() const = 0;
+    virtual unsigned getNumArgOperands() const = 0;
+    virtual const Value *getArgOperand(unsigned i) const = 0;
+  };
+
+  template<typename T>
+  class CallOrInvokeInstWrapper : public CallOrInvokeInstWrapperInterface {
+    const T &I;
+
+  public:
+    CallOrInvokeInstWrapper(const T &I) : I(I) {}
+    virtual const Value *getCalledValue() const { return I.getCalledValue(); }
+    virtual unsigned getNumArgOperands() const { return I.getNumArgOperands(); }
+    virtual const Value *getArgOperand(unsigned i) const
+        { return I.getArgOperand(i); }
+  };
+
   class Analyze : private InstVisitor<Analyze> {
     typedef SmallVector<std::pair<const PHINode *, ValueAnalysis *>, 3>
         PHINodeWorkVector;
@@ -356,7 +377,7 @@ namespace {
     }
 
     void visitInvokeInst(InvokeInst &I) {
-      visitCallOrInvokeInst(I);
+      visitCallOrInvokeInst(I, CallOrInvokeInstWrapper<InvokeInst>(I));
     }
 
     void visitAllocaInst(AllocaInst &I) {
@@ -415,20 +436,20 @@ namespace {
     }
 
     void visitCallInst(CallInst &I) {
-      visitCallOrInvokeInst(I);
+      visitCallOrInvokeInst(I, CallOrInvokeInstWrapper<CallInst>(I));
     }
 
     void visitVAArgInst(VAArgInst &I) {
       // TODO
     }
 
-    template<typename T>
-    void visitCallOrInvokeInst(T &I) {
-      const Value *CalledValue = I.getCalledValue();
+    void visitCallOrInvokeInst(Instruction &I,
+        const CallOrInvokeInstWrapperInterface &W) {
+      const Value *CalledValue = W.getCalledValue();
       ValueAnalysis *CalledValueAnalysis = analyzeValue(CalledValue);
       if (CalledValueAnalysis) {
-        for (unsigned i = 0; i < I.getNumArgOperands(); i++) {
-          const Value *ArgumentValue = I.getArgOperand(i);
+        for (unsigned i = 0; i < W.getNumArgOperands(); i++) {
+          const Value *ArgumentValue = W.getArgOperand(i);
           ValueAnalysis *ArgumentValueAnalysis = analyzeValue(ArgumentValue);
           if (ArgumentValueAnalysis) {
             new ArgumentToCalleeRelation(ArgumentValueAnalysis,
