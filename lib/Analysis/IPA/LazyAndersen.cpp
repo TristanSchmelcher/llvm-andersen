@@ -37,82 +37,131 @@ INITIALIZE_PASS(LazyAndersen, "lazy-andersen",
 
 namespace {
   class HalfRelationBase;
+  class LazyAnalysisStep;
+  template<typename NodeTy> struct ilist_node_with_list_ptr_traits;
+
+  template<typename NodeTy>
+  class ilist_node_with_list_ptr : public ilist_node<NodeTy> {
+    friend struct ilist_node_with_list_ptr_traits<NodeTy>;
+
+    ilist<NodeTy> *List;
+
+  protected:
+    ilist_node_with_list_ptr() : List(0) {}
+    ~ilist_node_with_list_ptr() {}
+
+    ilist<NodeTy> *getList() const { return List; }
+
+  private:
+    void added(ilist<NodeTy> *ToList) {
+      assert(!List);
+      List = ToList;
+    }
+
+    void removed(ilist<NodeTy> *FromList) {
+      assert(List == FromList);
+      List = 0;
+    }
+
+    void transferred(ilist<NodeTy> *ToList, ilist<NodeTy> *FromList) {
+      assert(List == FromList);
+      List = ToList;
+    }
+  };
+
+  template<typename NodeTy>
+  struct ilist_node_with_list_ptr_traits : public ilist_default_traits<NodeTy> {
+    void destroySentinel(NodeTy *) const {}
+
+    NodeTy *provideInitialHead() const {
+      return static_cast<const ilist_traits<NodeTy> *>(this)->createSentinel();
+    }
+
+    NodeTy *ensureHead(NodeTy *) const {
+      return static_cast<const ilist_traits<NodeTy> *>(this)->createSentinel();
+    }
+
+    static void noteHead(NodeTy *, NodeTy *) {}
+
+    void addNodeToList(NodeTy *Node) {
+      Node->added(static_cast<ilist<NodeTy> *>(this));
+    }
+
+    void removeNodeFromList(NodeTy *Node) {
+      Node->removed(static_cast<ilist<NodeTy> *>(this));
+    }
+
+    void transferNodesFromList(
+        ilist_node_traits<NodeTy> &that,
+        ilist_iterator<NodeTy> first,
+        ilist_iterator<NodeTy> last) {
+      for (ilist_iterator<NodeTy> i = first; i != last; ++i) {
+        i->transferred(static_cast<ilist<NodeTy> *>(this),
+            static_cast<ilist<NodeTy> *>(&that));
+      }
+    }
+  };
 }
 
 namespace llvm {
   template<>
   struct ilist_traits<HalfRelationBase>
-      : ilist_default_traits<HalfRelationBase> {
+      : public ilist_node_with_list_ptr_traits<HalfRelationBase> {
+  private:
     mutable ilist_half_node<HalfRelationBase> Sentinel;
 
   public:
     HalfRelationBase *createSentinel() const;
+  };
 
-    void destroySentinel(HalfRelationBase *) const {}
+  template<>
+  struct ilist_traits<LazyAnalysisStep>
+      : public ilist_node_with_list_ptr_traits<LazyAnalysisStep> {
+  private:
+    mutable ilist_half_node<LazyAnalysisStep> Sentinel;
 
-    HalfRelationBase *provideInitialHead() const {
-      return createSentinel();
-    }
-
-    HalfRelationBase *ensureHead(HalfRelationBase *) const {
-      return createSentinel();
-    }
-
-    static void noteHead(HalfRelationBase *, HalfRelationBase *) {}
-
-    void addNodeToList(HalfRelationBase *Node);
-
-    void removeNodeFromList(HalfRelationBase *Node);
-
-    void transferNodesFromList(
-        ilist_node_traits<HalfRelationBase> &that,
-        ilist_iterator<HalfRelationBase> first,
-        ilist_iterator<HalfRelationBase> last);
+  public:
+    LazyAnalysisStep *createSentinel() const;
   };
 }
 
 namespace {
   typedef ilist<HalfRelationBase> HalfRelationBaseList;
 
-  class HalfRelationBase : private ilist_node<HalfRelationBase> {
+  class HalfRelationBase :
+      protected ilist_node_with_list_ptr<HalfRelationBase> {
     friend struct ilist_nextprev_traits<HalfRelationBase>;
     friend struct ilist_node_traits<HalfRelationBase>;
+    friend struct ilist_node_with_list_ptr_traits<HalfRelationBase>;
     friend struct ilist_traits<HalfRelationBase>;
 
   protected:
-    HalfRelationBaseList *List;
-
-    HalfRelationBase(HalfRelationBaseList *InitialList) : List(0) {
+    HalfRelationBase(HalfRelationBaseList *InitialList) {
       assert(InitialList);
       InitialList->push_back(this);
-      assert(List == InitialList);
+      assert(getList() == InitialList);
     }
 
     // virtual so that deleteNode in ilist_node_traits will delete the whole
     // Relation object properly.
     virtual ~HalfRelationBase() {
-      if (List) {
-        List->remove(HalfRelationBaseList::iterator(this));
-        assert(!List);
+      if (getList()) {
+        getList()->remove(HalfRelationBaseList::iterator(this));
+        assert(!getList());
       }
     }
+  };
 
-  private:
-    void added(HalfRelationBaseList *ToList) {
-      assert(!List);
-      List = ToList;
-    }
+  typedef ilist<LazyAnalysisStep> LazyAnalysisStepList;
 
-    void removed(HalfRelationBaseList *FromList) {
-      assert(List == FromList);
-      List = 0;
-    }
+  class LazyAnalysisStep : private ilist_node_with_list_ptr<LazyAnalysisStep> {
+    friend struct ilist_nextprev_traits<LazyAnalysisStep>;
+    friend struct ilist_node_traits<LazyAnalysisStep>;
+    friend struct ilist_node_with_list_ptr_traits<LazyAnalysisStep>;
+    friend struct ilist_traits<LazyAnalysisStep>;
 
-    void transferred(HalfRelationBaseList *ToList,
-        HalfRelationBaseList *FromList) {
-      assert(List == FromList);
-      List = ToList;
-    }
+  public:
+    virtual ~LazyAnalysisStep() {}
   };
 }
 
@@ -121,27 +170,23 @@ inline HalfRelationBase *ilist_traits<HalfRelationBase>::createSentinel()
   return static_cast<HalfRelationBase *>(&Sentinel);
 }
 
-inline void ilist_traits<HalfRelationBase>::addNodeToList(
-    HalfRelationBase *Node) {
-  Node->added(static_cast<HalfRelationBaseList *>(this));
-}
-
-inline void ilist_traits<HalfRelationBase>::removeNodeFromList(
-    HalfRelationBase *Node) {
-  Node->removed(static_cast<HalfRelationBaseList *>(this));
-}
-
-inline void ilist_traits<HalfRelationBase>::transferNodesFromList(
-    ilist_node_traits<HalfRelationBase> &that,
-    ilist_iterator<HalfRelationBase> first,
-    ilist_iterator<HalfRelationBase> last) {
-  for (ilist_iterator<HalfRelationBase> i = first; i != last; i++) {
-    i->transferred(static_cast<HalfRelationBaseList *>(this),
-        static_cast<HalfRelationBaseList *>(&that));
-  }
+inline LazyAnalysisStep *ilist_traits<LazyAnalysisStep>::createSentinel()
+    const {
+  return static_cast<LazyAnalysisStep *>(&Sentinel);
 }
 
 namespace {
+  class LazyAnalysisResult : private RefCountedBase<LazyAnalysisResult>,
+      public LazyAnalysisStepList {
+    friend struct IntrusiveRefCntPtrInfo<LazyAnalysisResult>;
+    friend class RefCountedBase<LazyAnalysisResult>;
+
+  private:
+    ~LazyAnalysisResult() {}
+  };
+
+  typedef IntrusiveRefCntPtr<LazyAnalysisResult> LazyAnalysisResultRef;
+
   enum RelationDirection {
     INCOMING,
     OUTGOING
@@ -179,6 +224,7 @@ namespace {
     const Value *V;
     // The map that this analysis is in.
     ValueToAnalysisMap *Map;
+    LazyAnalysisResultRef PointsToSet;
 
   public:
     ValueAnalysis(const Value *V, ValueToAnalysisMap *Map) : V(V), Map(Map) {}
@@ -186,7 +232,7 @@ namespace {
     const Value *getValue() const { return V; }
     ValueToAnalysisMap *getMap() const { return Map; }
 
-  protected:
+  private:
     ~ValueAnalysis() {}
   };
 
@@ -204,9 +250,9 @@ namespace {
       : HalfRelationBase(static_cast<HalfRelationList<direction> *>(VA)) {}
 
     ValueAnalysis *getValueAnalysis() const {
-      assert(List);
+      assert(getList());
       return static_cast<ValueAnalysis *>(
-          static_cast<HalfRelationList<direction> *>(List));
+          static_cast<HalfRelationList<direction> *>(getList()));
     }
 
     OppositeHalfRelationTy *getOtherHalf() {
@@ -231,8 +277,8 @@ namespace {
     Relation(ValueAnalysis *Src, ValueAnalysis *Dst)
       : HalfRelation<INCOMING>(Src), HalfRelation<OUTGOING>(Dst) {}
 
-    virtual const char *getRelationName() const = 0;
-    virtual ~Relation() {}
+   virtual ~Relation() {}
+   virtual const char *getRelationName() const = 0;
   };
 
   class DependsOnRelation : public Relation {
