@@ -36,8 +36,19 @@ INITIALIZE_PASS(LazyAndersen, "lazy-andersen",
                 "Lazy Andersen's Algorithm for Points-To Analysis", false, true)
 
 namespace {
+  enum RelationDirection {
+    INCOMING,
+    OUTGOING
+  };
+
+  class HalfRelationBaseList;
+  template<RelationDirection direction> class HalfRelationList;
   class HalfRelationBase;
+  template<RelationDirection direction> class HalfRelation;
   class LazyAnalysisStep;
+  class Relation;
+  class ValueAnalysis;
+
   template<typename NodeTy> struct ilist_node_with_list_ptr_traits;
 
   template<typename NodeTy>
@@ -126,17 +137,51 @@ namespace llvm {
 }
 
 namespace {
-  typedef ilist<HalfRelationBase> HalfRelationBaseList;
+  class HalfRelationBaseList : public ilist<HalfRelationBase> {
+    template<RelationDirection direction> friend class HalfRelationList;
+
+  public:
+    template<RelationDirection direction>
+    const HalfRelationList<direction> *as() const {
+      return static_cast<const HalfRelationList<direction> *>(this);
+    }
+
+    template<RelationDirection direction>
+    HalfRelationList<direction> *as() {
+      return static_cast<HalfRelationList<direction> *>(this);
+    }
+
+  private:
+    HalfRelationBaseList() {}
+  };
 
   class HalfRelationBase :
-      protected ilist_node_with_list_ptr<HalfRelationBase> {
+      private ilist_node_with_list_ptr<HalfRelationBase> {
     friend struct ilist_nextprev_traits<HalfRelationBase>;
     friend struct ilist_node_traits<HalfRelationBase>;
     friend struct ilist_node_with_list_ptr_traits<HalfRelationBase>;
     friend struct ilist_traits<HalfRelationBase>;
+    template<RelationDirection> friend class HalfRelation;
+
+  public:
+    template<RelationDirection direction>
+    const HalfRelation<direction> *as() const {
+      return static_cast<const HalfRelation<direction> *>(this);
+    }
+
+    template<RelationDirection direction>
+    HalfRelation<direction> *as() {
+      return static_cast<HalfRelation<direction> *>(this);
+    }
 
   protected:
-    HalfRelationBase(HalfRelationBaseList *InitialList) {
+    HalfRelationBaseList *getList() const {
+      return static_cast<HalfRelationBaseList *>(
+          ilist_node_with_list_ptr::getList());
+    }
+
+  private:
+    explicit HalfRelationBase(HalfRelationBaseList *InitialList) {
       assert(InitialList);
       InitialList->push_back(this);
       assert(getList() == InitialList);
@@ -154,14 +199,36 @@ namespace {
 
   typedef ilist<LazyAnalysisStep> LazyAnalysisStepList;
 
-  class LazyAnalysisStep : private ilist_node_with_list_ptr<LazyAnalysisStep> {
+  class LazyAnalysisStep :
+      protected ilist_node_with_list_ptr<LazyAnalysisStep> {
     friend struct ilist_nextprev_traits<LazyAnalysisStep>;
     friend struct ilist_node_traits<LazyAnalysisStep>;
     friend struct ilist_node_with_list_ptr_traits<LazyAnalysisStep>;
     friend struct ilist_traits<LazyAnalysisStep>;
 
   public:
-    virtual ~LazyAnalysisStep() {}
+    // 2-tuple of next ValueAnalysis result and next LazyAnalysisStep to run
+    // to produce the following results. One or both may be 0.
+    typedef std::pair<ValueAnalysis *, LazyAnalysisStep *> Result;
+
+    virtual ~LazyAnalysisStep() {
+      assert(!getList());
+    }
+
+    virtual Result run() = 0;
+
+  protected:
+    // Get the step after this in the list, or 0 if none.
+    LazyAnalysisStep *getNextStep() {
+      assert(getList());
+      LazyAnalysisStepList::iterator i(this);
+      ++i;
+      if (i == getList()->end()) {
+        return 0;
+      } else {
+        return &*i;
+      }
+    }
   };
 }
 
@@ -187,11 +254,6 @@ namespace {
 
   typedef IntrusiveRefCntPtr<LazyAnalysisResult> LazyAnalysisResultRef;
 
-  enum RelationDirection {
-    INCOMING,
-    OUTGOING
-  };
-
   template<RelationDirection direction>
   struct direction_traits;
 
@@ -206,19 +268,32 @@ namespace {
   };
 
   template<RelationDirection direction>
-  class HalfRelationList : public HalfRelationBaseList {};
+  class HalfRelationList : public HalfRelationBaseList {
+    friend class ValueAnalysis;
 
-  class ValueAnalysis;
+  public:
+    const ValueAnalysis *getValueAnalysis() const {
+      return static_cast<const ValueAnalysis *>(this);
+    }
+
+    ValueAnalysis *getValueAnalysis() {
+      return static_cast<ValueAnalysis *>(this);
+    }
+
+  private:
+    HalfRelationList() {}
+  };
+
   typedef IntrusiveRefCntPtr<ValueAnalysis> ValueAnalysisRef;
   // TODO: Should this be a ValueMap?
   typedef DenseMap<const Value *, ValueAnalysisRef> ValueToAnalysisMap;
 
-  class ValueAnalysis :
-      private RefCountedBase<ValueAnalysis>,
-      public HalfRelationList<INCOMING>,
-      public HalfRelationList<OUTGOING> {
+  class ValueAnalysis : private RefCountedBase<ValueAnalysis>,
+      private HalfRelationList<INCOMING>,
+      private HalfRelationList<OUTGOING> {
     friend struct IntrusiveRefCntPtrInfo<ValueAnalysis>;
     friend class RefCountedBase<ValueAnalysis>;
+    template<RelationDirection direction> friend class HalfRelationList;
     // The Value that maps to this object. (If this analysis applies to multiple
     // Values, this is the first one that was analyzed.)
     const Value *V;
@@ -230,7 +305,18 @@ namespace {
     ValueAnalysis(const Value *V, ValueToAnalysisMap *Map) : V(V), Map(Map) {}
 
     const Value *getValue() const { return V; }
+
     ValueToAnalysisMap *getMap() const { return Map; }
+
+    template<RelationDirection direction>
+    const HalfRelationList<direction> *getRelations() const {
+      return static_cast<const HalfRelationList<direction> *>(this);
+    }
+
+    template<RelationDirection direction>
+    HalfRelationList<direction> *getRelations() {
+      return static_cast<HalfRelationList<direction> *>(this);
+    }
 
   private:
     ~ValueAnalysis() {}
@@ -238,47 +324,65 @@ namespace {
 
   ValueAnalysis *const EmptyValueAnalysis = 0;
 
-  class Relation;
-
   template<RelationDirection direction>
-  class HalfRelation : public HalfRelationBase {
-  public:
-    typedef HalfRelation<direction_traits<direction>::OppositeDirection>
-        OppositeHalfRelationTy;
+  class HalfRelation : public HalfRelationBase,
+      private direction_traits<direction> {
+    friend class Relation;
 
-    HalfRelation(ValueAnalysis *VA)
-      : HalfRelationBase(static_cast<HalfRelationList<direction> *>(VA)) {}
+  public:
+    using direction_traits<direction>::OppositeDirection;
+    typedef HalfRelation<OppositeDirection> OppositeHalfRelationTy;
+
+    const Relation *getRelation() const {
+      return static_cast<const Relation *>(this);
+    }
+
+    Relation *getRelation() {
+      return static_cast<Relation *>(this);
+    }
 
     ValueAnalysis *getValueAnalysis() const {
       assert(getList());
-      return static_cast<ValueAnalysis *>(
-          static_cast<HalfRelationList<direction> *>(getList()));
-    }
-
-    OppositeHalfRelationTy *getOtherHalf() {
-      return static_cast<OppositeHalfRelationTy *>(
-          static_cast<Relation *>(this));
+      return getList()->as<direction>()->getValueAnalysis();
     }
 
     const OppositeHalfRelationTy *getOtherHalf() const {
-      return static_cast<const OppositeHalfRelationTy *>(
-          static_cast<const Relation *>(this));
+      return getRelation()->template getDirection<OppositeDirection>();
     }
 
-  protected:
+    OppositeHalfRelationTy *getOtherHalf() {
+      return getRelation()->template getDirection<OppositeDirection>();
+    }
+
+  private:
+    explicit HalfRelation(ValueAnalysis *VA)
+      : HalfRelationBase(VA->getRelations<direction>()) {}
+
     ~HalfRelation() {}
   };
 
   // A Relation is a directed edge in the analysis graph.
   class Relation :
-      public HalfRelation<INCOMING>,
-      public HalfRelation<OUTGOING> {
+      private HalfRelation<INCOMING>,
+      private HalfRelation<OUTGOING> {
+    template<RelationDirection direction> friend class HalfRelation;
+
   public:
     Relation(ValueAnalysis *Src, ValueAnalysis *Dst)
       : HalfRelation<INCOMING>(Src), HalfRelation<OUTGOING>(Dst) {}
 
-   virtual ~Relation() {}
-   virtual const char *getRelationName() const = 0;
+    virtual ~Relation() {}
+    virtual const char *getRelationName() const = 0;
+
+    template<RelationDirection direction>
+    const HalfRelation<direction> *getDirection() const {
+      return static_cast<const HalfRelation<direction> *>(this);
+    }
+
+    template<RelationDirection direction>
+    HalfRelation<direction> *getDirection() {
+      return static_cast<HalfRelation<direction> *>(this);
+    }
   };
 
   class DependsOnRelation : public Relation {
@@ -357,6 +461,77 @@ namespace {
       return "returned to caller";
     }
   };
+
+  class IterativeAnalysisStep : public LazyAnalysisStep {
+  protected:
+    // Push the next iteration onto the step list and return it as the result.
+    Result nextIteration(LazyAnalysisStep *Step) {
+      assert(getList());
+      getList()->insert(LazyAnalysisStepList::iterator(this), Step);
+      return Result(0, Step);
+    }
+
+    // Pop this completed step off the stack (thus deleting it) and return the
+    // next one.
+    Result done() {
+      assert(getList());
+      LazyAnalysisStep *Next = getNextStep();
+      // erase deletes this object.
+      getList()->erase(this);
+      return Result(0, Next);
+    }
+  };
+
+  // Helper class for analyzing relations in a particular direction.
+  class RelationsAnalysisStepBase : public IterativeAnalysisStep {
+    HalfRelationBaseList *List;
+    HalfRelationBaseList::iterator i;
+
+  public:
+    explicit RelationsAnalysisStepBase(HalfRelationBaseList *List)
+      : List(List), i(List->begin()) {}
+
+    virtual Result run() {
+      while (i != List->end()) {
+        HalfRelationBase *HR = &*i;
+        ++i;
+        LazyAnalysisStep *LA = analyzeHalfRelation(HR);
+        if (LA) {
+          return nextIteration(LA);
+        }
+        // Else nothing to do for this relation; keep going.
+      }
+      // No relations left to analyze.
+      return done();
+    }
+
+  private:
+    virtual LazyAnalysisStep *analyzeHalfRelation(HalfRelationBase *HR) = 0;
+  };
+
+  template<RelationDirection direction, typename StepTy>
+  class RelationsAnalysisStep : public RelationsAnalysisStepBase {
+  public:
+    explicit RelationsAnalysisStep(ValueAnalysis *VA)
+      : RelationsAnalysisStepBase(VA->getRelations<direction>()) {}
+
+  private:
+    virtual LazyAnalysisStep *analyzeHalfRelation(HalfRelationBase *HR) {
+      return static_cast<StepTy *>(this)->analyzeRelation(
+          HR->as<direction>()->getRelation());
+    }
+  };
+
+  class PointsToRelationsAnalysisStep : public RelationsAnalysisStep<OUTGOING,
+      PointsToRelationsAnalysisStep> {
+    friend class RelationsAnalysisStep<OUTGOING, PointsToRelationsAnalysisStep>;
+
+  private:
+    LazyAnalysisStep *analyzeRelation(Relation *R) {
+      // TODO
+      return 0;
+    }
+  };
 }
 
 namespace llvm {
@@ -381,7 +556,7 @@ namespace {
     const T &I;
 
   public:
-    CallOrInvokeInstWrapper(const T &I) : I(I) {}
+    explicit CallOrInvokeInstWrapper(const T &I) : I(I) {}
     virtual const Value *getCalledValue() const { return I.getCalledValue(); }
     virtual unsigned getNumArgOperands() const { return I.getNumArgOperands(); }
     virtual const Value *getArgOperand(unsigned i) const
@@ -397,7 +572,7 @@ namespace {
     Function *CurrentFunction;
 
   public:
-    Analyze(Module &M) : Data(new LazyAndersenData()) {
+    explicit Analyze(Module &M) : Data(new LazyAndersenData()) {
       for (Module::iterator i = M.begin(); i != M.end(); ++i) {
         Function &F(*i);
         CurrentFunction = &F;
@@ -645,7 +820,7 @@ namespace {
     typedef std::forward_iterator_tag iterator_category;
 
     forward_iterator_adapter() {}
-    forward_iterator_adapter(const OriginalIteratorTy &i) : i(i) {}
+    explicit forward_iterator_adapter(const OriginalIteratorTy &i) : i(i) {}
 
     OriginalIteratorTy &wrappedIterator() { return i; }
     const OriginalIteratorTy &wrappedIterator() const { return i; }
@@ -688,8 +863,8 @@ namespace {
   class IncomingHalfRelationIteratorAdapter {
     struct AdapterFunctor {
       ValueToAnalysisMap::value_type *operator()(const HalfRelationBase &HR) const {
-        ValueAnalysis *VA = static_cast<const HalfRelation<INCOMING> *>(&HR)
-            ->getOtherHalf()->getValueAnalysis();
+        ValueAnalysis *VA = HR.as<INCOMING>()->getOtherHalf()
+            ->getValueAnalysis();
         return &*VA->getMap()->find(VA->getValue());
       }
     };
@@ -728,14 +903,12 @@ namespace llvm {
 
     static ChildIteratorType child_begin(NodeType *Node) {
       ValueAnalysis *VA = Node->second.getPtr();
-      return ChildIteratorType(static_cast<HalfRelationList<INCOMING> *>(VA)
-          ->begin());
+      return ChildIteratorType(VA->getRelations<INCOMING>()->begin());
     }
 
     static ChildIteratorType child_end(NodeType *Node) {
       ValueAnalysis *VA = Node->second.getPtr();
-      return ChildIteratorType(static_cast<HalfRelationList<INCOMING> *>(VA)
-          ->end());
+      return ChildIteratorType(VA->getRelations<INCOMING>()->end());
     }
 
     static nodes_iterator nodes_begin(const ValueToAnalysisMap &Map) {
@@ -787,8 +960,8 @@ namespace llvm {
     static std::string getEdgeSourceLabel(
         GraphTraits<ValueToAnalysisMap>::NodeType *Node,
         const GraphTraits<ValueToAnalysisMap>::ChildIteratorType &i) {
-      return static_cast<Relation *>(static_cast<HalfRelation<INCOMING> *>(
-          &*i.wrappedIterator()))->getRelationName();
+      return i.wrappedIterator()->as<INCOMING>()->getRelation()
+          ->getRelationName();
     }
 
     static bool isNodeHidden(GraphTraits<ValueToAnalysisMap>::NodeType *Node) {
