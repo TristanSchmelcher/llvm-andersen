@@ -779,19 +779,15 @@ namespace llvm {
       return I.getArgOperand(i);
     }
 
-    class Analyze : private InstVisitor<Analyze> {
+    class Analyze : public InstVisitor<Analyze> {
       typedef SmallVector<std::pair<const PHINode *, ValueAnalysis *>, 3>
           PHINodeWorkVector;
-      friend class InstVisitor<Analyze>;
       PHINodeWorkVector PHINodeWork;
       LazyAndersenData *Data;
       Function *CurrentFunction;
 
     public:
-      explicit Analyze(Module &M);
-      LazyAndersenData *getResults() const;
-
-    private:
+      static LazyAndersenData *run(Module &M);
       void visitReturnInst(ReturnInst &I);
       void visitInvokeInst(InvokeInst &I);
       void visitAllocaInst(AllocaInst &I);
@@ -800,12 +796,15 @@ namespace llvm {
       void visitAtomicCmpXchgInst(AtomicCmpXchgInst &I);
       void visitAtomicRMWInst(AtomicRMWInst &I);
       void visitPHINode(PHINode &I);
-      void processPHINodes();
       void visitCallInst(CallInst &I);
       void visitVAArgInst(VAArgInst &I);
+      void visitInstruction(Instruction &I);
+
+    private:
+      explicit Analyze(Module &M);
       void visitCallOrInvokeInst(Instruction &I,
           const CallOrInvokeInstWrapperInterface &W);
-      void visitInstruction(Instruction &I);
+      void processPHINodes();
       bool analyzed(const Value *V);
       ValueAnalysis *cache(const Value *V, ValueAnalysis *VA);
       ValueAnalysis *createValueAnalysis(const Value *V);
@@ -817,17 +816,8 @@ namespace llvm {
     };
 
     // class Analyze
-    Analyze::Analyze(Module &M) : Data(new LazyAndersenData()) {
-      for (Module::iterator i = M.begin(); i != M.end(); ++i) {
-        Function &F(*i);
-        CurrentFunction = &F;
-        visit(F);
-        processPHINodes();
-      }
-    }
-
-    inline LazyAndersenData *Analyze::getResults() const {
-      return Data;
+    LazyAndersenData *Analyze::run(Module &M) {
+      return Analyze(M).Data;
     }
 
     void Analyze::visitReturnInst(ReturnInst &I) {
@@ -886,28 +876,27 @@ namespace llvm {
       PHINodeWork.push_back(PHINodeWorkVector::value_type(&I, PHIAnalysis));
     }
 
-    void Analyze::processPHINodes() {
-      for (PHINodeWorkVector::const_iterator i = PHINodeWork.begin();
-           i != PHINodeWork.end(); ++i) {
-        const PHINode *PHI = i->first;
-        ValueAnalysis *PHIAnalysis = i->second;
-        for (PHINode::const_op_iterator i = PHI->op_begin(); i != PHI->op_end();
-            ++i) {
-          ValueAnalysis *OperandAnalysis = analyzeValue(*i);
-          if (OperandAnalysis) {
-            new DependsOnRelation(PHIAnalysis, OperandAnalysis);
-          }
-        }
-      }
-      PHINodeWork.clear();
-    }
-
     void Analyze::visitCallInst(CallInst &I) {
       visitCallOrInvokeInst(I, CallOrInvokeInstWrapper<CallInst>(I));
     }
 
     void Analyze::visitVAArgInst(VAArgInst &I) {
       // TODO
+    }
+
+    void Analyze::visitInstruction(Instruction &I) {
+      assert(!I.mayReadOrWriteMemory() && "Unhandled memory instruction");
+      cache(&I, analyzeUser(&I));
+    }
+
+
+    Analyze::Analyze(Module &M) : Data(new LazyAndersenData()) {
+      for (Module::iterator i = M.begin(); i != M.end(); ++i) {
+        Function &F(*i);
+        CurrentFunction = &F;
+        visit(F);
+        processPHINodes();
+      }
     }
 
     void Analyze::visitCallOrInvokeInst(Instruction &I,
@@ -938,9 +927,20 @@ namespace llvm {
       // TODO: Record that the current function may call this function.
     }
 
-    void Analyze::visitInstruction(Instruction &I) {
-      assert(!I.mayReadOrWriteMemory() && "Unhandled memory instruction");
-      cache(&I, analyzeUser(&I));
+    void Analyze::processPHINodes() {
+      for (PHINodeWorkVector::const_iterator i = PHINodeWork.begin();
+           i != PHINodeWork.end(); ++i) {
+        const PHINode *PHI = i->first;
+        ValueAnalysis *PHIAnalysis = i->second;
+        for (PHINode::const_op_iterator i = PHI->op_begin(); i != PHI->op_end();
+            ++i) {
+          ValueAnalysis *OperandAnalysis = analyzeValue(*i);
+          if (OperandAnalysis) {
+            new DependsOnRelation(PHIAnalysis, OperandAnalysis);
+          }
+        }
+      }
+      PHINodeWork.clear();
     }
 
     bool Analyze::analyzed(const Value *V) {
@@ -1297,7 +1297,7 @@ namespace llvm {
 
   bool LazyAndersen::runOnModule(Module &M) {
     assert(!Data);
-    Data = Analyze(M).getResults();
+    Data = Analyze::run(M);
     print(dbgs(), &M);
     return false;
   }
