@@ -19,6 +19,7 @@
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/InstVisitor.h"
@@ -360,6 +361,8 @@ namespace llvm {
 
     class LazyAnalysisResult;
 
+    typedef OwningPtr<LazyAnalysisResult> LazyAnalysisResultRef;
+
     template<typename AlgorithmIdTy>
     struct AlgorithmGroupTraits;
 
@@ -414,7 +417,7 @@ namespace llvm {
       using AlgorithmGroupTraits<AlgorithmIdTy>::NumAlgorithmIds;
       typedef typename AlgorithmGroupTraits<AlgorithmIdTy>::InputType InputType;
 
-      IntrusiveRefCntPtr<LazyAnalysisResult> Results[NumAlgorithmIds];
+      LazyAnalysisResultRef Results[NumAlgorithmIds];
 
     public:
       template<AlgorithmIdTy AlgorithmId>
@@ -425,16 +428,11 @@ namespace llvm {
           const AnalysisAlgorithm<InputType> &Algorithm, InputType *Input);
     };
 
-    class LazyAnalysisResult : private RefCountedBase<LazyAnalysisResult>,
-        public LazyAnalysisStepList,
+    class LazyAnalysisResult : public LazyAnalysisStepList,
         public AlgorithmResultCache<LazyAnalysisResultAlgorithmId> {
-      friend struct IntrusiveRefCntPtrInfo<LazyAnalysisResult>;
-      friend class RefCountedBase<LazyAnalysisResult>;
-
     public:
-      typedef IntrusiveRefCntPtr<LazyAnalysisResult> Ref;
+      typedef LazyAnalysisResultRef Ref;
 
-    private:
       ~LazyAnalysisResult();
     };
 
@@ -457,11 +455,11 @@ namespace llvm {
     AlgorithmResultCache<AlgorithmIdTy>::getAlgorithmResultInternal(
         AlgorithmIdTy AlgorithmId,
         const AnalysisAlgorithm<InputType> &Algorithm, InputType *Input) {
-      LazyAnalysisResult *Result = Results[AlgorithmId].getPtr();
+      LazyAnalysisResult *Result = Results[AlgorithmId].get();
       if (!Result) {
         Result = new LazyAnalysisResult();
         Algorithm.getLazyResult(Result, Input);
-        Results[AlgorithmId] = Result;
+        Results[AlgorithmId].reset(Result);
       }
       return Result;
     }
@@ -515,8 +513,10 @@ namespace llvm {
     }
 
     class RecursiveAnalysisStep : public LazyAnalysisStep {
-      // TODO: Need to break ref cycles.
-      LazyAnalysisResult::Ref Inner;
+      // We assume here that--once created--each LazyAnalysisResult will persist
+      // for the lifetime of the LazyAndersenData. If not, we'll need weak
+      // pointers.
+      LazyAnalysisResult *Inner;
 
     public:
       RecursiveAnalysisStep(LazyAnalysisResult *Inner);
