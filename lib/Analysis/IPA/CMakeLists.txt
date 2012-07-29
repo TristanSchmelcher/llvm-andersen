@@ -8,6 +8,29 @@ add_llvm_library(LLVMipa
   InlineCost.cpp
   LazyAndersen.cpp
   LazyAndersenAliasAnalysis.cpp
+  LazyAndersenAnalysisResult.cpp
+  LazyAndersenAnalysisStep.cpp
+  LazyAndersenArgumentFromCallerRelation.cpp
+  LazyAndersenArgumentPointsToAlgorithm.cpp
+  LazyAndersenArgumentToCalleeRelation.cpp
+  LazyAndersenContentPointsToAlgorithm.cpp
+  LazyAndersenDependsOnRelation.cpp
+  LazyAndersenGraphTraits.cpp
+  LazyAndersenHalfRelationBase.cpp
+  LazyAndersenHalfRelationBaseList.cpp
+  LazyAndersenInstructionAnalyzer.cpp
+  LazyAndersenIterativeAnalysisStep.cpp
+  LazyAndersenLoadedFromRelation.cpp
+  LazyAndersenPointsToAlgorithm.cpp
+  LazyAndersenRecursiveAnalysisStep.cpp
+  LazyAndersenRelation.cpp
+  LazyAndersenRelationsAnalysisStepBase.cpp
+  LazyAndersenReturnedFromCalleeRelation.cpp
+  LazyAndersenReturnedToCallerRelation.cpp
+  LazyAndersenReturnValuePointsToAlgorithm.cpp
+  LazyAndersenReversePointsToAlgorithm.cpp
+  LazyAndersenStoredToRelation.cpp
+  LazyAndersenValueInfo.cpp
   )
 
 add_dependencies(LLVMipa intrinsics_gen)

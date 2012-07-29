@@ -1,4 +1,4 @@
-//===- llvm/Analysis/LazyAndersen.h - Lazy Andersen's algorithm -*- C++ -*-===//
+//===- llvm/Analysis/LazyAndersen.h - Lazy Andersen's algorithm -----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
