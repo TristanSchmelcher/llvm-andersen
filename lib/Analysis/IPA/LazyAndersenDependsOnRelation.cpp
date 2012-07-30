@@ -14,6 +14,7 @@
 #include "LazyAndersenDependsOnRelation.h"
 
 #include "LazyAndersenRelation-inl.h"
+#include "LazyAndersenValueInfo-inl.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;

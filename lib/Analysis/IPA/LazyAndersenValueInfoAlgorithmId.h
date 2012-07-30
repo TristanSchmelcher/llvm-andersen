@@ -19,6 +19,7 @@
 namespace llvm {
 namespace lazyandersen {
   class ValueInfo;
+  class AnalysisResult;
 
   enum ValueInfoAlgorithmId {
     POINTS_TO_SET,
@@ -26,9 +27,8 @@ namespace lazyandersen {
     NUM_VALUE_INFO_ALGORITHM_IDS
   };
 
-  ALGORITHM_GROUP_TRAITS(ValueInfoAlgorithmId,
-                         NUM_VALUE_INFO_ALGORITHM_IDS,
-                         ValueInfo);
+  DECLARE_ALGORITHM_GROUP(ValueInfoAlgorithmId, NUM_VALUE_INFO_ALGORITHM_IDS,
+      ValueInfo, AnalysisResult);
 }
 }
 

@@ -18,10 +18,7 @@
 
 namespace llvm {
 namespace lazyandersen {
-  template<typename InputType> class AnalysisAlgorithm;
-  class AnalysisResult;
-
-  typedef OwningPtr<AnalysisResult> AnalysisResultRef;
+  template<typename InputTy, typename OutputTy> class AnalysisAlgorithm;
 
   template<typename AlgorithmIdTy>
   struct AlgorithmGroupTraits;
@@ -29,20 +26,22 @@ namespace lazyandersen {
   template<typename AlgorithmIdTy>
   class AlgorithmResultCache : private AlgorithmGroupTraits<AlgorithmIdTy> {
     using AlgorithmGroupTraits<AlgorithmIdTy>::NumAlgorithmIds;
-    typedef typename AlgorithmGroupTraits<AlgorithmIdTy>::InputType InputType;
+    typedef typename AlgorithmGroupTraits<AlgorithmIdTy>::InputTy InputTy;
+    typedef typename AlgorithmGroupTraits<AlgorithmIdTy>::OutputTy OutputTy;
+    typedef AnalysisAlgorithm<InputTy, OutputTy> AlgorithmBaseTy;
 
-    AnalysisResultRef Results[NumAlgorithmIds];
+    OwningPtr<OutputTy> Results[NumAlgorithmIds];
 
   public:
     AlgorithmResultCache();
     ~AlgorithmResultCache();
 
     template<AlgorithmIdTy AlgorithmId>
-    AnalysisResult *getAlgorithmResult();
+    OutputTy *getAlgorithmResult();
 
   private:
-    AnalysisResult *getAlgorithmResultInternal(AlgorithmIdTy AlgorithmId,
-        const AnalysisAlgorithm<InputType> &Algorithm, InputType *Input);
+    OutputTy *getAlgorithmResultInternal(AlgorithmIdTy AlgorithmId,
+        const AlgorithmBaseTy &Algorithm, InputTy *Input);
   };
 }
 }

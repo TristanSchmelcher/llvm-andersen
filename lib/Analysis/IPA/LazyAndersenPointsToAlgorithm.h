@@ -18,12 +18,13 @@
 
 namespace llvm {
 namespace lazyandersen {
+  class AnalysisResult;
   class ValueInfo;
 
-  class PointsToAlgorithm : public AnalysisAlgorithm<ValueInfo> {
+  class PointsToAlgorithm :
+      public AnalysisAlgorithm<ValueInfo, AnalysisResult> {
   public:
-    virtual void getLazyResult(AnalysisResult *Output, ValueInfo *Input)
-        const;
+    virtual AnalysisResult *operator()(ValueInfo *Input) const;
   };
 }
 }

@@ -16,7 +16,8 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-void ContentPointsToAlgorithm::getLazyResult(AnalysisResult *Output,
-    AnalysisResult *Input) const {
+AnalysisResult *ContentPointsToAlgorithm::operator()(AnalysisResult *Input)
+    const {
   // TODO
+  return 0;
 }

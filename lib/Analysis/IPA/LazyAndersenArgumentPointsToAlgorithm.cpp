@@ -16,7 +16,8 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-void ArgumentPointsToAlgorithm::getLazyResult(AnalysisResult *Output,
-    AnalysisResult *Input) const {
+AnalysisResult *ArgumentPointsToAlgorithm::operator()(AnalysisResult *Input)
+    const {
   // TODO
+  return 0;
 }

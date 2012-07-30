@@ -19,7 +19,7 @@
 
 #include "LazyAndersenHalfRelation-inl.h"
 #include "LazyAndersenHalfRelationBase-inl.h"
-#include "LazyAndersenValueInfo.h"
+#include "LazyAndersenValueInfo-inl.h"
 
 namespace llvm {
 namespace lazyandersen {

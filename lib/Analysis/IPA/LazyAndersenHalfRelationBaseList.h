@@ -17,6 +17,7 @@
 
 #include "LazyAndersenHalfRelationBase.h"
 #include "LazyAndersenRelationDirection.h"
+#include "llvm/ADT/ilist.h"
 
 namespace llvm {
 namespace lazyandersen {

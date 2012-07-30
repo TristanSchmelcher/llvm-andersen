@@ -13,11 +13,9 @@
 
 #include "LazyAndersenLoadedFromRelation.h"
 
-#include "LazyAndersenAlgorithmResultCache-inl.h"
-#include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenAnalysisResultAlgorithms.h"
+#include "LazyAndersenAnalysisResult-inl.h"
 #include "LazyAndersenRelation-inl.h"
-#include "LazyAndersenValueInfoAlgorithms.h"
+#include "LazyAndersenValueInfo-inl.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;

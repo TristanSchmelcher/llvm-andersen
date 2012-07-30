@@ -11,29 +11,31 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENALGORITHMGROUPTRAITS_H
-#define LAZYANDERSENALGORITHMGROUPTRAITS_H
+#ifndef LAZYANDERSENALGORITHMTRAITS_H
+#define LAZYANDERSENALGORITHMTRAITS_H
 
 namespace llvm {
 namespace lazyandersen {
   template<typename AlgorithmIdTy>
   struct AlgorithmGroupTraits;
 
-#define ALGORITHM_GROUP_TRAITS(ALGORITHM_ID_TY, NUM_ALGORITHM_IDS, INPUT_TYPE) \
+#define DECLARE_ALGORITHM_GROUP(ALGORITHM_ID_TY, NUM_ALGORITHM_IDS, INPUT_TY, \
+    OUTPUT_TY) \
   template<> \
   struct AlgorithmGroupTraits<ALGORITHM_ID_TY> { \
     static const ALGORITHM_ID_TY NumAlgorithmIds = NUM_ALGORITHM_IDS; \
-    typedef INPUT_TYPE InputType; \
+    typedef INPUT_TY InputTy; \
+    typedef OUTPUT_TY OutputTy; \
 \
     template<ALGORITHM_ID_TY AlgorithmId> \
     struct AlgorithmTraits; \
   }
 
-#define ALGORITHM_TRAITS(ALGORITHM_ID, ALGORITHM_TYPE) \
+#define DECLARE_ALGORITHM(ALGORITHM_ID, ALGORITHM_TY) \
   template<> \
   struct AlgorithmGroupTraits<typeof ALGORITHM_ID>::AlgorithmTraits< \
       ALGORITHM_ID> { \
-    typedef ALGORITHM_TYPE Type; \
+    typedef ALGORITHM_TY AlgorithmTy; \
   }
 }
 }

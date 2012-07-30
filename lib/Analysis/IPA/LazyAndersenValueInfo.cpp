@@ -11,9 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenValueInfo.h"
+#include "LazyAndersenValueInfo-inl.h"
 
-#include "LazyAndersenAlgorithmResultCache-inl.h"
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenHalfRelationList-inl.h"
 
 using namespace llvm;

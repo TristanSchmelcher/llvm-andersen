@@ -17,6 +17,7 @@
 
 #include "LazyAndersenHalfRelationList.h"
 
+#include "LazyAndersenHalfRelationBaseList-inl.h"
 #include "LazyAndersenValueInfo.h"
 
 namespace llvm {

@@ -25,12 +25,11 @@ namespace lazyandersen {
     RETURN_VALUE_POINTS_TO_SET,
     ARGUMENT_POINTS_TO_SET,
     // TODO
-    NUM_LAZY_ANALYSIS_RESULT_ALGORITHM_IDS
+    NUM_ANALYSIS_RESULT_ALGORITHM_IDS
   };
 
-  ALGORITHM_GROUP_TRAITS(AnalysisResultAlgorithmId,
-                         NUM_LAZY_ANALYSIS_RESULT_ALGORITHM_IDS,
-                         AnalysisResult);
+  DECLARE_ALGORITHM_GROUP(AnalysisResultAlgorithmId,
+      NUM_ANALYSIS_RESULT_ALGORITHM_IDS, AnalysisResult, AnalysisResult);
 }
 }
 

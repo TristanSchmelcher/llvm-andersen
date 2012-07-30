@@ -17,9 +17,6 @@
 
 #include "LazyAndersenAlgorithmResultCache.h"
 
-#include "LazyAndersenAlgorithmTraits.h"
-#include "LazyAndersenAnalysisResult.h"
-
 namespace llvm {
 namespace lazyandersen {
   template<typename AlgorithmIdTy>
@@ -30,23 +27,22 @@ namespace lazyandersen {
 
   template<typename AlgorithmIdTy>
   template<AlgorithmIdTy AlgorithmId>
-  AnalysisResult *
+  typename AlgorithmResultCache<AlgorithmIdTy>::OutputTy *
   AlgorithmResultCache<AlgorithmIdTy>::getAlgorithmResult() {
     return getAlgorithmResultInternal(AlgorithmId,
         typename AlgorithmGroupTraits<AlgorithmIdTy>
-            ::template AlgorithmTraits<AlgorithmId>::Type(),
-        static_cast<InputType *>(this));
+            ::template AlgorithmTraits<AlgorithmId>::AlgorithmTy(),
+        static_cast<InputTy *>(this));
   }
 
   template<typename AlgorithmIdTy>
-  AnalysisResult *
+  typename AlgorithmResultCache<AlgorithmIdTy>::OutputTy *
   AlgorithmResultCache<AlgorithmIdTy>::getAlgorithmResultInternal(
-      AlgorithmIdTy AlgorithmId,
-      const AnalysisAlgorithm<InputType> &Algorithm, InputType *Input) {
-    AnalysisResult *Result = Results[AlgorithmId].get();
+      AlgorithmIdTy AlgorithmId, const AlgorithmBaseTy &Algorithm,
+      InputTy *Input) {
+    OutputTy *Result = Results[AlgorithmId].get();
     if (!Result) {
-      Result = new AnalysisResult();
-      Algorithm.getLazyResult(Result, Input);
+      Result = Algorithm(Input);
       Results[AlgorithmId].reset(Result);
     }
     return Result;

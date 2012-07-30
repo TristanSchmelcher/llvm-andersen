@@ -43,7 +43,8 @@ namespace {
   }
 }
 
-void PointsToAlgorithm::getLazyResult(AnalysisResult *Output,
-    ValueInfo *Input) const {
+AnalysisResult *PointsToAlgorithm::operator()(ValueInfo *Input) const {
+  AnalysisResult *Output = new AnalysisResult();
   Output->push_back(new PointsToRelationsAnalysisStep(Input));
+  return Output;
 }

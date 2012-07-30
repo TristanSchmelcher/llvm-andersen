@@ -63,25 +63,6 @@ namespace lazyandersen {
   private:
     ~ValueInfo();
   };
-
-  inline const Value *ValueInfo::getValue() const {
-    return V;
-  }
-
-  inline ValueInfo::Map *ValueInfo::getMap() const {
-    return ContainingMap;
-  }
-
-  template<RelationDirection Direction>
-  inline const HalfRelationList<Direction> *ValueInfo::getRelations()
-      const {
-    return static_cast<const HalfRelationList<Direction> *>(this);
-  }
-
-  template<RelationDirection Direction>
-  inline HalfRelationList<Direction> *ValueInfo::getRelations() {
-    return static_cast<HalfRelationList<Direction> *>(this);
-  }
 }
 }
 

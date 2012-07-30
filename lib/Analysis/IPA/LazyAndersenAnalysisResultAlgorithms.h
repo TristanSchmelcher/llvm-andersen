@@ -21,9 +21,9 @@
 
 namespace llvm {
 namespace lazyandersen {
-  ALGORITHM_TRAITS(CONTENT_POINTS_TO_SET, ContentPointsToAlgorithm);
-  ALGORITHM_TRAITS(RETURN_VALUE_POINTS_TO_SET, ReturnValuePointsToAlgorithm);
-  ALGORITHM_TRAITS(ARGUMENT_POINTS_TO_SET, ArgumentPointsToAlgorithm);
+  DECLARE_ALGORITHM(CONTENT_POINTS_TO_SET, ContentPointsToAlgorithm);
+  DECLARE_ALGORITHM(RETURN_VALUE_POINTS_TO_SET, ReturnValuePointsToAlgorithm);
+  DECLARE_ALGORITHM(ARGUMENT_POINTS_TO_SET, ArgumentPointsToAlgorithm);
 }
 }
 

@@ -16,13 +16,10 @@
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult;
-
-  template<typename InputTy>
+  template<typename InputTy, typename OutputTy>
   class AnalysisAlgorithm {
   public:
-    virtual void getLazyResult(AnalysisResult *Output, InputTy *Input)
-        const = 0;
+    virtual OutputTy *operator()(InputTy *Input) const = 0;
   };
 }
 }

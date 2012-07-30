@@ -69,10 +69,11 @@ namespace {
   }
 }
 
-void ReversePointsToAlgorithm::getLazyResult(AnalysisResult *Output,
-    ValueInfo *Input) const {
+AnalysisResult *ReversePointsToAlgorithm::operator()(ValueInfo *Input) const {
+  AnalysisResult *Output = new AnalysisResult();
   Output->push_back(new ReversePointsToOutgoingRelationsAnalysisStep(
       Input));
   Output->push_back(new ReversePointsToIncomingRelationsAnalysisStep(
       Input));
+  return Output;
 }

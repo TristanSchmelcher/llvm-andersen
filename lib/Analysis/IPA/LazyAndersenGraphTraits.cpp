@@ -16,6 +16,7 @@
 #include "LazyAndersenData.h"
 #include "LazyAndersenHalfRelation-inl.h"
 #include "LazyAndersenHalfRelationBase-inl.h"
+#include "LazyAndersenValueInfo-inl.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Value.h"
 

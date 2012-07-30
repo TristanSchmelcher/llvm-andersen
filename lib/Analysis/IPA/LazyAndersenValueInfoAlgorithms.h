@@ -20,8 +20,8 @@
 
 namespace llvm {
 namespace lazyandersen {
-  ALGORITHM_TRAITS(POINTS_TO_SET, PointsToAlgorithm);
-  ALGORITHM_TRAITS(REVERSE_POINTS_TO_SET, ReversePointsToAlgorithm);
+  DECLARE_ALGORITHM(POINTS_TO_SET, PointsToAlgorithm);
+  DECLARE_ALGORITHM(REVERSE_POINTS_TO_SET, ReversePointsToAlgorithm);
 }
 }
 

@@ -17,10 +17,11 @@
 
 #include "LazyAndersenHalfRelation.h"
 
+#include "LazyAndersenHalfRelationBase-inl.h"
 #include "LazyAndersenHalfRelationBaseList-inl.h"
 #include "LazyAndersenHalfRelationList-inl.h"
 #include "LazyAndersenRelation-inl.h"
-#include "LazyAndersenValueInfo.h"
+#include "LazyAndersenValueInfo-inl.h"
 
 namespace llvm {
 namespace lazyandersen {
