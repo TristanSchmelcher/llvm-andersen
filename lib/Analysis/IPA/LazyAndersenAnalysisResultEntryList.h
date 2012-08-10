@@ -1,4 +1,4 @@
-//===- LazyAndersenAnalysisStepList.h - analysis classes ------------------===//
+//===- LazyAndersenAnalysisResultEntryList.h - analysis classes -----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,19 +7,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the type for a list of analysis steps.
+// This file declares the type for a list of analysis result entries.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENANALYSISSTEPLIST_H
-#define LAZYANDERSENANALYSISSTEPLIST_H
+#ifndef LAZYANDERSENANALYSISRESULTENTRYLIST_H
+#define LAZYANDERSENANALYSISRESULTENTRYLIST_H
 
-#include "LazyAndersenAnalysisStep.h"
+#include "LazyAndersenAnalysisResultEntry.h"
 
 namespace llvm {
 namespace lazyandersen {
   // Currently we do not need any extra information in these lists.
-  typedef ilist<AnalysisStep> AnalysisStepList;
+  typedef ilist<AnalysisResultEntry> AnalysisResultEntryList;
 }
 }
 

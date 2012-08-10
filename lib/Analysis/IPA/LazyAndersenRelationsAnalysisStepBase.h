@@ -27,7 +27,7 @@ namespace lazyandersen {
 
   public:
     explicit RelationsAnalysisStepBase(HalfRelationBaseList *List);
-    virtual Result run();
+    virtual void run();
 
   private:
     virtual AnalysisResult *analyzeHalfRelation(HalfRelationBase *HR) = 0;

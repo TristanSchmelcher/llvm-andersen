@@ -16,12 +16,12 @@
 
 #include "LazyAndersenAlgorithmResultCache.h"
 #include "LazyAndersenAnalysisResultAlgorithmId.h"
-#include "LazyAndersenAnalysisStepList.h"
+#include "LazyAndersenAnalysisResultEntryList.h"
 #include "llvm/ADT/OwningPtr.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult : public AnalysisStepList,
+  class AnalysisResult : public AnalysisResultEntryList,
       public AlgorithmResultCache<AnalysisResultAlgorithmId> {
   public:
     typedef OwningPtr<AnalysisResult> Ref;

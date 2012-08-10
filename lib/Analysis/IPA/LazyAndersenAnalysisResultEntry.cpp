@@ -1,4 +1,4 @@
-//===- LazyAndersenRecursiveAnalysisStep.cpp - analysis classes -----------===//
+//===- LazyAndersenAnalysisResultEntry.cpp - analysis classes -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,19 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares a type for recursive analysis.
+// This file defines a type for entries in analysis results.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenRecursiveAnalysisStep.h"
+#include "LazyAndersenAnalysisResultEntry.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-RecursiveAnalysisStep::RecursiveAnalysisStep(AnalysisResult *Inner)
-  : Inner(Inner) {}
+AnalysisResultEntry::AnalysisResultEntry() {}
 
-RecursiveAnalysisStep::Result RecursiveAnalysisStep::run() {
-  // TODO
-  return RecursiveAnalysisStep::Result();
+AnalysisResultEntry::~AnalysisResultEntry() {
+  assert(!getList());
 }

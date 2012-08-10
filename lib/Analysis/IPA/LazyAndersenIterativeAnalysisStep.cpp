@@ -13,24 +13,20 @@
 
 #include "LazyAndersenIterativeAnalysisStep.h"
 
-#include "LazyAndersenAnalysisStepList.h"
+#include "LazyAndersenAnalysisResultEntryList.h"
 
 #include <cassert>
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-IterativeAnalysisStep::Result IterativeAnalysisStep::nextIteration(
-    AnalysisStep *Step) {
+void IterativeAnalysisStep::emit(AnalysisResultEntry *Entry) {
   assert(getList());
-  getList()->insert(AnalysisStepList::iterator(this), Step);
-  return Result(0, Step);
+  getList()->insert(AnalysisResultEntryList::iterator(this), Entry);
 }
 
-IterativeAnalysisStep::Result IterativeAnalysisStep::done() {
+void IterativeAnalysisStep::done() {
   assert(getList());
-  AnalysisStep *Next = getNextStep();
   // erase deletes this object.
   getList()->erase(this);
-  return Result(0, Next);
 }
