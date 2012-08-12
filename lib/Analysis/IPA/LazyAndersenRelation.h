@@ -43,6 +43,8 @@ namespace lazyandersen {
 
     virtual const char *getRelationName() const = 0;
     virtual AnalysisResult *analyzePointsToSet() const = 0;
+    virtual AnalysisResult *analyzeOutgoingReversePointsToSet() const = 0;
+    virtual AnalysisResult *analyzeIncomingReversePointsToSet() const = 0;
   };
 }
 }

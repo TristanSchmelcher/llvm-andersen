@@ -28,3 +28,15 @@ AnalysisResult *ReturnedFromCalleeRelation::analyzePointsToSet() const {
   return getValueInfo<INCOMING>()->getAlgorithmResult<POINTS_TO_SET>()
       ->getAlgorithmResult<RETURN_VALUE_POINTS_TO_SET>();
 }
+
+AnalysisResult *ReturnedFromCalleeRelation::analyzeOutgoingReversePointsToSet()
+    const {
+  // No effect on reverse points-to set.
+  return 0;
+}
+
+AnalysisResult *ReturnedFromCalleeRelation::analyzeIncomingReversePointsToSet()
+    const {
+  // No effect on reverse points-to set.
+  return 0;
+}

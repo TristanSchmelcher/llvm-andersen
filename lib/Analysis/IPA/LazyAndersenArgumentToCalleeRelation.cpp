@@ -13,6 +13,10 @@
 
 #include "LazyAndersenArgumentToCalleeRelation.h"
 
+#include "LazyAndersenAnalysisResult-inl.h"
+#include "LazyAndersenRelation-inl.h"
+#include "LazyAndersenValueInfo-inl.h"
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -22,5 +26,17 @@ const char *ArgumentToCalleeRelation::getRelationName() const {
 
 AnalysisResult *ArgumentToCalleeRelation::analyzePointsToSet() const {
   // No effect on points-to set.
+  return 0;
+}
+
+AnalysisResult *ArgumentToCalleeRelation::analyzeOutgoingReversePointsToSet()
+    const {
+  return getValueInfo<INCOMING>()->getAlgorithmResult<POINTS_TO_SET>()
+      ->getAlgorithmResult<ARGUMENT_REVERSE_POINTS_TO_SET>();
+}
+
+AnalysisResult *ArgumentToCalleeRelation::analyzeIncomingReversePointsToSet()
+    const {
+  // No effect on reverse points-to set.
   return 0;
 }

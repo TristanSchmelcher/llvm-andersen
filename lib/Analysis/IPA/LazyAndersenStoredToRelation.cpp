@@ -13,6 +13,10 @@
 
 #include "LazyAndersenStoredToRelation.h"
 
+#include "LazyAndersenAnalysisResult-inl.h"
+#include "LazyAndersenRelation-inl.h"
+#include "LazyAndersenValueInfo-inl.h"
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -22,5 +26,15 @@ const char *StoredToRelation::getRelationName() const {
 
 AnalysisResult *StoredToRelation::analyzePointsToSet() const {
   // No effect on points-to set.
+  return 0;
+}
+
+AnalysisResult *StoredToRelation::analyzeOutgoingReversePointsToSet() const {
+  return getValueInfo<INCOMING>()->getAlgorithmResult<POINTS_TO_SET>()
+      ->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET>();
+}
+
+AnalysisResult *StoredToRelation::analyzeIncomingReversePointsToSet() const {
+  // No effect on reverse points-to set.
   return 0;
 }

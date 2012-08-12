@@ -1,4 +1,4 @@
-//===- LazyAndersenArgumentPointsToAlgorithm.h - argument points-to -------===//
+//===- LazyAndersenContentReversePointsToAlgorithm.h ----------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the type for the argument points-to algorithm.
+// This file declares the type for the content reverse points-to algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENARGUMENTPOINTSTOALGORITHM_H
-#define LAZYANDERSENARGUMENTPOINTSTOALGORITHM_H
+#ifndef LAZYANDERSENCONTENTREVERSEPOINTSTOALGORITHM_H
+#define LAZYANDERSENCONTENTREVERSEPOINTSTOALGORITHM_H
 
 #include "LazyAndersenAnalysisAlgorithm.h"
 
@@ -20,7 +20,7 @@ namespace llvm {
 namespace lazyandersen {
   class AnalysisResult;
 
-  class ArgumentPointsToAlgorithm :
+  class ContentReversePointsToAlgorithm :
       public AnalysisAlgorithm<AnalysisResult, AnalysisResult> {
   public:
     virtual AnalysisResult *operator()(AnalysisResult *Input) const;

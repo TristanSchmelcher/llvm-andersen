@@ -14,6 +14,7 @@
 #include "LazyAndersenReversePointsToAlgorithm.h"
 
 #include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenAnalysisResultCacheEntry-inl.h"
 #include "LazyAndersenRelationsAnalysisStep-inl.h"
 
 using namespace llvm;
@@ -40,8 +41,7 @@ namespace {
 
   inline AnalysisResult *
   ReversePointsToOutgoingRelationsAnalysisStep::analyzeRelation(Relation *R) {
-    // TODO
-    return 0;
+    return R->analyzeOutgoingReversePointsToSet();
   }
 
   class ReversePointsToIncomingRelationsAnalysisStep :
@@ -64,13 +64,13 @@ namespace {
 
   inline AnalysisResult *
   ReversePointsToIncomingRelationsAnalysisStep::analyzeRelation(Relation *R) {
-    // TODO
-    return 0;
+    return R->analyzeIncomingReversePointsToSet();
   }
 }
 
 AnalysisResult *ReversePointsToAlgorithm::operator()(ValueInfo *Input) const {
   AnalysisResult *Output = new AnalysisResult();
+  Output->push_back(new AnalysisResultValueInfoEntry(Input));
   Output->push_back(new ReversePointsToOutgoingRelationsAnalysisStep(
       Input));
   Output->push_back(new ReversePointsToIncomingRelationsAnalysisStep(

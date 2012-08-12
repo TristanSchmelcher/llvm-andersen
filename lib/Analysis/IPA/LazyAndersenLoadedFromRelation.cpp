@@ -28,3 +28,13 @@ AnalysisResult *LoadedFromRelation::analyzePointsToSet() const {
   return getValueInfo<INCOMING>()->getAlgorithmResult<POINTS_TO_SET>()
       ->getAlgorithmResult<CONTENT_POINTS_TO_SET>();
 }
+
+AnalysisResult *LoadedFromRelation::analyzeOutgoingReversePointsToSet() const {
+  // No effect on reverse points-to set.
+  return 0;
+}
+
+AnalysisResult *LoadedFromRelation::analyzeIncomingReversePointsToSet() const {
+  // No effect on reverse points-to set.
+  return 0;
+}

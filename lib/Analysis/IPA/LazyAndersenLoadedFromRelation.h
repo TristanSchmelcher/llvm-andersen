@@ -24,6 +24,8 @@ namespace lazyandersen {
         ValueInfo *AddressValueInfo);
     virtual const char *getRelationName() const;
     virtual AnalysisResult *analyzePointsToSet() const;
+    virtual AnalysisResult *analyzeOutgoingReversePointsToSet() const;
+    virtual AnalysisResult *analyzeIncomingReversePointsToSet() const;
   };
 
   inline LoadedFromRelation::LoadedFromRelation(

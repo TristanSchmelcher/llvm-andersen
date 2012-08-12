@@ -29,3 +29,15 @@ AnalysisResult *ArgumentFromCallerRelation::analyzePointsToSet() const {
       ->getAlgorithmResult<REVERSE_POINTS_TO_SET>()
           ->getAlgorithmResult<ARGUMENT_POINTS_TO_SET>();
 }
+
+AnalysisResult *ArgumentFromCallerRelation::analyzeOutgoingReversePointsToSet()
+    const {
+  // No effect on reverse points-to set.
+  return 0;
+}
+
+AnalysisResult *ArgumentFromCallerRelation::analyzeIncomingReversePointsToSet()
+    const {
+  // No effect on reverse points-to set.
+  return 0;
+}
