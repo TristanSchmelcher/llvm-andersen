@@ -14,7 +14,7 @@
 #ifndef LAZYANDERSENVALUEINFOALGORITHMID_H
 #define LAZYANDERSENVALUEINFOALGORITHMID_H
 
-#include "LazyAndersenAlgorithmTraits.h"
+#include "LazyAndersenAlgorithmGroup.h"
 
 namespace llvm {
 namespace lazyandersen {
@@ -24,10 +24,11 @@ namespace lazyandersen {
   enum ValueInfoAlgorithmId {
     POINTS_TO_SET,
     REVERSE_POINTS_TO_SET,
+    // TODO
     NUM_VALUE_INFO_ALGORITHM_IDS
   };
 
-  DECLARE_ALGORITHM_GROUP(ValueInfoAlgorithmId, NUM_VALUE_INFO_ALGORITHM_IDS,
+  CREATE_ALGORITHM_GROUP(ValueInfoAlgorithmId, NUM_VALUE_INFO_ALGORITHM_IDS,
       ValueInfo, AnalysisResult);
 }
 }

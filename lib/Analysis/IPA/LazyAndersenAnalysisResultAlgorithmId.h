@@ -14,7 +14,7 @@
 #ifndef LAZYANDERSENANALYSISRESULTALGORITHMID_H
 #define LAZYANDERSENANALYSISRESULTALGORITHMID_H
 
-#include "LazyAndersenAlgorithmTraits.h"
+#include "LazyAndersenAlgorithmGroup.h"
 
 namespace llvm {
 namespace lazyandersen {
@@ -31,7 +31,7 @@ namespace lazyandersen {
     NUM_ANALYSIS_RESULT_ALGORITHM_IDS
   };
 
-  DECLARE_ALGORITHM_GROUP(AnalysisResultAlgorithmId,
+  CREATE_ALGORITHM_GROUP(AnalysisResultAlgorithmId,
       NUM_ANALYSIS_RESULT_ALGORITHM_IDS, AnalysisResult, AnalysisResult);
 }
 }

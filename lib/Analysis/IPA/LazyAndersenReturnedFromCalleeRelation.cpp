@@ -14,7 +14,9 @@
 #include "LazyAndersenReturnedFromCalleeRelation.h"
 
 #include "LazyAndersenAnalysisResult-inl.h"
+#include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenRelation-inl.h"
+#include "LazyAndersenReturnValuePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo-inl.h"
 
 using namespace llvm;

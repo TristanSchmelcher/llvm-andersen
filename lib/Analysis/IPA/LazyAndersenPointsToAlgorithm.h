@@ -14,18 +14,11 @@
 #ifndef LAZYANDERSENPOINTSTOALGORITHM_H
 #define LAZYANDERSENPOINTSTOALGORITHM_H
 
-#include "LazyAndersenAnalysisAlgorithm.h"
+#include "LazyAndersenValueInfoAlgorithmId.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult;
-  class ValueInfo;
-
-  class PointsToAlgorithm :
-      public AnalysisAlgorithm<ValueInfo, AnalysisResult> {
-  public:
-    virtual AnalysisResult *operator()(ValueInfo *Input) const;
-  };
+  DECLARE_ALGORITHM(ValueInfoAlgorithmId, POINTS_TO_SET);
 }
 }
 

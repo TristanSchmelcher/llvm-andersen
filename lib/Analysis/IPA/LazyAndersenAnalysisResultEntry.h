@@ -41,7 +41,7 @@ namespace lazyandersen {
 }
 
 namespace llvm {
-  INTRUSIVE_LIST_TRAITS(lazyandersen::AnalysisResultEntry)
+  INTRUSIVE_LIST_TRAITS(lazyandersen::AnalysisResultEntry);
 }
 
 #endif

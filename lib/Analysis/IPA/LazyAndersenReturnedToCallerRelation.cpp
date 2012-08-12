@@ -15,6 +15,8 @@
 
 #include "LazyAndersenAnalysisResult-inl.h"
 #include "LazyAndersenRelation-inl.h"
+#include "LazyAndersenReturnValueReversePointsToAlgorithm.h"
+#include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo-inl.h"
 
 using namespace llvm;

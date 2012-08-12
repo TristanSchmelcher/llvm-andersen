@@ -16,8 +16,7 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-AnalysisResult *ContentPointsToAlgorithm::operator()(AnalysisResult *Input)
-    const {
+DEFINE_ALGORITHM(AnalysisResultAlgorithmId, CONTENT_POINTS_TO_SET, Input) {
   // TODO
   return 0;
 }

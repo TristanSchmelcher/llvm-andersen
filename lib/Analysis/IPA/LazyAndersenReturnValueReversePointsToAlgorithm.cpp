@@ -16,8 +16,8 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-AnalysisResult *ReturnValueReversePointsToAlgorithm::operator()(
-    AnalysisResult *Input) const {
+DEFINE_ALGORITHM(AnalysisResultAlgorithmId, RETURN_VALUE_REVERSE_POINTS_TO_SET,
+    Input) {
   // TODO
   return 0;
 }

@@ -14,6 +14,8 @@
 #include "LazyAndersenLoadedFromRelation.h"
 
 #include "LazyAndersenAnalysisResult-inl.h"
+#include "LazyAndersenContentPointsToAlgorithm.h"
+#include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenRelation-inl.h"
 #include "LazyAndersenValueInfo-inl.h"
 

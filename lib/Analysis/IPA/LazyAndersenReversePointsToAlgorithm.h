@@ -14,18 +14,11 @@
 #ifndef LAZYANDERSENREVERSEPOINTSTOALGORITHM_H
 #define LAZYANDERSENREVERSEPOINTSTOALGORITHM_H
 
-#include "LazyAndersenAnalysisAlgorithm.h"
+#include "LazyAndersenValueInfoAlgorithmId.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class ValueInfo;
-  class AnalysisResult;
-
-  class ReversePointsToAlgorithm :
-      public AnalysisAlgorithm<ValueInfo, AnalysisResult> {
-  public:
-    virtual AnalysisResult *operator()(ValueInfo *Input) const;
-  };
+  DECLARE_ALGORITHM(ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET);
 }
 }
 

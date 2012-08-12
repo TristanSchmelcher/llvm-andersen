@@ -16,8 +16,8 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-AnalysisResult *ContentReversePointsToAlgorithm::operator()(
-    AnalysisResult *Input) const {
+DEFINE_ALGORITHM(AnalysisResultAlgorithmId, CONTENT_REVERSE_POINTS_TO_SET,
+    Input) {
   // TODO
   return 0;
 }

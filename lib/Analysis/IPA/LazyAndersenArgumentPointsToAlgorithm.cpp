@@ -16,8 +16,7 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-AnalysisResult *ArgumentPointsToAlgorithm::operator()(AnalysisResult *Input)
-    const {
+DEFINE_ALGORITHM(AnalysisResultAlgorithmId, ARGUMENT_POINTS_TO_SET, Input) {
   // TODO
   return 0;
 }

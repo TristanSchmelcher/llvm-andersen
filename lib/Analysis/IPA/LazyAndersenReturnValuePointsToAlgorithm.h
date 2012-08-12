@@ -14,17 +14,11 @@
 #ifndef LAZYANDERSENRETURNVALUEPOINTSTOALGORITHM_H
 #define LAZYANDERSENRETURNVALUEPOINTSTOALGORITHM_H
 
-#include "LazyAndersenAnalysisAlgorithm.h"
+#include "LazyAndersenAnalysisResultAlgorithmId.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult;
-
-  class ReturnValuePointsToAlgorithm :
-      public AnalysisAlgorithm<AnalysisResult, AnalysisResult> {
-  public:
-    virtual AnalysisResult *operator()(AnalysisResult *Input) const;
-  };
+  DECLARE_ALGORITHM(AnalysisResultAlgorithmId, RETURN_VALUE_POINTS_TO_SET);
 }
 }
 

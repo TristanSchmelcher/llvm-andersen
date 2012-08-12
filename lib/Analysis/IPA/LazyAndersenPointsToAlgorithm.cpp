@@ -43,7 +43,7 @@ namespace {
   }
 }
 
-AnalysisResult *PointsToAlgorithm::operator()(ValueInfo *Input) const {
+DEFINE_ALGORITHM(ValueInfoAlgorithmId, POINTS_TO_SET, Input) {
   AnalysisResult *Output = new AnalysisResult();
   Output->push_back(new PointsToRelationsAnalysisStep(Input));
   return Output;

@@ -89,13 +89,11 @@ namespace lazyandersen {
     mutable ilist_half_node<TYPE> Sentinel; \
 \
   public: \
-    TYPE *createSentinel() const; \
-  }; \
-\
-  inline TYPE *ilist_traits<TYPE>::createSentinel() \
-      const { \
-    return static_cast<TYPE *>(&Sentinel); \
+    TYPE *createSentinel() const { \
+      return static_cast<TYPE *>(&Sentinel); \
+    } \
   }
+
 }
 }
 
