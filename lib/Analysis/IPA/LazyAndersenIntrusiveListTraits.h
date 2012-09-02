@@ -15,14 +15,26 @@
 #define LAZYANDERSENINTRUSIVELISTTRAITS_H
 
 #include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
 
 namespace llvm {
 namespace lazyandersen {
-  // Traits for a intrusive list with a "ghostly sentinel" whose nodes maintain
+  // Traits for an intrusive list with a "ghostly sentinel" whose nodes maintain
   // a back-pointer to the list itself. NodeTy must inherit from
-  // intrusive_list_node.
+  // IntrusiveListNode.
   template<typename NodeTy>
   struct IntrusiveListTraits : public ilist_default_traits<NodeTy> {
+  private:
+    // In principle, this could be ilist_half_node like with other ghostly
+    // sentinel ilists, but that's only an accessible base to friends of
+    // ilist_node.
+    // Also, the ilist_node constructor is protected, so we must derive from it
+    // to raise it to public.
+    class SentinelTy : public ilist_node<NodeTy> {};
+    mutable SentinelTy Sentinel;
+
+  public:
+    NodeTy *createSentinel() const;
     void destroySentinel(NodeTy *) const;
     NodeTy *provideInitialHead() const;
     NodeTy *ensureHead(NodeTy *) const;
@@ -36,19 +48,25 @@ namespace lazyandersen {
   };
 
   template<typename NodeTy>
+  inline NodeTy *IntrusiveListTraits<NodeTy>::createSentinel() const {
+    return static_cast<NodeTy *>(
+        static_cast<ilist_node<NodeTy> *>(&Sentinel));
+  }
+
+  template<typename NodeTy>
   inline void IntrusiveListTraits<NodeTy>::destroySentinel(
       NodeTy *) const {}
 
   template<typename NodeTy>
   inline NodeTy *IntrusiveListTraits<NodeTy>::provideInitialHead()
       const {
-    return static_cast<const ilist_traits<NodeTy> *>(this)->createSentinel();
+    return createSentinel();
   }
 
   template<typename NodeTy>
   inline NodeTy *IntrusiveListTraits<NodeTy>::ensureHead(NodeTy *)
       const {
-    return static_cast<const ilist_traits<NodeTy> *>(this)->createSentinel();
+    return createSentinel();
   }
 
   template<typename NodeTy>
@@ -77,23 +95,6 @@ namespace lazyandersen {
           static_cast<ilist<NodeTy> *>(&that));
     }
   }
-
-#define INTRUSIVE_LIST_TRAITS(TYPE) \
-  template<> \
-  struct ilist_traits<TYPE> \
-      : public lazyandersen::IntrusiveListTraits<TYPE> { \
-  private: \
-    /* Have to duplicate the Sentinel logic for each specialization because the
-       ilist_half_node constructor is protected and only friends with
-       ilist_traits. */ \
-    mutable ilist_half_node<TYPE> Sentinel; \
-\
-  public: \
-    TYPE *createSentinel() const { \
-      return static_cast<TYPE *>(&Sentinel); \
-    } \
-  }
-
 }
 }
 

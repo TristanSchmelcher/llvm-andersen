@@ -51,7 +51,10 @@ namespace lazyandersen {
 }
 
 namespace llvm {
-  INTRUSIVE_LIST_TRAITS(lazyandersen::HalfRelationBase);
+  template<>
+  struct ilist_traits<lazyandersen::HalfRelationBase> :
+      public lazyandersen::IntrusiveListTraits<
+          lazyandersen::HalfRelationBase> {};
 }
 
 #endif

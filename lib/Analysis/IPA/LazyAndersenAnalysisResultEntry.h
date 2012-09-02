@@ -41,7 +41,10 @@ namespace lazyandersen {
 }
 
 namespace llvm {
-  INTRUSIVE_LIST_TRAITS(lazyandersen::AnalysisResultEntry);
+  template<>
+  struct ilist_traits<lazyandersen::AnalysisResultEntry> :
+      public lazyandersen::IntrusiveListTraits<
+          lazyandersen::AnalysisResultEntry> {};
 }
 
 #endif
