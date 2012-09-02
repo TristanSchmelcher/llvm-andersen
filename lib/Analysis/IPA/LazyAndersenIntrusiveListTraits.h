@@ -7,7 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines intrusive list traits for the LazyAndersen algorithm.
+// This file defines intrusive list traits for node types inheriting from
+// IntrusiveListNode.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,9 +20,7 @@
 
 namespace llvm {
 namespace lazyandersen {
-  // Traits for an intrusive list with a "ghostly sentinel" whose nodes maintain
-  // a back-pointer to the list itself. NodeTy must inherit from
-  // IntrusiveListNode.
+  // NodeTy must inherit from IntrusiveListNode.
   template<typename NodeTy>
   struct IntrusiveListTraits : public ilist_default_traits<NodeTy> {
   private:

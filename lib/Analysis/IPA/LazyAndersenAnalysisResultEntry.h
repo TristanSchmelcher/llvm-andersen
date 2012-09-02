@@ -24,7 +24,6 @@ namespace lazyandersen {
     friend struct ilist_nextprev_traits<AnalysisResultEntry>;
     friend struct ilist_node_traits<AnalysisResultEntry>;
     friend struct IntrusiveListTraits<AnalysisResultEntry>;
-    friend struct ilist_traits<AnalysisResultEntry>;
 
   public:
     enum EntryType {

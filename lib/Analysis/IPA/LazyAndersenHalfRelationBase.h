@@ -28,7 +28,6 @@ namespace lazyandersen {
     friend struct ilist_nextprev_traits<HalfRelationBase>;
     friend struct ilist_node_traits<HalfRelationBase>;
     friend struct IntrusiveListTraits<HalfRelationBase>;
-    friend struct ilist_traits<HalfRelationBase>;
     template<RelationDirection> friend class HalfRelation;
 
   public:
