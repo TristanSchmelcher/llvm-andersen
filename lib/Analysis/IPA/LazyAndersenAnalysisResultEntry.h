@@ -14,16 +14,18 @@
 #ifndef LAZYANDERSENANALYSISRESULTENTRY_H
 #define LAZYANDERSENANALYSISRESULTENTRY_H
 
-#include "LazyAndersenIntrusiveListNode.h"
-#include "LazyAndersenIntrusiveListTraits.h"
+#include "LazyAndersenIntrusiveListWithSavedIteratorSupportNode.h"
+#include "LazyAndersenIntrusiveListWithSavedIteratorSupportTraits.h"
 
 namespace llvm {
 namespace lazyandersen {
   class AnalysisResultEntry :
-      protected IntrusiveListNode<AnalysisResultEntry> {
+      protected IntrusiveListWithSavedIteratorSupportNode<AnalysisResultEntry> {
     friend struct ilist_nextprev_traits<AnalysisResultEntry>;
     friend struct ilist_node_traits<AnalysisResultEntry>;
     friend struct IntrusiveListTraits<AnalysisResultEntry>;
+    friend struct IntrusiveListWithSavedIteratorSupportTraits<
+        AnalysisResultEntry>;
 
   public:
     enum EntryType {
@@ -42,7 +44,7 @@ namespace lazyandersen {
 namespace llvm {
   template<>
   struct ilist_traits<lazyandersen::AnalysisResultEntry> :
-      public lazyandersen::IntrusiveListTraits<
+      public lazyandersen::IntrusiveListWithSavedIteratorSupportTraits<
           lazyandersen::AnalysisResultEntry> {};
 }
 

@@ -17,5 +17,6 @@
 #include "LazyAndersenAnalysisResult.h"
 
 #include "LazyAndersenAlgorithmResultCache-inl.h"
+#include "LazyAndersenAnalysisResultEntryList-inl.h"
 
 #endif

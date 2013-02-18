@@ -13,6 +13,8 @@
 
 #include "LazyAndersenAnalysisResultEntry.h"
 
+#include "LazyAndersenSavedIterator-inl.h"
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 

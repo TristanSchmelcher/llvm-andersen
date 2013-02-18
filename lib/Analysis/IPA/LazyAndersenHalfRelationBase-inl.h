@@ -33,7 +33,7 @@ namespace lazyandersen {
 
   inline HalfRelationBaseList *HalfRelationBase::getList() const {
     return static_cast<HalfRelationBaseList *>(
-        IntrusiveListNode::getList());
+        IntrusiveListNode<HalfRelationBase>::getList());
   }
 }
 }
