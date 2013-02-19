@@ -14,8 +14,6 @@
 #ifndef LAZYANDERSENALGORITHMGROUP_H
 #define LAZYANDERSENALGORITHMGROUP_H
 
-#include "LazyAndersenAnalysisAlgorithm.h"
-
 namespace llvm {
 namespace lazyandersen {
   template<typename AlgorithmIdTy>
