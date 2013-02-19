@@ -11,63 +11,50 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenReversePointsToAlgorithm.h"
+#include "LazyAndersenValueInfoAlgorithmId.h"
 
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenAnalysisResultCacheEntry-inl.h"
+#include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenRelation.h"
-#include "LazyAndersenRelationsAnalysisStep-inl.h"
+#include "LazyAndersenRelationsAnalysisStep.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
 namespace {
   class ReversePointsToOutgoingRelationsAnalysisStep :
-      public RelationsAnalysisStep<OUTGOING,
-          ReversePointsToOutgoingRelationsAnalysisStep> {
-    friend class RelationsAnalysisStep<OUTGOING,
-        ReversePointsToOutgoingRelationsAnalysisStep>;
-
+      public RelationsAnalysisStep<OUTGOING> {
   public:
-    explicit ReversePointsToOutgoingRelationsAnalysisStep(ValueInfo *VI);
+    explicit ReversePointsToOutgoingRelationsAnalysisStep(ValueInfo *VI)
+      : RelationsAnalysisStep<OUTGOING>(VI) {}
 
-  private:
-    AnalysisResult *analyzeRelation(Relation *R);
+  protected:
+    virtual AnalysisResult *analyzeRelation(Relation *R);
   };
 
-  inline ReversePointsToOutgoingRelationsAnalysisStep
-      ::ReversePointsToOutgoingRelationsAnalysisStep(ValueInfo *VI)
-    : RelationsAnalysisStep<OUTGOING,
-          ReversePointsToOutgoingRelationsAnalysisStep>(VI) {}
-
-  inline AnalysisResult *
+  AnalysisResult *
   ReversePointsToOutgoingRelationsAnalysisStep::analyzeRelation(Relation *R) {
     return R->analyzeOutgoingReversePointsToSet();
   }
 
   class ReversePointsToIncomingRelationsAnalysisStep :
-      public RelationsAnalysisStep<INCOMING,
-          ReversePointsToIncomingRelationsAnalysisStep> {
-    friend class RelationsAnalysisStep<INCOMING,
-        ReversePointsToIncomingRelationsAnalysisStep>;
-
+      public RelationsAnalysisStep<INCOMING> {
   public:
-    explicit ReversePointsToIncomingRelationsAnalysisStep(ValueInfo *VI);
+    explicit ReversePointsToIncomingRelationsAnalysisStep(ValueInfo *VI)
+      : RelationsAnalysisStep<INCOMING>(VI) {}
 
-  private:
-    AnalysisResult *analyzeRelation(Relation *R);
+  protected:
+    virtual AnalysisResult *analyzeRelation(Relation *R);
   };
 
-  inline ReversePointsToIncomingRelationsAnalysisStep
-      ::ReversePointsToIncomingRelationsAnalysisStep(ValueInfo *VI)
-    : RelationsAnalysisStep<INCOMING,
-          ReversePointsToIncomingRelationsAnalysisStep>(VI) {}
-
-  inline AnalysisResult *
+  AnalysisResult *
   ReversePointsToIncomingRelationsAnalysisStep::analyzeRelation(Relation *R) {
     return R->analyzeIncomingReversePointsToSet();
   }
 }
+
+namespace llvm {
+namespace lazyandersen {
 
 DEFINE_ALGORITHM(ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET, Input) {
   AnalysisResult *Output = new AnalysisResult();
@@ -77,4 +64,7 @@ DEFINE_ALGORITHM(ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET, Input) {
   Output->push_back(new ReversePointsToIncomingRelationsAnalysisStep(
       Input));
   return Output;
+}
+
+}
 }

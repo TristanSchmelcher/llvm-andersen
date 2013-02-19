@@ -16,6 +16,7 @@
 
 #include "LazyAndersenHalfRelationBase.h"
 #include "LazyAndersenRelationDirection.h"
+#include "LazyAndersenValueInfo.h"
 
 namespace llvm {
 namespace lazyandersen {
@@ -23,22 +24,27 @@ namespace lazyandersen {
   class ValueInfo;
 
   template<RelationDirection Direction>
+  class HalfRelation;
+
+  template<RelationDirection Direction>
+  class HalfRelationDirectionTraits : public DirectionTraits<Direction,
+      HalfRelationBase, HalfRelation> {};
+
+  template<RelationDirection Direction>
   class HalfRelation : public HalfRelationBase,
-      private DirectionTraits<Direction> {
+      public HalfRelationDirectionTraits<Direction> {
     friend class Relation;
 
   public:
-    using DirectionTraits<Direction>::OppositeDirection;
-    typedef HalfRelation<OppositeDirection> OppositeHalfRelationTy;
+    using HalfRelationDirectionTraits<Direction>::classof;
 
-    const Relation *getRelation() const;
-    Relation *getRelation();
+    virtual RelationDirection getDirection() const;
+
     ValueInfo *getValueInfo() const;
-    const OppositeHalfRelationTy *getOppositeDirection() const;
-    OppositeHalfRelationTy *getOppositeDirection();
 
   private:
-    explicit HalfRelation(ValueInfo *VI);
+    explicit HalfRelation(ValueInfo *VI)
+      : HalfRelationBase(VI->getRelations<Direction>()) {}
     ~HalfRelation();
   };
 }

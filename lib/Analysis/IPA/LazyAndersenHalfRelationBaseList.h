@@ -23,15 +23,19 @@ namespace llvm {
 namespace lazyandersen {
   template<RelationDirection Direction> class HalfRelationList;
 
-  class HalfRelationBaseList : public ilist<HalfRelationBase> {
+  class HalfRelationBaseList : public HasDirection,
+      public ilist<HalfRelationBase> {
     template<RelationDirection Direction> friend class HalfRelationList;
 
   public:
-    template<RelationDirection Direction>
-    const HalfRelationList<Direction> *as() const;
+    static HalfRelationBaseList *get(ilist<HalfRelationBase> *List) {
+      return static_cast<HalfRelationBaseList *>(List);
+    }
 
-    template<RelationDirection Direction>
-    HalfRelationList<Direction> *as();
+    static const HalfRelationBaseList *get(
+        const ilist<HalfRelationBase> *List) {
+      return static_cast<const HalfRelationBaseList *>(List);
+    }
 
   private:
     HalfRelationBaseList();

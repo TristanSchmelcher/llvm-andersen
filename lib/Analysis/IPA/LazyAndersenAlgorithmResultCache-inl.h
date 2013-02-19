@@ -30,19 +30,19 @@ namespace lazyandersen {
   typename AlgorithmResultCache<AlgorithmIdTy>::OutputTy *
   AlgorithmResultCache<AlgorithmIdTy>::getAlgorithmResult() {
     return getAlgorithmResultInternal(AlgorithmId,
-        typename AlgorithmGroup<AlgorithmIdTy>
-            ::template AlgorithmImplementation<AlgorithmId>(),
+        &AlgorithmGroup<AlgorithmIdTy>
+            ::template AlgorithmImplementation<AlgorithmId>::run,
         static_cast<InputTy *>(this));
   }
 
   template<typename AlgorithmIdTy>
   typename AlgorithmResultCache<AlgorithmIdTy>::OutputTy *
   AlgorithmResultCache<AlgorithmIdTy>::getAlgorithmResultInternal(
-      AlgorithmIdTy AlgorithmId, const AlgorithmTy &Algorithm,
+      AlgorithmIdTy AlgorithmId, AlgorithmTy Algorithm,
       InputTy *Input) {
     OutputTy *Result = Results[AlgorithmId].get();
     if (!Result) {
-      Result = Algorithm(Input);
+      Result = (*Algorithm)(Input);
       Results[AlgorithmId].reset(Result);
     }
     return Result;

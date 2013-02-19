@@ -14,10 +14,6 @@
 #include "LazyAndersenStoredToRelation.h"
 
 #include "LazyAndersenAnalysisResult-inl.h"
-#include "LazyAndersenContentReversePointsToAlgorithm.h"
-#include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenRelation-inl.h"
-#include "LazyAndersenValueInfo-inl.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;

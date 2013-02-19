@@ -11,10 +11,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenValueInfo-inl.h"
+#include "LazyAndersenValueInfo.h"
 
+#include "LazyAndersenAlgorithmResultCache-inl.h"
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenHalfRelationList-inl.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;

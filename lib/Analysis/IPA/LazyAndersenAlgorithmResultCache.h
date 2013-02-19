@@ -39,7 +39,7 @@ namespace lazyandersen {
 
   private:
     OutputTy *getAlgorithmResultInternal(AlgorithmIdTy AlgorithmId,
-        const AlgorithmTy &Algorithm, InputTy *Input);
+        AlgorithmTy Algorithm, InputTy *Input);
   };
 }
 }

@@ -14,9 +14,7 @@
 #include "LazyAndersenGraphTraits.h"
 
 #include "LazyAndersenData.h"
-#include "LazyAndersenHalfRelation-inl.h"
-#include "LazyAndersenHalfRelationBase-inl.h"
-#include "LazyAndersenValueInfo-inl.h"
+#include "LazyAndersenRelation.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Value.h"
 
@@ -27,8 +25,8 @@ using namespace llvm::lazyandersen;
 
 ValueInfo::Map::value_type *IncomingHalfRelationIteratorAdapter::
     AdapterFunctor::operator()(const HalfRelationBase &HR) const {
-  ValueInfo *VI = HR.as<INCOMING>()->getOppositeDirection()
-      ->getValueInfo();
+  ValueInfo *VI = Relation::getOppositeDirection(HalfRelation<INCOMING>::from(
+      &HR))->getValueInfo();
   return &*VI->getMap()->find(VI->getValue());
 }
 
@@ -116,7 +114,7 @@ std::string DOTGraphTraits<ValueInfo::Map>::getNodeLabel(
 std::string DOTGraphTraits<ValueInfo::Map>::getEdgeSourceLabel(
     GraphTraits<ValueInfo::Map>::NodeType *Node,
     const GraphTraits<ValueInfo::Map>::ChildIteratorType &i) {
-  return i.wrappedIterator()->as<INCOMING>()->getRelation()
+  return Relation::get(HalfRelation<INCOMING>::from(i.wrappedIterator()))
       ->getRelationName();
 }
 

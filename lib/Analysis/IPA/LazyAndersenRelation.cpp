@@ -14,8 +14,6 @@
 
 #include "LazyAndersenRelation.h"
 
-#include "LazyAndersenHalfRelation-inl.h"
-
 using namespace llvm;
 using namespace llvm::lazyandersen;
 

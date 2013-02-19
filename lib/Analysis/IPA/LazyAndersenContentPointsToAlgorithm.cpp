@@ -11,12 +11,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenContentPointsToAlgorithm.h"
+#include "LazyAndersenAnalysisResultAlgorithmId.h"
 
-using namespace llvm;
-using namespace llvm::lazyandersen;
+namespace llvm {
+namespace lazyandersen {
 
 DEFINE_ALGORITHM(AnalysisResultAlgorithmId, CONTENT_POINTS_TO_SET, Input) {
   // TODO
   return 0;
+}
+
+}
 }

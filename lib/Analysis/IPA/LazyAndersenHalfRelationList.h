@@ -23,12 +23,21 @@ namespace lazyandersen {
   class ValueInfo;
 
   template<RelationDirection Direction>
-  class HalfRelationList : public HalfRelationBaseList {
+  class HalfRelationList;
+
+  template<RelationDirection Direction>
+  class HalfRelationListDirectionTraits : public DirectionTraits<Direction,
+      HalfRelationBaseList, HalfRelationList> {};
+
+  template<RelationDirection Direction>
+  class HalfRelationList : public HalfRelationBaseList,
+      public HalfRelationListDirectionTraits<Direction> {
     friend class ValueInfo;
 
   public:
-    const ValueInfo *getValueInfo() const;
-    ValueInfo *getValueInfo();
+    using HalfRelationListDirectionTraits<Direction>::classof;
+
+    virtual RelationDirection getDirection() const;
 
   private:
     HalfRelationList();

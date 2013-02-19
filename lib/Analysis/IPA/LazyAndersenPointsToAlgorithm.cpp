@@ -11,40 +11,38 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenPointsToAlgorithm.h"
+#include "LazyAndersenValueInfoAlgorithmId.h"
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenRelation.h"
-#include "LazyAndersenRelationsAnalysisStep-inl.h"
+#include "LazyAndersenRelationsAnalysisStep.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
 namespace {
-  class PointsToRelationsAnalysisStep : public RelationsAnalysisStep<OUTGOING,
-      PointsToRelationsAnalysisStep> {
-    friend class RelationsAnalysisStep<OUTGOING,
-        PointsToRelationsAnalysisStep>;
-
+  class PointsToRelationsAnalysisStep : public RelationsAnalysisStep<OUTGOING> {
   public:
-    explicit PointsToRelationsAnalysisStep(ValueInfo *VI);
+    explicit PointsToRelationsAnalysisStep(ValueInfo *VI)
+      : RelationsAnalysisStep<OUTGOING>(VI) {}
 
-  private:
-    AnalysisResult *analyzeRelation(Relation *R);
+  protected:
+    virtual AnalysisResult *analyzeRelation(Relation *R);
   };
 
-  inline PointsToRelationsAnalysisStep::PointsToRelationsAnalysisStep(
-      ValueInfo *VI)
-    : RelationsAnalysisStep<OUTGOING, PointsToRelationsAnalysisStep>(VI) {}
-
-  inline AnalysisResult *PointsToRelationsAnalysisStep::analyzeRelation(
-      Relation *R) {
+  AnalysisResult *PointsToRelationsAnalysisStep::analyzeRelation(Relation *R) {
     return R->analyzePointsToSet();
   }
 }
+
+namespace llvm {
+namespace lazyandersen {
 
 DEFINE_ALGORITHM(ValueInfoAlgorithmId, POINTS_TO_SET, Input) {
   AnalysisResult *Output = new AnalysisResult();
   Output->push_back(new PointsToRelationsAnalysisStep(Input));
   return Output;
+}
+
+}
 }

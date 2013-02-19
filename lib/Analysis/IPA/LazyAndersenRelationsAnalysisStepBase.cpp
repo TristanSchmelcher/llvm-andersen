@@ -13,7 +13,7 @@
 
 #include "LazyAndersenRelationsAnalysisStepBase.h"
 
-#include "LazyAndersenAnalysisResultCacheEntry-inl.h"
+#include "LazyAndersenAnalysisResultCacheEntry.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;

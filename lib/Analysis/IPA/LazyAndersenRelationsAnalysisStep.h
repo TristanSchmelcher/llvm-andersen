@@ -19,12 +19,16 @@
 
 namespace llvm {
 namespace lazyandersen {
+  class Relation;
   class ValueInfo;
 
-  template<RelationDirection Direction, typename StepTy>
+  template<RelationDirection Direction>
   class RelationsAnalysisStep : public RelationsAnalysisStepBase {
   public:
     explicit RelationsAnalysisStep(ValueInfo *VI);
+
+  protected:
+    virtual AnalysisResult *analyzeRelation(Relation *R) = 0;
 
   private:
     virtual AnalysisResult *analyzeHalfRelation(HalfRelationBase *HR);

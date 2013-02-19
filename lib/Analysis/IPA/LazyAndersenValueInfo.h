@@ -33,7 +33,6 @@ namespace lazyandersen {
       public AlgorithmResultCache<ValueInfoAlgorithmId> {
     friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
     friend class RefCountedBase<ValueInfo>;
-    template<RelationDirection Direction> friend class HalfRelationList;
     // The Value that maps to this object. (If this analysis applies to
     // multiple Values, this is the first one that was analyzed.)
     const Value *V;
@@ -51,14 +50,34 @@ namespace lazyandersen {
     static ValueInfo *const Nil;
 
     ValueInfo(const Value *V, Map *Map);
-    const Value *getValue() const;
-    Map *getMap() const;
+
+    const Value *getValue() const {
+      return V;
+    }
+
+    Map *getMap() const {
+      return ContainingMap;
+    }
 
     template<RelationDirection Direction>
-    const HalfRelationList<Direction> *getRelations() const;
+    static ValueInfo *get(HalfRelationList<Direction> *List) {
+      return static_cast<ValueInfo *>(List);
+    }
 
     template<RelationDirection Direction>
-    HalfRelationList<Direction> *getRelations();
+    static const ValueInfo *get(const HalfRelationList<Direction> *List) {
+      return static_cast<const ValueInfo *>(List);
+    }
+
+    template<RelationDirection Direction>
+    HalfRelationList<Direction> *getRelations() {
+      return static_cast<HalfRelationList<Direction> *>(this);
+    }
+
+    template<RelationDirection Direction>
+    const HalfRelationList<Direction> *getRelations() const {
+      return static_cast<const HalfRelationList<Direction> *>(this);
+    }
 
   private:
     ~ValueInfo();

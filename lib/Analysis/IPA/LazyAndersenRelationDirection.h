@@ -14,6 +14,8 @@
 #ifndef LAZYANDERSENRELATIONDIRECTION_H
 #define LAZYANDERSENRELATIONDIRECTION_H
 
+#include "llvm/Support/Casting.h"
+
 namespace llvm {
 namespace lazyandersen {
   enum RelationDirection {
@@ -21,17 +23,44 @@ namespace lazyandersen {
     OUTGOING
   };
 
+  class HasDirection {
+  public:
+    virtual RelationDirection getDirection() const = 0;
+    virtual ~HasDirection() {}
+  };
+
   template<RelationDirection Direction>
-  struct DirectionTraits;
+  struct DirectionTraitsBase;
 
   template<>
-  struct DirectionTraits<INCOMING> {
+  struct DirectionTraitsBase<INCOMING> {
     static const RelationDirection OppositeDirection = OUTGOING;
   };
 
   template<>
-  struct DirectionTraits<OUTGOING> {
+  struct DirectionTraitsBase<OUTGOING> {
     static const RelationDirection OppositeDirection = INCOMING;
+  };
+
+  template<RelationDirection Direction, typename BaseType,
+      template<RelationDirection> class TemplateType>
+  class DirectionTraits : public DirectionTraitsBase<Direction> {
+  public:
+    using DirectionTraitsBase<Direction>::OppositeDirection;
+    typedef TemplateType<OppositeDirection> OppositeDirectionTy;
+
+    static TemplateType<Direction> *from(BaseType *Base) {
+      return cast<TemplateType<Direction> >(Base);
+    }
+
+    static const TemplateType<Direction> *from(const BaseType *Base) {
+      return cast<TemplateType<Direction> >(Base);
+    }
+
+  protected:
+    static bool classof(const BaseType *Base) {
+      return Base->getDirection() == Direction;
+    }
   };
 }
 }

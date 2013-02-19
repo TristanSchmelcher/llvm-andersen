@@ -28,25 +28,20 @@ namespace lazyandersen {
     static const ALGORITHM_ID_TY NumAlgorithmIds = NUM_ALGORITHM_IDS; \
     typedef INPUT_TY InputTy; \
     typedef OUTPUT_TY OutputTy; \
-    typedef AnalysisAlgorithm<InputTy, OutputTy> AlgorithmTy; \
+    typedef OutputTy *(*AlgorithmTy)(InputTy *); \
 \
     template<ALGORITHM_ID_TY AlgorithmId> \
-    class AlgorithmImplementation; \
-  }
-
-#define DECLARE_ALGORITHM(ALGORITHM_ID_TY, ALGORITHM_ID) \
-  template<> \
-  class AlgorithmGroup<ALGORITHM_ID_TY>::AlgorithmImplementation<ALGORITHM_ID> \
-      : public AlgorithmGroup<ALGORITHM_ID_TY>::AlgorithmTy { \
-  public: \
-    virtual AlgorithmGroup<ALGORITHM_ID_TY>::OutputTy *operator()( \
-        AlgorithmGroup<ALGORITHM_ID_TY>::InputTy *Input) const; \
+    class AlgorithmImplementation { \
+    public: \
+      static OutputTy *run(InputTy *Input); \
+    }; \
   }
 
 #define DEFINE_ALGORITHM(ALGORITHM_ID_TY, ALGORITHM_ID, ARG_NAME) \
+  template<> \
   AlgorithmGroup<ALGORITHM_ID_TY>::OutputTy * \
   AlgorithmGroup<ALGORITHM_ID_TY>::AlgorithmImplementation<ALGORITHM_ID> \
-      ::operator()(AlgorithmGroup<ALGORITHM_ID_TY>::InputTy *ARG_NAME) const
+      ::run(AlgorithmGroup<ALGORITHM_ID_TY>::InputTy *ARG_NAME)
 
 }
 }

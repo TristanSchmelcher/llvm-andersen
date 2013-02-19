@@ -23,22 +23,15 @@ namespace lazyandersen {
   template<RelationDirection Direction> class HalfRelation;
   class HalfRelationBaseList;
 
-  class HalfRelationBase :
+  class HalfRelationBase : public HasDirection,
       private IntrusiveListNode<HalfRelationBase> {
     friend struct ilist_nextprev_traits<HalfRelationBase>;
     friend struct ilist_node_traits<HalfRelationBase>;
     friend struct IntrusiveListTraits<HalfRelationBase>;
     template<RelationDirection> friend class HalfRelation;
 
-  public:
-    template<RelationDirection Direction>
-    const HalfRelation<Direction> *as() const;
-
-    template<RelationDirection Direction>
-    HalfRelation<Direction> *as();
-
   protected:
-    HalfRelationBaseList *getList() const;
+    using IntrusiveListNode<HalfRelationBase>::getList;
 
   private:
     explicit HalfRelationBase(HalfRelationBaseList *InitialList);

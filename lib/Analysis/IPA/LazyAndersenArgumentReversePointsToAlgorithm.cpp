@@ -11,13 +11,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenArgumentReversePointsToAlgorithm.h"
+#include "LazyAndersenAnalysisResultAlgorithmId.h"
 
-using namespace llvm;
-using namespace llvm::lazyandersen;
+namespace llvm {
+namespace lazyandersen {
 
 DEFINE_ALGORITHM(AnalysisResultAlgorithmId, ARGUMENT_REVERSE_POINTS_TO_SET,
     Input) {
   // TODO
   return 0;
+}
+
+}
 }

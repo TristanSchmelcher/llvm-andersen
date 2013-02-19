@@ -26,20 +26,50 @@ namespace lazyandersen {
   class Relation :
       private HalfRelation<INCOMING>,
       private HalfRelation<OUTGOING> {
-    template<RelationDirection Direction> friend class HalfRelation;
-
   public:
     Relation(ValueInfo *Src, ValueInfo *Dst);
     virtual ~Relation();
 
     template<RelationDirection Direction>
-    const HalfRelation<Direction> *getDirection() const;
+    static Relation *get(HalfRelation<Direction> *HR) {
+      return static_cast<Relation *>(HR);
+    }
 
     template<RelationDirection Direction>
-    HalfRelation<Direction> *getDirection();
+    static const Relation *get(const HalfRelation<Direction> *HR) {
+      return static_cast<const Relation *>(HR);
+    }
 
     template<RelationDirection Direction>
-    ValueInfo *getValueInfo() const;
+    static typename HalfRelationDirectionTraits<Direction>
+        ::OppositeDirectionTy *
+    getOppositeDirection(HalfRelation<Direction> *HR) {
+      return get(HR)->template getHalf<
+          HalfRelationDirectionTraits<Direction>::OppositeDirection>();
+    }
+
+    template<RelationDirection Direction>
+    static const typename HalfRelationDirectionTraits<Direction>
+        ::OppositeDirectionTy *
+    getOppositeDirection(const HalfRelation<Direction> *HR) {
+      return get(HR)->template getHalf<
+          HalfRelationDirectionTraits<Direction>::OppositeDirection>();
+    }
+
+    template<RelationDirection Direction>
+    HalfRelation<Direction> *getHalf() {
+      return static_cast<HalfRelation<Direction> *>(this);
+    }
+
+    template<RelationDirection Direction>
+    const HalfRelation<Direction> *getHalf() const {
+      return static_cast<const HalfRelation<Direction> *>(this);
+    }
+
+    template<RelationDirection Direction>
+    ValueInfo *getValueInfo() const {
+      return getHalf<Direction>()->getValueInfo();
+    }
 
     virtual const char *getRelationName() const = 0;
     virtual AnalysisResult *analyzePointsToSet() const = 0;

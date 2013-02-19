@@ -13,11 +13,6 @@
 
 #include "LazyAndersenDependsOnRelation.h"
 
-#include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenRelation-inl.h"
-#include "LazyAndersenReversePointsToAlgorithm.h"
-#include "LazyAndersenValueInfo-inl.h"
-
 using namespace llvm;
 using namespace llvm::lazyandersen;
 

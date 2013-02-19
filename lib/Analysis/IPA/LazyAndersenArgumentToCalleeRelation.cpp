@@ -14,10 +14,6 @@
 #include "LazyAndersenArgumentToCalleeRelation.h"
 
 #include "LazyAndersenAnalysisResult-inl.h"
-#include "LazyAndersenArgumentReversePointsToAlgorithm.h"
-#include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenRelation-inl.h"
-#include "LazyAndersenValueInfo-inl.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;

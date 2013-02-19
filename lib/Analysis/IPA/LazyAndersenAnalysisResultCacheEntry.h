@@ -27,8 +27,12 @@ namespace lazyandersen {
 
   public:
     explicit AnalysisResultCacheEntry(CachedTy *CachedValue);
+
     virtual EntryType getEntryType() const;
-    CachedTy *getCachedValue() const;
+
+    CachedTy *getCachedValue() const {
+      return CachedValue;
+    }
   };
 
   class AnalysisResult;
