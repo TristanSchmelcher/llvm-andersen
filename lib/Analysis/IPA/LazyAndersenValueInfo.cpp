@@ -13,7 +13,6 @@
 
 #include "LazyAndersenValueInfo.h"
 
-#include "LazyAndersenAlgorithmResultCache-inl.h"
 #include "LazyAndersenAnalysisResult.h"
 
 using namespace llvm;

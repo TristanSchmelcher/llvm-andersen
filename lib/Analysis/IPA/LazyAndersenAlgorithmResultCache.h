@@ -17,6 +17,8 @@
 #include "LazyAndersenAlgorithmGroup.h"
 #include "llvm/ADT/OwningPtr.h"
 
+#include <cassert>
+
 namespace llvm {
 namespace lazyandersen {
   template<typename AlgorithmIdTy>
@@ -33,7 +35,12 @@ namespace lazyandersen {
     ~AlgorithmResultCache();
 
     template<AlgorithmIdTy AlgorithmId>
-    OutputTy *getAlgorithmResult();
+    OutputTy *getAlgorithmResult() {
+      assert(AlgorithmId < NumAlgorithms);
+      return getAlgorithmResultInternal(AlgorithmId,
+          &runAlgorithm<AlgorithmIdTy, AlgorithmId>,
+          static_cast<InputTy *>(this));
+    }
 
   private:
     OutputTy *getAlgorithmResultInternal(AlgorithmIdTy AlgorithmId,
