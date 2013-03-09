@@ -56,15 +56,17 @@ namespace {
 namespace llvm {
 namespace lazyandersen {
 
-DEFINE_ALGORITHM(ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET, Input) {
-  AnalysisResult *Output = new AnalysisResult();
-  Output->push_back(new AnalysisResultValueInfoEntry(Input));
-  Output->push_back(new ReversePointsToOutgoingRelationsAnalysisStep(
-      Input));
-  Output->push_back(new ReversePointsToIncomingRelationsAnalysisStep(
-      Input));
-  return Output;
-}
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET>(
+      ValueInfo *Input) {
+    AnalysisResult *Output = new AnalysisResult();
+    Output->push_back(new AnalysisResultValueInfoEntry(Input));
+    Output->push_back(new ReversePointsToOutgoingRelationsAnalysisStep(
+        Input));
+    Output->push_back(new ReversePointsToIncomingRelationsAnalysisStep(
+        Input));
+    return Output;
+  }
 
 }
 }

@@ -28,11 +28,44 @@ namespace lazyandersen {
     ARGUMENT_POINTS_TO_SET,
     ARGUMENT_REVERSE_POINTS_TO_SET,
     // TODO
-    NUM_ANALYSIS_RESULT_ALGORITHM_IDS
+    NUM_ANALYSIS_RESULT_ALGORITHMS
   };
 
-  CREATE_ALGORITHM_GROUP(AnalysisResultAlgorithmId,
-      NUM_ANALYSIS_RESULT_ALGORITHM_IDS, AnalysisResult, AnalysisResult);
+  template<>
+  struct AlgorithmGroupTraits<AnalysisResultAlgorithmId> {
+    static const AnalysisResultAlgorithmId NumAlgorithms =
+        NUM_ANALYSIS_RESULT_ALGORITHMS;
+    typedef AnalysisResult InputTy;
+    typedef AnalysisResult OutputTy;
+  };
+
+  // The standard requires each specialization to be forward-declared, although
+  // in practice it isn't needed (C++11 14.7.3/6).
+  template<>
+  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+                               CONTENT_POINTS_TO_SET>(AnalysisResult *);
+
+  template<>
+  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+                               CONTENT_REVERSE_POINTS_TO_SET>(AnalysisResult *);
+
+  template<>
+  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+                               RETURN_VALUE_POINTS_TO_SET>(AnalysisResult *);
+
+  template<>
+  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+                               RETURN_VALUE_REVERSE_POINTS_TO_SET>(
+      AnalysisResult *);
+
+  template<>
+  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+                               ARGUMENT_POINTS_TO_SET>(AnalysisResult *);
+
+  template<>
+  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+                               ARGUMENT_REVERSE_POINTS_TO_SET>(
+      AnalysisResult *);
 }
 }
 

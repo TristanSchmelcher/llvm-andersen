@@ -25,11 +25,26 @@ namespace lazyandersen {
     POINTS_TO_SET,
     REVERSE_POINTS_TO_SET,
     // TODO
-    NUM_VALUE_INFO_ALGORITHM_IDS
+    NUM_VALUE_INFO_ALGORITHMS
   };
 
-  CREATE_ALGORITHM_GROUP(ValueInfoAlgorithmId, NUM_VALUE_INFO_ALGORITHM_IDS,
-      ValueInfo, AnalysisResult);
+  template<>
+  struct AlgorithmGroupTraits<ValueInfoAlgorithmId> {
+    static const ValueInfoAlgorithmId NumAlgorithms =
+        NUM_VALUE_INFO_ALGORITHMS;
+    typedef ValueInfo InputTy;
+    typedef AnalysisResult OutputTy;
+  };
+
+  // The standard requires each specialization to be forward-declared, although
+  // in practice it isn't needed (C++11 14.7.3/6).
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, POINTS_TO_SET>(
+      ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET>(
+      ValueInfo *);
 }
 }
 

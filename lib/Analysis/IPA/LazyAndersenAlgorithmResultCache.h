@@ -14,21 +14,19 @@
 #ifndef LAZYANDERSENALGORITHMRESULTCACHE_H
 #define LAZYANDERSENALGORITHMRESULTCACHE_H
 
+#include "LazyAndersenAlgorithmGroup.h"
 #include "llvm/ADT/OwningPtr.h"
 
 namespace llvm {
 namespace lazyandersen {
   template<typename AlgorithmIdTy>
-  struct AlgorithmGroup;
+  class AlgorithmResultCache : private AlgorithmGroupTraits<AlgorithmIdTy> {
+    using AlgorithmGroupTraits<AlgorithmIdTy>::NumAlgorithms;
+    typedef typename AlgorithmGroupTraits<AlgorithmIdTy>::InputTy InputTy;
+    typedef typename AlgorithmGroupTraits<AlgorithmIdTy>::OutputTy OutputTy;
+    typedef OutputTy *(*AlgorithmTy)(InputTy *);
 
-  template<typename AlgorithmIdTy>
-  class AlgorithmResultCache : private AlgorithmGroup<AlgorithmIdTy> {
-    using AlgorithmGroup<AlgorithmIdTy>::NumAlgorithmIds;
-    typedef typename AlgorithmGroup<AlgorithmIdTy>::InputTy InputTy;
-    typedef typename AlgorithmGroup<AlgorithmIdTy>::OutputTy OutputTy;
-    typedef typename AlgorithmGroup<AlgorithmIdTy>::AlgorithmTy AlgorithmTy;
-
-    OwningPtr<OutputTy> Results[NumAlgorithmIds];
+    OwningPtr<OutputTy> Results[NumAlgorithms];
 
   public:
     AlgorithmResultCache();

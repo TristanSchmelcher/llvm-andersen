@@ -17,6 +17,8 @@
 
 #include "LazyAndersenAlgorithmResultCache.h"
 
+#include <cassert>
+
 namespace llvm {
 namespace lazyandersen {
   template<typename AlgorithmIdTy>
@@ -30,8 +32,7 @@ namespace lazyandersen {
   typename AlgorithmResultCache<AlgorithmIdTy>::OutputTy *
   AlgorithmResultCache<AlgorithmIdTy>::getAlgorithmResult() {
     return getAlgorithmResultInternal(AlgorithmId,
-        &AlgorithmGroup<AlgorithmIdTy>
-            ::template AlgorithmImplementation<AlgorithmId>::run,
+        &runAlgorithm<AlgorithmIdTy, AlgorithmId>,
         static_cast<InputTy *>(this));
   }
 
@@ -40,6 +41,7 @@ namespace lazyandersen {
   AlgorithmResultCache<AlgorithmIdTy>::getAlgorithmResultInternal(
       AlgorithmIdTy AlgorithmId, AlgorithmTy Algorithm,
       InputTy *Input) {
+    assert(AlgorithmId < NumAlgorithms);
     OutputTy *Result = Results[AlgorithmId].get();
     if (!Result) {
       Result = (*Algorithm)(Input);

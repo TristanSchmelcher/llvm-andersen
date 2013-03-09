@@ -16,11 +16,13 @@
 namespace llvm {
 namespace lazyandersen {
 
-DEFINE_ALGORITHM(AnalysisResultAlgorithmId, ARGUMENT_REVERSE_POINTS_TO_SET,
-    Input) {
-  // TODO
-  return 0;
-}
+  template<>
+  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+                               ARGUMENT_REVERSE_POINTS_TO_SET>(
+      AnalysisResult *Input) {
+    // TODO
+    return 0;
+  }
 
 }
 }

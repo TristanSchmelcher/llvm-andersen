@@ -16,10 +16,13 @@
 namespace llvm {
 namespace lazyandersen {
 
-DEFINE_ALGORITHM(AnalysisResultAlgorithmId, RETURN_VALUE_POINTS_TO_SET, Input) {
-  // TODO
-  return 0;
-}
+  template<>
+  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+                               RETURN_VALUE_POINTS_TO_SET>(
+      AnalysisResult *Input) {
+    // TODO
+    return 0;
+  }
 
 }
 }

@@ -38,11 +38,13 @@ namespace {
 namespace llvm {
 namespace lazyandersen {
 
-DEFINE_ALGORITHM(ValueInfoAlgorithmId, POINTS_TO_SET, Input) {
-  AnalysisResult *Output = new AnalysisResult();
-  Output->push_back(new PointsToRelationsAnalysisStep(Input));
-  return Output;
-}
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, POINTS_TO_SET>(
+      ValueInfo *Input) {
+    AnalysisResult *Output = new AnalysisResult();
+    Output->push_back(new PointsToRelationsAnalysisStep(Input));
+    return Output;
+  }
 
 }
 }
