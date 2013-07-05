@@ -21,20 +21,7 @@ namespace llvm {
 namespace lazyandersen {
   template<typename NodeTy>
   IntrusiveListWithSavedIteratorSupportNode<NodeTy>
-      ::IntrusiveListWithSavedIteratorSupportNode()
-    : SavedIterators(this) {}
-
-  template<typename NodeTy>
-  IntrusiveListWithSavedIteratorSupportNode<NodeTy>::SavedIteratorList
-      ::SavedIteratorList(IntrusiveListWithSavedIteratorSupportNode *Owner)
-    : Owner(Owner) {}
-
-  template<typename NodeTy>
-  inline IntrusiveListWithSavedIteratorSupportNode<NodeTy> *
-  IntrusiveListWithSavedIteratorSupportNode<NodeTy>::SavedIteratorList
-      ::SavedIteratorList::getOwner() const {
-    return Owner;
-  }
+      ::IntrusiveListWithSavedIteratorSupportNode() {}
 }
 }
 

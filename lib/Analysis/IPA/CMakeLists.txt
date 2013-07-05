@@ -28,6 +28,7 @@ add_llvm_library(LLVMipa
   LazyAndersenInstructionAnalyzer.cpp
   LazyAndersenIterativeAnalysisStep.cpp
   LazyAndersenLoadedFromRelation.cpp
+  LazyAndersenMetaAnalysisStep.cpp
   LazyAndersenPointsToAlgorithm.cpp
   LazyAndersenRelation.cpp
   LazyAndersenRelationsAnalysisStep.cpp

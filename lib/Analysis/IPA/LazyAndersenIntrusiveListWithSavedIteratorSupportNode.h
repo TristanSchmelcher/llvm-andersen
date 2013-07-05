@@ -24,25 +24,33 @@ namespace lazyandersen {
   template<typename NodeTy>
   struct IntrusiveListWithSavedIteratorSupportTraits;
 
+  // Requests for the (get|set)(Next|Prev) methods of this class are ambiguous.
+  // ilist_traits specializations must override the ilist_nextprev_traits
+  // methods to disambiguate via the toNode() methods.
   template<typename NodeTy>
   class IntrusiveListWithSavedIteratorSupportNode :
-      public IntrusiveListNode<NodeTy> {
+      public IntrusiveListNode<NodeTy>, private ilist<SavedIterator<NodeTy> > {
     friend struct IntrusiveListWithSavedIteratorSupportTraits<NodeTy>;
-
-    // In a perfect world we would just use private inheritance here rather than
-    // an extra class, but that causes ambiguity due to the C++ scoping rules.
-    class SavedIteratorList : public ilist<SavedIterator<NodeTy> > {
-      IntrusiveListWithSavedIteratorSupportNode *Owner;
-
-    public:
-      SavedIteratorList(IntrusiveListWithSavedIteratorSupportNode *Owner);
-      IntrusiveListWithSavedIteratorSupportNode *getOwner() const;
-    };
-
-    SavedIteratorList SavedIterators;
+    friend class SavedIterator<NodeTy>;
 
   public:
     IntrusiveListWithSavedIteratorSupportNode();
+
+    IntrusiveListNode<NodeTy> *toNode() {
+      return static_cast<IntrusiveListNode<NodeTy> *>(this);
+    }
+
+    const IntrusiveListNode<NodeTy> *toNode() const {
+      return static_cast<const IntrusiveListNode<NodeTy> *>(this);
+    }
+
+    ilist<SavedIterator<NodeTy> > *getSavedIterators() {
+      return static_cast<ilist<SavedIterator<NodeTy> > *>(this);
+    }
+
+    const ilist<SavedIterator<NodeTy> > *getSavedIterators() const {
+      return static_cast<const ilist<SavedIterator<NodeTy> > *>(this);
+    }
   };
 }
 }

@@ -21,40 +21,38 @@
 namespace llvm {
 namespace lazyandersen {
   template<typename NodeTy>
-  SavedIterator<NodeTy>::SavedIterator(ilist<NodeTy> *List) : List(List) {}
+  SavedIterator<NodeTy>::SavedIterator(ilist<NodeTy> *List,
+                                       const ilist_iterator<NodeTy> &i)
+    : List(List) {
+    save(i);
+  }
 
   template<typename NodeTy>
   SavedIterator<NodeTy>::~SavedIterator() {
-    clear();
+    // restore() removes us from the saved iterators list that we are in.
+    restore();
   }
 
   template<typename NodeTy>
-  void SavedIterator<NodeTy>::clear() {
+  ilist_iterator<NodeTy> SavedIterator<NodeTy>::restore() {
     if (IntrusiveListNode<SavedIterator<NodeTy> >::getList()) {
+      ilist_iterator<NodeTy> Ret = ilist_iterator<NodeTy>(static_cast<NodeTy *>(
+          IntrusiveListNode<SavedIterator<NodeTy> >::getList()));
       IntrusiveListNode<SavedIterator<NodeTy> >::getList()->remove(
-          ilist<SavedIterator<NodeTy> >::iterator(this));
+          typename ilist<SavedIterator<NodeTy> >::iterator(this));
       assert(!IntrusiveListNode<SavedIterator<NodeTy> >::getList());
-    }
-  }
-
-  template<typename NodeTy>
-  void SavedIterator<NodeTy>::set(const ilist_iterator<NodeTy> &i) {
-    clear();
-    if (i != List->end()) {
-      i->SavedIterators.push_back(this);
-      assert(IntrusiveListNode<SavedIterator<NodeTy> >::getList());
-    }
-  }
-
-  template<typename NodeTy>
-  ilist_iterator<NodeTy> SavedIterator<NodeTy>::get() {
-    if (IntrusiveListNode<SavedIterator<NodeTy> >::getList()) {
-      return ilist_iterator<NodeTy>(
-          static_cast<typename NodeTy::SavedIteratorList *>(
-              IntrusiveListNode<SavedIterator<NodeTy> >::getList())
-                  ->getOwner());
+      return Ret;
     } else {
       return List->end();
+    }
+  }
+
+  template<typename NodeTy>
+  void SavedIterator<NodeTy>::save(const ilist_iterator<NodeTy> &i) {
+    assert(!IntrusiveListNode<SavedIterator<NodeTy> >::getList());
+    if (i != List->end()) {
+      i->getSavedIterators()->push_back(this);
+      assert(IntrusiveListNode<SavedIterator<NodeTy> >::getList());
     }
   }
 }

@@ -21,22 +21,46 @@
 namespace llvm {
 namespace lazyandersen {
   template<typename NodeTy>
+  class ScopedLoadStoreIterator;
+
+  template<typename NodeTy>
   class SavedIterator : private IntrusiveListNode<SavedIterator<NodeTy> > {
     friend struct ilist_nextprev_traits<SavedIterator>;
     friend struct ilist_node_traits<SavedIterator>;
     friend struct IntrusiveListTraits<SavedIterator>;
+    friend class ScopedLoadStoreIterator<NodeTy>;
     // This is different from the superclass's getList(). The superclass's
     // getList() is the saved iterator list in the node that this saved iterator
     // points to, whereas this is for the list containing that node.
     ilist<NodeTy> *List;
 
   public:
-    SavedIterator(ilist<NodeTy> *List);
+    SavedIterator(ilist<NodeTy> *List, const ilist_iterator<NodeTy> &i);
     ~SavedIterator();
 
-    void clear();
-    void set(const ilist_iterator<NodeTy> &i);
-    ilist_iterator<NodeTy> get();
+    ilist<NodeTy> *getList() const {
+      return List;
+    }
+
+  private:
+    ilist_iterator<NodeTy> restore();
+    void save(const ilist_iterator<NodeTy> &i);
+  };
+
+  // Automatically restores from a saved iterator at construction time and saves
+  // to that saved iterator at destruction time. The behaviour is undefined if
+  // the iterator is changed to point to a different list.
+  template<typename NodeTy>
+  class ScopedLoadStoreIterator : public ilist_iterator<NodeTy> {
+    SavedIterator<NodeTy> *Iterator;
+
+  public:
+    ScopedLoadStoreIterator(SavedIterator<NodeTy> *Iterator)
+      : ilist_iterator<NodeTy>(Iterator->restore()), Iterator(Iterator) {}
+
+    ~ScopedLoadStoreIterator() {
+      Iterator->save(*this);
+    }
   };
 }
 }

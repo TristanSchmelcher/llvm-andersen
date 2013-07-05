@@ -24,7 +24,8 @@ namespace lazyandersen {
   struct IntrusiveListWithSavedIteratorSupportTraits :
       public IntrusiveListTraits<NodeTy> {
   private:
-    // Never defined (unsupported operation).
+    // Never defined (unsupported operation). Allowing this would invalidate the
+    // SavedIterators' list pointers.
     void transferNodesFromList(
         ilist_node_traits<NodeTy> &that,
         ilist_iterator<NodeTy> first,

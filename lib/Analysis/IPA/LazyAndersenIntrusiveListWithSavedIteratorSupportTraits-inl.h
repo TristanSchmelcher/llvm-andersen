@@ -25,21 +25,21 @@ namespace lazyandersen {
   void IntrusiveListWithSavedIteratorSupportTraits<NodeTy>::removeNodeFromList(
       NodeTy *Node) {
     IntrusiveListTraits<NodeTy>::removeNodeFromList(Node);
-    ilist<SavedIterator<NodeTy> > *FromIteratorList = &Node->SavedIterators;
-    if (!FromIteratorList->empty()) {
+    if (!Node->getSavedIterators()->empty()) {
       // Advance the saved iterators pointing to this node. (Next ptr is still
       // valid during removeNodeFromList().)
       ilist_iterator<NodeTy> i(Node);
       if (++i != static_cast<ilist<NodeTy> *>(this)->end()) {
-        ilist<SavedIterator<NodeTy> > *ToIteratorList = &i->SavedIterators;
-        ToIteratorList->splice(ToIteratorList->end(), *FromIteratorList);
+        i->getSavedIterators()->splice(i->getSavedIterators()->end(),
+                                       *Node->getSavedIterators());
       } else {
         // End of list; nothing else after it.
-        for (ilist_iterator<SavedIterator<NodeTy> > Current =
-                 FromIteratorList->begin(), End = FromIteratorList->end();
+        for (ilist_iterator<SavedIterator<NodeTy> >
+                 Current = Node->getSavedIterators()->begin(),
+                 End = Node->getSavedIterators()->end();
              Current != End; ) {
           // remove advances the iterator.
-          FromIteratorList->remove(Current);
+          Node->getSavedIterators()->remove(Current);
         }
       }
     }

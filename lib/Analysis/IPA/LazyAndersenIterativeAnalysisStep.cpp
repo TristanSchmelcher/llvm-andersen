@@ -23,6 +23,9 @@ using namespace llvm::lazyandersen;
 void IterativeAnalysisStep::emit(AnalysisResultEntry *Entry) {
   assert(getList());
   getList()->insert(AnalysisResultEntryList::iterator(this), Entry);
+  // Move any saved iterators onto the emitted entry.
+  Entry->getSavedIterators()->splice(Entry->getSavedIterators()->end(),
+                                     *getSavedIterators());
 }
 
 void IterativeAnalysisStep::done() {
