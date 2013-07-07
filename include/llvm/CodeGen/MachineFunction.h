@@ -43,19 +43,9 @@ struct MachinePointerInfo;
 
 template <>
 struct ilist_traits<MachineBasicBlock>
-    : public ilist_default_traits<MachineBasicBlock> {
-  mutable ilist_half_node<MachineBasicBlock> Sentinel;
-public:
-  MachineBasicBlock *createSentinel() const {
-    return static_cast<MachineBasicBlock*>(&Sentinel);
-  }
-  void destroySentinel(MachineBasicBlock *) const {}
-
-  MachineBasicBlock *provideInitialHead() const { return createSentinel(); }
-  MachineBasicBlock *ensureHead(MachineBasicBlock*) const {
-    return createSentinel();
-  }
-  static void noteHead(MachineBasicBlock*, MachineBasicBlock*) {}
+    : public ilist_nextprev_traits<MachineBasicBlock>,
+      public ilist_ghostly_sentinel_traits<MachineBasicBlock>,
+      public ilist_node_traits<MachineBasicBlock> {
 
   void addNodeToList(MachineBasicBlock* MBB);
   void removeNodeFromList(MachineBasicBlock* MBB);

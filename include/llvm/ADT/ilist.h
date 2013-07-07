@@ -104,6 +104,58 @@ struct ilist_sentinel_traits {
   }
 };
 
+template<typename NodeTy>
+class ilist_half_node;
+
+/// ilist_ghostly_sentinel_traits - Alternate fragment for template traits that
+/// provides a "ghostly sentinel" implementation. The sentinel consists of a
+/// single pointer in the ilist object itself with no separate dynamic
+/// allocation.
+///
+/// Using this sentinel implementation results in some differences in the list
+/// structure:
+/// - The prev pointer of the list head is null rather than a pointer to the
+///   sentinel.
+/// - Accessing the next pointer of the sentinel is invalid.
+/// As a result, it is invalid to call getPrevNode on the list front or
+/// getNextNode on the list back.
+template<typename NodeTy, typename SentinelTy = ilist_half_node<NodeTy> >
+struct ilist_ghostly_sentinel_traits {
+private:
+  mutable SentinelTy Sentinel;
+
+public:
+  /// createSentinel - return the ghostly sentinel
+  ///
+  /// The sentinel is relative to this instance, so we use a non-static method.
+  NodeTy *createSentinel() const {
+    // Since i(p)lists always publicly derive from their corresponding traits,
+    // placing a data member in this class will augment the i(p)list. But since
+    // the NodeTy is expected to be derived from SentinelTy, there is a legal
+    // viable downcast from it to NodeTy. We use this trick to superimpose an
+    // i(p)list with a "ghostly" NodeTy, which becomes the sentinel.
+    // Dereferencing the sentinel is forbidden (save as SentinelTy), so no one
+    // will ever notice the superposition.
+    return static_cast<NodeTy *>(&Sentinel);
+  }
+
+  /// destroySentinel - no-op because the sentinel is not a separate object
+  static void destroySentinel(NodeTy *) {}
+
+  /// provideInitialHead - initialize head to the ghostly sentinel
+  NodeTy *provideInitialHead() const { return createSentinel(); }
+
+  /// ensureHead - returns the ghostly sentinel
+  NodeTy *ensureHead(NodeTy *) const { return createSentinel(); }
+
+  /// noteHead - no-op
+  ///
+  /// We don't need to store the sentinel pointer anywhere because the sentinel
+  /// is already a field. We leave the prev pointer of the head null all the
+  /// time.
+  static void noteHead(NodeTy *, NodeTy *) {}
+};
+
 /// ilist_node_traits - A fragment for template traits for intrusive list
 /// that provides default node related operations.
 ///

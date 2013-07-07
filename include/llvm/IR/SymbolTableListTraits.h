@@ -38,7 +38,10 @@ template<typename Ty> struct ilist_traits;
 // ItemParentClass - The type of object that owns the list, e.g. BasicBlock.
 //
 template<typename ValueSubClass, typename ItemParentClass>
-class SymbolTableListTraits : public ilist_default_traits<ValueSubClass> {
+class SymbolTableListTraits
+  : public ilist_nextprev_traits<ValueSubClass>,
+    public ilist_ghostly_sentinel_traits<ValueSubClass>,
+    public ilist_node_traits<ValueSubClass> {
   typedef ilist_traits<ValueSubClass> TraitsClass;
 public:
   SymbolTableListTraits() {}

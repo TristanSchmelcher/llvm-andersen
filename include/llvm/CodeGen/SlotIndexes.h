@@ -70,18 +70,10 @@ namespace llvm {
   };
 
   template <>
-  struct ilist_traits<IndexListEntry> : public ilist_default_traits<IndexListEntry> {
-  private:
-    mutable ilist_half_node<IndexListEntry> Sentinel;
-  public:
-    IndexListEntry *createSentinel() const {
-      return static_cast<IndexListEntry*>(&Sentinel);
-    }
-    void destroySentinel(IndexListEntry *) const {}
-
-    IndexListEntry *provideInitialHead() const { return createSentinel(); }
-    IndexListEntry *ensureHead(IndexListEntry*) const { return createSentinel(); }
-    static void noteHead(IndexListEntry*, IndexListEntry*) {}
+  struct ilist_traits<IndexListEntry>
+    : public ilist_nextprev_traits<IndexListEntry>,
+      public ilist_ghostly_sentinel_traits<IndexListEntry>,
+      public ilist_node_traits<IndexListEntry> {
     void deleteNode(IndexListEntry *N) {}
 
   private:

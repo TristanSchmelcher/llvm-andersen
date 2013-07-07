@@ -17,6 +17,9 @@
 
 namespace llvm {
 
+template<typename NodeTy, typename SentinelTy>
+struct ilist_ghostly_sentinel_traits;
+
 template<typename NodeTy>
 struct ilist_traits;
 
@@ -24,6 +27,7 @@ struct ilist_traits;
 ///
 template<typename NodeTy>
 class ilist_half_node {
+  friend struct ilist_ghostly_sentinel_traits<NodeTy, ilist_half_node<NodeTy> >;
   friend struct ilist_traits<NodeTy>;
   NodeTy *Prev;
 protected:
@@ -41,6 +45,7 @@ struct ilist_nextprev_traits;
 ///
 template<typename NodeTy>
 class ilist_node : private ilist_half_node<NodeTy> {
+  friend struct ilist_ghostly_sentinel_traits<NodeTy, ilist_half_node<NodeTy> >;
   friend struct ilist_nextprev_traits<NodeTy>;
   friend struct ilist_traits<NodeTy>;
   NodeTy *Next;

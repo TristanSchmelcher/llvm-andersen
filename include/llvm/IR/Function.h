@@ -34,37 +34,13 @@ class LLVMContext;
 template<> struct ilist_traits<BasicBlock>
   : public SymbolTableListTraits<BasicBlock, Function> {
 
-  // createSentinel is used to get hold of the node that marks the end of the
-  // list... (same trick used here as in ilist_traits<Instruction>)
-  BasicBlock *createSentinel() const {
-    return static_cast<BasicBlock*>(&Sentinel);
-  }
-  static void destroySentinel(BasicBlock*) {}
-
-  BasicBlock *provideInitialHead() const { return createSentinel(); }
-  BasicBlock *ensureHead(BasicBlock*) const { return createSentinel(); }
-  static void noteHead(BasicBlock*, BasicBlock*) {}
-
   static ValueSymbolTable *getSymTab(Function *ItemParent);
-private:
-  mutable ilist_half_node<BasicBlock> Sentinel;
 };
 
 template<> struct ilist_traits<Argument>
   : public SymbolTableListTraits<Argument, Function> {
 
-  Argument *createSentinel() const {
-    return static_cast<Argument*>(&Sentinel);
-  }
-  static void destroySentinel(Argument*) {}
-
-  Argument *provideInitialHead() const { return createSentinel(); }
-  Argument *ensureHead(Argument*) const { return createSentinel(); }
-  static void noteHead(Argument*, Argument*) {}
-
   static ValueSymbolTable *getSymTab(Function *ItemParent);
-private:
-  mutable ilist_half_node<Argument> Sentinel;
 };
 
 class Function : public GlobalValue,

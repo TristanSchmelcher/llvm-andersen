@@ -34,68 +34,22 @@ template<typename KeyT, typename ValueT, typename KeyInfoT> class DenseMap;
 
 template<> struct ilist_traits<Function>
   : public SymbolTableListTraits<Function, Module> {
-
-  // createSentinel is used to get hold of the node that marks the end of the
-  // list... (same trick used here as in ilist_traits<Instruction>)
-  Function *createSentinel() const {
-    return static_cast<Function*>(&Sentinel);
-  }
-  static void destroySentinel(Function*) {}
-
-  Function *provideInitialHead() const { return createSentinel(); }
-  Function *ensureHead(Function*) const { return createSentinel(); }
-  static void noteHead(Function*, Function*) {}
-
-private:
-  mutable ilist_node<Function> Sentinel;
 };
 
 template<> struct ilist_traits<GlobalVariable>
   : public SymbolTableListTraits<GlobalVariable, Module> {
-  // createSentinel is used to create a node that marks the end of the list.
-  GlobalVariable *createSentinel() const {
-    return static_cast<GlobalVariable*>(&Sentinel);
-  }
-  static void destroySentinel(GlobalVariable*) {}
-
-  GlobalVariable *provideInitialHead() const { return createSentinel(); }
-  GlobalVariable *ensureHead(GlobalVariable*) const { return createSentinel(); }
-  static void noteHead(GlobalVariable*, GlobalVariable*) {}
-private:
-  mutable ilist_node<GlobalVariable> Sentinel;
 };
 
 template<> struct ilist_traits<GlobalAlias>
   : public SymbolTableListTraits<GlobalAlias, Module> {
-  // createSentinel is used to create a node that marks the end of the list.
-  GlobalAlias *createSentinel() const {
-    return static_cast<GlobalAlias*>(&Sentinel);
-  }
-  static void destroySentinel(GlobalAlias*) {}
-
-  GlobalAlias *provideInitialHead() const { return createSentinel(); }
-  GlobalAlias *ensureHead(GlobalAlias*) const { return createSentinel(); }
-  static void noteHead(GlobalAlias*, GlobalAlias*) {}
-private:
-  mutable ilist_node<GlobalAlias> Sentinel;
 };
 
 template<> struct ilist_traits<NamedMDNode>
-  : public ilist_default_traits<NamedMDNode> {
-  // createSentinel is used to get hold of a node that marks the end of
-  // the list...
-  NamedMDNode *createSentinel() const {
-    return static_cast<NamedMDNode*>(&Sentinel);
-  }
-  static void destroySentinel(NamedMDNode*) {}
-
-  NamedMDNode *provideInitialHead() const { return createSentinel(); }
-  NamedMDNode *ensureHead(NamedMDNode*) const { return createSentinel(); }
-  static void noteHead(NamedMDNode*, NamedMDNode*) {}
+  : public ilist_nextprev_traits<NamedMDNode>,
+    public ilist_ghostly_sentinel_traits<NamedMDNode>,
+    public ilist_node_traits<NamedMDNode> {
   void addNodeToList(NamedMDNode *) {}
   void removeNodeFromList(NamedMDNode *) {}
-private:
-  mutable ilist_node<NamedMDNode> Sentinel;
 };
 
 /// A Module instance is used to store all the information related to an
