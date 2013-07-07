@@ -16,16 +16,25 @@ class TestingConfig:
                 'PATH' : os.pathsep.join(litConfig.path +
                                          [os.environ.get('PATH','')]),
                 'SYSTEMROOT' : os.environ.get('SYSTEMROOT',''),
+                'TERM' : os.environ.get('TERM',''),
                 'LLVM_DISABLE_CRASH_REPORT' : '1',
                 }
 
             if sys.platform == 'win32':
                 environment.update({
+                        'INCLUDE' : os.environ.get('INCLUDE',''),
                         'PATHEXT' : os.environ.get('PATHEXT',''),
                         'PYTHONUNBUFFERED' : '1',
                         'TEMP' : os.environ.get('TEMP',''),
                         'TMP' : os.environ.get('TMP',''),
                         })
+
+            # Set the default available features based on the LitConfig.
+            available_features = []
+            if litConfig.useValgrind:
+                available_features.append('valgrind')
+                if litConfig.valgrindLeakCheck:
+                    available_features.append('vg_leak')
 
             config = TestingConfig(parent,
                                    name = '<unnamed>',
@@ -38,7 +47,7 @@ class TestingConfig:
                                    test_exec_root = None,
                                    test_source_root = None,
                                    excludes = [],
-                                   available_features = [])
+                                   available_features = available_features)
 
         if os.path.exists(path):
             # FIXME: Improve detection and error reporting of errors in the
@@ -113,3 +122,12 @@ class TestingConfig:
             # files. Should we distinguish them?
             self.test_source_root = str(self.test_source_root)
         self.excludes = set(self.excludes)
+
+    @property
+    def root(self):
+        """root attribute - The root configuration for the test suite."""
+        if self.parent is None:
+            return self
+        else:
+            return self.parent.root
+

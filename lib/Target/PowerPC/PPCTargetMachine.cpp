@@ -11,15 +11,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PPC.h"
 #include "PPCTargetMachine.h"
-#include "llvm/PassManager.h"
-#include "llvm/MC/MCStreamer.h"
+#include "PPC.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/Target/TargetOptions.h"
+#include "llvm/MC/MCStreamer.h"
+#include "llvm/PassManager.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Target/TargetOptions.h"
 using namespace llvm;
+
+static cl::
+opt<bool> DisableCTRLoops("disable-ppc-ctrloops", cl::Hidden,
+                        cl::desc("Disable CTR loops for PPC"));
 
 extern "C" void LLVMInitializePowerPCTarget() {
   // Register the targets
@@ -35,10 +40,15 @@ PPCTargetMachine::PPCTargetMachine(const Target &T, StringRef TT,
                                    bool is64Bit)
   : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
     Subtarget(TT, CPU, FS, is64Bit),
-    DataLayout(Subtarget.getTargetDataString()), InstrInfo(*this),
+    DL(Subtarget.getDataLayoutString()), InstrInfo(*this),
     FrameLowering(Subtarget), JITInfo(*this, is64Bit),
     TLInfo(*this), TSInfo(*this),
     InstrItins(Subtarget.getInstrItineraryData()) {
+
+  // The binutils for the BG/P are too old for CFI.
+  if (Subtarget.isBGP())
+    setMCUseCFI(false);
+  initAsmInfo();
 }
 
 void PPC32TargetMachine::anchor() { }
@@ -77,41 +87,67 @@ public:
     return getTM<PPCTargetMachine>();
   }
 
+  const PPCSubtarget &getPPCSubtarget() const {
+    return *getPPCTargetMachine().getSubtargetImpl();
+  }
+
+  virtual bool addPreISel();
+  virtual bool addILPOpts();
   virtual bool addInstSelector();
+  virtual bool addPreSched2();
   virtual bool addPreEmitPass();
 };
 } // namespace
 
 TargetPassConfig *PPCTargetMachine::createPassConfig(PassManagerBase &PM) {
-  TargetPassConfig *PassConfig = new PPCPassConfig(this, PM);
+  return new PPCPassConfig(this, PM);
+}
 
-  // Override this for PowerPC.  Tail merging happily breaks up instruction issue
-  // groups, which typically degrades performance.
-  PassConfig->setEnableTailMerge(false);
+bool PPCPassConfig::addPreISel() {
+  if (!DisableCTRLoops && getOptLevel() != CodeGenOpt::None)
+    addPass(createPPCCTRLoops(getPPCTargetMachine()));
 
-  return PassConfig;
+  return false;
+}
+
+bool PPCPassConfig::addILPOpts() {
+  if (getPPCSubtarget().hasISEL()) {
+    addPass(&EarlyIfConverterID);
+    return true;
+  }
+
+  return false;
 }
 
 bool PPCPassConfig::addInstSelector() {
   // Install an instruction selector.
-  PM.add(createPPCISelDag(getPPCTargetMachine()));
+  addPass(createPPCISelDag(getPPCTargetMachine()));
+
+#ifndef NDEBUG
+  if (!DisableCTRLoops && getOptLevel() != CodeGenOpt::None)
+    addPass(createPPCCTRLoopsVerify());
+#endif
+
   return false;
 }
 
+bool PPCPassConfig::addPreSched2() {
+  if (getOptLevel() != CodeGenOpt::None)
+    addPass(&IfConverterID);
+
+  return true;
+}
+
 bool PPCPassConfig::addPreEmitPass() {
+  if (getOptLevel() != CodeGenOpt::None)
+    addPass(createPPCEarlyReturnPass());
   // Must run branch selection immediately preceding the asm printer.
-  PM.add(createPPCBranchSelectionPass());
+  addPass(createPPCBranchSelectionPass());
   return false;
 }
 
 bool PPCTargetMachine::addCodeEmitter(PassManagerBase &PM,
                                       JITCodeEmitter &JCE) {
-  // FIXME: This should be moved to TargetJITInfo!!
-  if (Subtarget.isPPC64())
-    // Temporary workaround for the inability of PPC64 JIT to handle jump
-    // tables.
-    Options.DisableJumpTables = true;
-
   // Inform the subtarget that we are in JIT mode.  FIXME: does this break macho
   // writing?
   Subtarget.SetJITMode();
@@ -121,3 +157,12 @@ bool PPCTargetMachine::addCodeEmitter(PassManagerBase &PM,
 
   return false;
 }
+
+void PPCTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
+  // Add first the target-independent BasicTTI pass, then our PPC pass. This
+  // allows the PPC pass to delegate to the target independent layer when
+  // appropriate.
+  PM.add(createBasicTargetTransformInfoPass(this));
+  PM.add(createPPCTargetTransformInfoPass(this));
+}
+

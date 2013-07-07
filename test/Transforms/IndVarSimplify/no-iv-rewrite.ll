@@ -1,4 +1,4 @@
-; RUN: opt < %s -indvars -enable-iv-rewrite=false -S | FileCheck %s
+; RUN: opt < %s -indvars -S | FileCheck %s
 ;
 ; Make sure that indvars isn't inserting canonical IVs.
 ; This is kinda hard to do until linear function test replacement is removed.
@@ -199,7 +199,6 @@ entry:
 ; back to the loop iv.
 ;
 ; CHECK: loop:
-; CHECK: phi i32
 ; CHECK-NOT: phi
 ; CHECK: exit:
 loop:

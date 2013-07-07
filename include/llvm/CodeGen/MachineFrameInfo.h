@@ -21,13 +21,16 @@
 
 namespace llvm {
 class raw_ostream;
-class TargetData;
+class DataLayout;
 class TargetRegisterClass;
 class Type;
 class MachineFunction;
 class MachineBasicBlock;
 class TargetFrameLowering;
+class TargetMachine;
 class BitVector;
+class Value;
+class AllocaInst;
 
 /// The CalleeSavedInfo class tracks the information need to locate where a
 /// callee saved register is in the current frame.
@@ -103,15 +106,21 @@ class MachineFrameInfo {
     // protector.
     bool MayNeedSP;
 
+    /// Alloca - If this stack object is originated from an Alloca instruction
+    /// this value saves the original IR allocation. Can be NULL.
+    const AllocaInst *Alloca;
+
     // PreAllocated - If true, the object was mapped into the local frame
     // block and doesn't need additional handling for allocation beyond that.
     bool PreAllocated;
 
     StackObject(uint64_t Sz, unsigned Al, int64_t SP, bool IM,
-                bool isSS, bool NSP)
+                bool isSS, bool NSP, const AllocaInst *Val)
       : SPOffset(SP), Size(Sz), Alignment(Al), isImmutable(IM),
-        isSpillSlot(isSS), MayNeedSP(NSP), PreAllocated(false) {}
+        isSpillSlot(isSS), MayNeedSP(NSP), Alloca(Val), PreAllocated(false) {}
   };
+
+  const TargetMachine &TM;
 
   /// Objects - The list of stack objects allocated...
   ///
@@ -195,10 +204,6 @@ class MachineFrameInfo {
   /// CSIValid - Has CSInfo been set yet?
   bool CSIValid;
 
-  /// TargetFrameLowering - Target information about frame layout.
-  ///
-  const TargetFrameLowering &TFI;
-
   /// LocalFrameObjects - References to frame indices which are mapped
   /// into the local frame allocation block. <FrameIdx, LocalOffset>
   SmallVector<std::pair<int, int64_t>, 32> LocalFrameObjects;
@@ -215,8 +220,13 @@ class MachineFrameInfo {
   /// just allocate them normally.
   bool UseLocalStackAllocationBlock;
 
+  /// Whether the "realign-stack" option is on.
+  bool RealignOption;
+
+  const TargetFrameLowering *getFrameLowering() const;
 public:
-    explicit MachineFrameInfo(const TargetFrameLowering &tfi) : TFI(tfi) {
+    explicit MachineFrameInfo(const TargetMachine &TM, bool RealignOpt)
+    : TM(TM), RealignOption(RealignOpt) {
     StackSize = NumFixedObjects = OffsetAdjustment = MaxAlignment = 0;
     HasVarSizedObjects = false;
     FrameAddressTaken = false;
@@ -359,7 +369,15 @@ public:
     assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
            "Invalid Object Idx!");
     Objects[ObjectIdx+NumFixedObjects].Alignment = Align;
-    MaxAlignment = std::max(MaxAlignment, Align);
+    ensureMaxAlignment(Align);
+  }
+
+  /// getObjectAllocation - Return the underlying Alloca of the specified
+  /// stack object if it exists. Returns 0 if none exists.
+  const AllocaInst* getObjectAllocation(int ObjectIdx) const {
+    assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
+           "Invalid Object Idx!");
+    return Objects[ObjectIdx+NumFixedObjects].Alloca;
   }
 
   /// NeedsStackProtector - Returns true if the object may need stack
@@ -402,6 +420,9 @@ public:
   ///
   void setStackSize(uint64_t Size) { StackSize = Size; }
 
+  /// Estimate and return the size of the stack frame.
+  unsigned estimateStackSize(const MachineFunction &MF) const;
+
   /// getOffsetAdjustment - Return the correction for frame offsets.
   ///
   int getOffsetAdjustment() const { return OffsetAdjustment; }
@@ -416,9 +437,9 @@ public:
   ///
   unsigned getMaxAlignment() const { return MaxAlignment; }
 
-  /// setMaxAlignment - Set the preferred alignment.
-  ///
-  void setMaxAlignment(unsigned Align) { MaxAlignment = Align; }
+  /// ensureMaxAlignment - Make sure the function is at least Align bytes
+  /// aligned.
+  void ensureMaxAlignment(unsigned Align);
 
   /// AdjustsStack - Return true if this function adjusts the stack -- e.g.,
   /// when calling another function. This is only valid during and after
@@ -480,25 +501,13 @@ public:
   /// a nonnegative identifier to represent it.
   ///
   int CreateStackObject(uint64_t Size, unsigned Alignment, bool isSS,
-                        bool MayNeedSP = false) {
-    assert(Size != 0 && "Cannot allocate zero size stack objects!");
-    Objects.push_back(StackObject(Size, Alignment, 0, false, isSS, MayNeedSP));
-    int Index = (int)Objects.size() - NumFixedObjects - 1;
-    assert(Index >= 0 && "Bad frame index!");
-    MaxAlignment = std::max(MaxAlignment, Alignment);
-    return Index;
-  }
+                        bool MayNeedSP = false, const AllocaInst *Alloca = 0);
 
   /// CreateSpillStackObject - Create a new statically sized stack object that
   /// represents a spill slot, returning a nonnegative identifier to represent
   /// it.
   ///
-  int CreateSpillStackObject(uint64_t Size, unsigned Alignment) {
-    CreateStackObject(Size, Alignment, true, false);
-    int Index = (int)Objects.size() - NumFixedObjects - 1;
-    MaxAlignment = std::max(MaxAlignment, Alignment);
-    return Index;
-  }
+  int CreateSpillStackObject(uint64_t Size, unsigned Alignment);
 
   /// RemoveStackObject - Remove or mark dead a statically sized stack object.
   ///
@@ -512,12 +521,7 @@ public:
   /// variable sized object is created, whether or not the index returned is
   /// actually used.
   ///
-  int CreateVariableSizedObject(unsigned Alignment) {
-    HasVarSizedObjects = true;
-    Objects.push_back(StackObject(0, Alignment, 0, false, false, true));
-    MaxAlignment = std::max(MaxAlignment, Alignment);
-    return (int)Objects.size()-NumFixedObjects-1;
-  }
+  int CreateVariableSizedObject(unsigned Alignment);
 
   /// getCalleeSavedInfo - Returns a reference to call saved info vector for the
   /// current function.

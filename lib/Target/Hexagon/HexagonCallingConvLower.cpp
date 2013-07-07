@@ -14,25 +14,24 @@
 //===----------------------------------------------------------------------===//
 
 #include "HexagonCallingConvLower.h"
-#include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetMachine.h"
+#include "Hexagon.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "Hexagon.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
 
 Hexagon_CCState::Hexagon_CCState(CallingConv::ID CC, bool isVarArg,
                                  const TargetMachine &tm,
                                  SmallVector<CCValAssign, 16> &locs,
                                  LLVMContext &c)
-  : CallingConv(CC), IsVarArg(isVarArg), TM(tm),
-    TRI(*TM.getRegisterInfo()), Locs(locs), Context(c) {
+  : CallingConv(CC), IsVarArg(isVarArg), TM(tm), Locs(locs), Context(c) {
   // No stack is used.
   StackOffset = 0;
 
-  UsedRegs.resize((TRI.getNumRegs()+31)/32);
+  UsedRegs.resize((TM.getRegisterInfo()->getNumRegs()+31)/32);
 }
 
 // HandleByVal - Allocate a stack slot large enough to pass an argument by
@@ -56,11 +55,9 @@ void Hexagon_CCState::HandleByVal(unsigned ValNo, EVT ValVT,
 
 /// MarkAllocated - Mark a register and all of its aliases as allocated.
 void Hexagon_CCState::MarkAllocated(unsigned Reg) {
-  UsedRegs[Reg/32] |= 1 << (Reg&31);
-
-  if (const unsigned *RegAliases = TRI.getAliasSet(Reg))
-    for (; (Reg = *RegAliases); ++RegAliases)
-      UsedRegs[Reg/32] |= 1 << (Reg&31);
+  const TargetRegisterInfo &TRI = *TM.getRegisterInfo();
+  for (MCRegAliasIterator AI(Reg, &TRI, true); AI.isValid(); ++AI)
+    UsedRegs[*AI/32] |= 1 << (*AI&31);
 }
 
 /// AnalyzeFormalArguments - Analyze an ISD::FORMAL_ARGUMENTS node,

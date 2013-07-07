@@ -18,16 +18,20 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "instsimplify"
-#include "llvm/Operator.h"
-#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/InstructionSimplify.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/ConstantRange.h"
+#include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Support/PatternMatch.h"
 #include "llvm/Support/ValueHandle.h"
-#include "llvm/Target/TargetData.h"
 using namespace llvm;
 using namespace llvm::PatternMatch;
 
@@ -37,21 +41,23 @@ STATISTIC(NumExpand,  "Number of expansions");
 STATISTIC(NumFactor , "Number of factorizations");
 STATISTIC(NumReassoc, "Number of reassociations");
 
-static Value *SimplifyAndInst(Value *, Value *, const TargetData *,
-                              const TargetLibraryInfo *, const DominatorTree *,
-                              unsigned);
-static Value *SimplifyBinOp(unsigned, Value *, Value *, const TargetData *,
-                            const TargetLibraryInfo *, const DominatorTree *,
+struct Query {
+  const DataLayout *TD;
+  const TargetLibraryInfo *TLI;
+  const DominatorTree *DT;
+
+  Query(const DataLayout *td, const TargetLibraryInfo *tli,
+        const DominatorTree *dt) : TD(td), TLI(tli), DT(dt) {}
+};
+
+static Value *SimplifyAndInst(Value *, Value *, const Query &, unsigned);
+static Value *SimplifyBinOp(unsigned, Value *, Value *, const Query &,
                             unsigned);
-static Value *SimplifyCmpInst(unsigned, Value *, Value *, const TargetData *,
-                              const TargetLibraryInfo *, const DominatorTree *,
+static Value *SimplifyCmpInst(unsigned, Value *, Value *, const Query &,
                               unsigned);
-static Value *SimplifyOrInst(Value *, Value *, const TargetData *,
-                             const TargetLibraryInfo *, const DominatorTree *,
-                             unsigned);
-static Value *SimplifyXorInst(Value *, Value *, const TargetData *,
-                              const TargetLibraryInfo *, const DominatorTree *,
-                              unsigned);
+static Value *SimplifyOrInst(Value *, Value *, const Query &, unsigned);
+static Value *SimplifyXorInst(Value *, Value *, const Query &, unsigned);
+static Value *SimplifyTruncInst(Value *, Type *, const Query &, unsigned);
 
 /// getFalse - For a boolean type, or a vector of boolean type, return false, or
 /// a vector with every element false, as appropriate for the type.
@@ -90,9 +96,20 @@ static bool ValueDominatesPHI(Value *V, PHINode *P, const DominatorTree *DT) {
     // Arguments and constants dominate all instructions.
     return true;
 
+  // If we are processing instructions (and/or basic blocks) that have not been
+  // fully added to a function, the parent nodes may still be null. Simply
+  // return the conservative answer in these cases.
+  if (!I->getParent() || !P->getParent() || !I->getParent()->getParent())
+    return false;
+
   // If we have a DominatorTree then do a precise test.
-  if (DT)
+  if (DT) {
+    if (!DT->isReachableFromEntry(P->getParent()))
+      return true;
+    if (!DT->isReachableFromEntry(I->getParent()))
+      return false;
     return DT->dominates(I, P);
+  }
 
   // Otherwise, if the instruction is in the entry block, and is not an invoke,
   // then it obviously dominates all phi nodes.
@@ -109,8 +126,7 @@ static bool ValueDominatesPHI(Value *V, PHINode *P, const DominatorTree *DT) {
 /// Also performs the transform "(A op' B) op C" -> "(A op C) op' (B op C)".
 /// Returns the simplified value, or null if no simplification was performed.
 static Value *ExpandBinOp(unsigned Opcode, Value *LHS, Value *RHS,
-                          unsigned OpcToExpand, const TargetData *TD,
-                          const TargetLibraryInfo *TLI, const DominatorTree *DT,
+                          unsigned OpcToExpand, const Query &Q,
                           unsigned MaxRecurse) {
   Instruction::BinaryOps OpcodeToExpand = (Instruction::BinaryOps)OpcToExpand;
   // Recursion is always used, so bail out at once if we already hit the limit.
@@ -123,8 +139,8 @@ static Value *ExpandBinOp(unsigned Opcode, Value *LHS, Value *RHS,
       // It does!  Try turning it into "(A op C) op' (B op C)".
       Value *A = Op0->getOperand(0), *B = Op0->getOperand(1), *C = RHS;
       // Do "A op C" and "B op C" both simplify?
-      if (Value *L = SimplifyBinOp(Opcode, A, C, TD, TLI, DT, MaxRecurse))
-        if (Value *R = SimplifyBinOp(Opcode, B, C, TD, TLI, DT, MaxRecurse)) {
+      if (Value *L = SimplifyBinOp(Opcode, A, C, Q, MaxRecurse))
+        if (Value *R = SimplifyBinOp(Opcode, B, C, Q, MaxRecurse)) {
           // They do! Return "L op' R" if it simplifies or is already available.
           // If "L op' R" equals "A op' B" then "L op' R" is just the LHS.
           if ((L == A && R == B) || (Instruction::isCommutative(OpcodeToExpand)
@@ -133,8 +149,7 @@ static Value *ExpandBinOp(unsigned Opcode, Value *LHS, Value *RHS,
             return LHS;
           }
           // Otherwise return "L op' R" if it simplifies.
-          if (Value *V = SimplifyBinOp(OpcodeToExpand, L, R, TD, TLI, DT,
-                                       MaxRecurse)) {
+          if (Value *V = SimplifyBinOp(OpcodeToExpand, L, R, Q, MaxRecurse)) {
             ++NumExpand;
             return V;
           }
@@ -147,8 +162,8 @@ static Value *ExpandBinOp(unsigned Opcode, Value *LHS, Value *RHS,
       // It does!  Try turning it into "(A op B) op' (A op C)".
       Value *A = LHS, *B = Op1->getOperand(0), *C = Op1->getOperand(1);
       // Do "A op B" and "A op C" both simplify?
-      if (Value *L = SimplifyBinOp(Opcode, A, B, TD, TLI, DT, MaxRecurse))
-        if (Value *R = SimplifyBinOp(Opcode, A, C, TD, TLI, DT, MaxRecurse)) {
+      if (Value *L = SimplifyBinOp(Opcode, A, B, Q, MaxRecurse))
+        if (Value *R = SimplifyBinOp(Opcode, A, C, Q, MaxRecurse)) {
           // They do! Return "L op' R" if it simplifies or is already available.
           // If "L op' R" equals "B op' C" then "L op' R" is just the RHS.
           if ((L == B && R == C) || (Instruction::isCommutative(OpcodeToExpand)
@@ -157,8 +172,7 @@ static Value *ExpandBinOp(unsigned Opcode, Value *LHS, Value *RHS,
             return RHS;
           }
           // Otherwise return "L op' R" if it simplifies.
-          if (Value *V = SimplifyBinOp(OpcodeToExpand, L, R, TD, TLI, DT,
-                                       MaxRecurse)) {
+          if (Value *V = SimplifyBinOp(OpcodeToExpand, L, R, Q, MaxRecurse)) {
             ++NumExpand;
             return V;
           }
@@ -173,9 +187,7 @@ static Value *ExpandBinOp(unsigned Opcode, Value *LHS, Value *RHS,
 /// OpCodeToExtract is Mul then this tries to turn "(A*B)+(A*C)" into "A*(B+C)".
 /// Returns the simplified value, or null if no simplification was performed.
 static Value *FactorizeBinOp(unsigned Opcode, Value *LHS, Value *RHS,
-                             unsigned OpcToExtract, const TargetData *TD, 
-                             const TargetLibraryInfo *TLI,
-                             const DominatorTree *DT,
+                             unsigned OpcToExtract, const Query &Q,
                              unsigned MaxRecurse) {
   Instruction::BinaryOps OpcodeToExtract = (Instruction::BinaryOps)OpcToExtract;
   // Recursion is always used, so bail out at once if we already hit the limit.
@@ -200,7 +212,7 @@ static Value *FactorizeBinOp(unsigned Opcode, Value *LHS, Value *RHS,
     Value *DD = A == C ? D : C;
     // Form "A op' (B op DD)" if it simplifies completely.
     // Does "B op DD" simplify?
-    if (Value *V = SimplifyBinOp(Opcode, B, DD, TD, TLI, DT, MaxRecurse)) {
+    if (Value *V = SimplifyBinOp(Opcode, B, DD, Q, MaxRecurse)) {
       // It does!  Return "A op' V" if it simplifies or is already available.
       // If V equals B then "A op' V" is just the LHS.  If V equals DD then
       // "A op' V" is just the RHS.
@@ -209,8 +221,7 @@ static Value *FactorizeBinOp(unsigned Opcode, Value *LHS, Value *RHS,
         return V == B ? LHS : RHS;
       }
       // Otherwise return "A op' V" if it simplifies.
-      if (Value *W = SimplifyBinOp(OpcodeToExtract, A, V, TD, TLI, DT,
-                                   MaxRecurse)) {
+      if (Value *W = SimplifyBinOp(OpcodeToExtract, A, V, Q, MaxRecurse)) {
         ++NumFactor;
         return W;
       }
@@ -224,7 +235,7 @@ static Value *FactorizeBinOp(unsigned Opcode, Value *LHS, Value *RHS,
     Value *CC = B == D ? C : D;
     // Form "(A op CC) op' B" if it simplifies completely..
     // Does "A op CC" simplify?
-    if (Value *V = SimplifyBinOp(Opcode, A, CC, TD, TLI, DT, MaxRecurse)) {
+    if (Value *V = SimplifyBinOp(Opcode, A, CC, Q, MaxRecurse)) {
       // It does!  Return "V op' B" if it simplifies or is already available.
       // If V equals A then "V op' B" is just the LHS.  If V equals CC then
       // "V op' B" is just the RHS.
@@ -233,8 +244,7 @@ static Value *FactorizeBinOp(unsigned Opcode, Value *LHS, Value *RHS,
         return V == A ? LHS : RHS;
       }
       // Otherwise return "V op' B" if it simplifies.
-      if (Value *W = SimplifyBinOp(OpcodeToExtract, V, B, TD, TLI, DT,
-                                   MaxRecurse)) {
+      if (Value *W = SimplifyBinOp(OpcodeToExtract, V, B, Q, MaxRecurse)) {
         ++NumFactor;
         return W;
       }
@@ -247,10 +257,7 @@ static Value *FactorizeBinOp(unsigned Opcode, Value *LHS, Value *RHS,
 /// SimplifyAssociativeBinOp - Generic simplifications for associative binary
 /// operations.  Returns the simpler value, or null if none was found.
 static Value *SimplifyAssociativeBinOp(unsigned Opc, Value *LHS, Value *RHS,
-                                       const TargetData *TD,
-                                       const TargetLibraryInfo *TLI,
-                                       const DominatorTree *DT,
-                                       unsigned MaxRecurse) {
+                                       const Query &Q, unsigned MaxRecurse) {
   Instruction::BinaryOps Opcode = (Instruction::BinaryOps)Opc;
   assert(Instruction::isAssociative(Opcode) && "Not an associative operation!");
 
@@ -268,12 +275,12 @@ static Value *SimplifyAssociativeBinOp(unsigned Opc, Value *LHS, Value *RHS,
     Value *C = RHS;
 
     // Does "B op C" simplify?
-    if (Value *V = SimplifyBinOp(Opcode, B, C, TD, TLI, DT, MaxRecurse)) {
+    if (Value *V = SimplifyBinOp(Opcode, B, C, Q, MaxRecurse)) {
       // It does!  Return "A op V" if it simplifies or is already available.
       // If V equals B then "A op V" is just the LHS.
       if (V == B) return LHS;
       // Otherwise return "A op V" if it simplifies.
-      if (Value *W = SimplifyBinOp(Opcode, A, V, TD, TLI, DT, MaxRecurse)) {
+      if (Value *W = SimplifyBinOp(Opcode, A, V, Q, MaxRecurse)) {
         ++NumReassoc;
         return W;
       }
@@ -287,12 +294,12 @@ static Value *SimplifyAssociativeBinOp(unsigned Opc, Value *LHS, Value *RHS,
     Value *C = Op1->getOperand(1);
 
     // Does "A op B" simplify?
-    if (Value *V = SimplifyBinOp(Opcode, A, B, TD, TLI, DT, MaxRecurse)) {
+    if (Value *V = SimplifyBinOp(Opcode, A, B, Q, MaxRecurse)) {
       // It does!  Return "V op C" if it simplifies or is already available.
       // If V equals B then "V op C" is just the RHS.
       if (V == B) return RHS;
       // Otherwise return "V op C" if it simplifies.
-      if (Value *W = SimplifyBinOp(Opcode, V, C, TD, TLI, DT, MaxRecurse)) {
+      if (Value *W = SimplifyBinOp(Opcode, V, C, Q, MaxRecurse)) {
         ++NumReassoc;
         return W;
       }
@@ -310,12 +317,12 @@ static Value *SimplifyAssociativeBinOp(unsigned Opc, Value *LHS, Value *RHS,
     Value *C = RHS;
 
     // Does "C op A" simplify?
-    if (Value *V = SimplifyBinOp(Opcode, C, A, TD, TLI, DT, MaxRecurse)) {
+    if (Value *V = SimplifyBinOp(Opcode, C, A, Q, MaxRecurse)) {
       // It does!  Return "V op B" if it simplifies or is already available.
       // If V equals A then "V op B" is just the LHS.
       if (V == A) return LHS;
       // Otherwise return "V op B" if it simplifies.
-      if (Value *W = SimplifyBinOp(Opcode, V, B, TD, TLI, DT, MaxRecurse)) {
+      if (Value *W = SimplifyBinOp(Opcode, V, B, Q, MaxRecurse)) {
         ++NumReassoc;
         return W;
       }
@@ -329,12 +336,12 @@ static Value *SimplifyAssociativeBinOp(unsigned Opc, Value *LHS, Value *RHS,
     Value *C = Op1->getOperand(1);
 
     // Does "C op A" simplify?
-    if (Value *V = SimplifyBinOp(Opcode, C, A, TD, TLI, DT, MaxRecurse)) {
+    if (Value *V = SimplifyBinOp(Opcode, C, A, Q, MaxRecurse)) {
       // It does!  Return "B op V" if it simplifies or is already available.
       // If V equals C then "B op V" is just the RHS.
       if (V == C) return RHS;
       // Otherwise return "B op V" if it simplifies.
-      if (Value *W = SimplifyBinOp(Opcode, B, V, TD, TLI, DT, MaxRecurse)) {
+      if (Value *W = SimplifyBinOp(Opcode, B, V, Q, MaxRecurse)) {
         ++NumReassoc;
         return W;
       }
@@ -349,10 +356,7 @@ static Value *SimplifyAssociativeBinOp(unsigned Opc, Value *LHS, Value *RHS,
 /// evaluating it on both branches of the select results in the same value.
 /// Returns the common value if so, otherwise returns null.
 static Value *ThreadBinOpOverSelect(unsigned Opcode, Value *LHS, Value *RHS,
-                                    const TargetData *TD,
-                                    const TargetLibraryInfo *TLI,
-                                    const DominatorTree *DT,
-                                    unsigned MaxRecurse) {
+                                    const Query &Q, unsigned MaxRecurse) {
   // Recursion is always used, so bail out at once if we already hit the limit.
   if (!MaxRecurse--)
     return 0;
@@ -369,11 +373,11 @@ static Value *ThreadBinOpOverSelect(unsigned Opcode, Value *LHS, Value *RHS,
   Value *TV;
   Value *FV;
   if (SI == LHS) {
-    TV = SimplifyBinOp(Opcode, SI->getTrueValue(), RHS, TD, TLI, DT, MaxRecurse);
-    FV = SimplifyBinOp(Opcode, SI->getFalseValue(), RHS, TD, TLI, DT, MaxRecurse);
+    TV = SimplifyBinOp(Opcode, SI->getTrueValue(), RHS, Q, MaxRecurse);
+    FV = SimplifyBinOp(Opcode, SI->getFalseValue(), RHS, Q, MaxRecurse);
   } else {
-    TV = SimplifyBinOp(Opcode, LHS, SI->getTrueValue(), TD, TLI, DT, MaxRecurse);
-    FV = SimplifyBinOp(Opcode, LHS, SI->getFalseValue(), TD, TLI, DT, MaxRecurse);
+    TV = SimplifyBinOp(Opcode, LHS, SI->getTrueValue(), Q, MaxRecurse);
+    FV = SimplifyBinOp(Opcode, LHS, SI->getFalseValue(), Q, MaxRecurse);
   }
 
   // If they simplified to the same value, then return the common value.
@@ -424,9 +428,7 @@ static Value *ThreadBinOpOverSelect(unsigned Opcode, Value *LHS, Value *RHS,
 /// result in the same value.  Returns the common value if so, otherwise returns
 /// null.
 static Value *ThreadCmpOverSelect(CmpInst::Predicate Pred, Value *LHS,
-                                  Value *RHS, const TargetData *TD,
-                                  const TargetLibraryInfo *TLI,
-                                  const DominatorTree *DT,
+                                  Value *RHS, const Query &Q,
                                   unsigned MaxRecurse) {
   // Recursion is always used, so bail out at once if we already hit the limit.
   if (!MaxRecurse--)
@@ -445,7 +447,7 @@ static Value *ThreadCmpOverSelect(CmpInst::Predicate Pred, Value *LHS,
 
   // Now that we have "cmp select(Cond, TV, FV), RHS", analyse it.
   // Does "cmp TV, RHS" simplify?
-  Value *TCmp = SimplifyCmpInst(Pred, TV, RHS, TD, TLI, DT, MaxRecurse);
+  Value *TCmp = SimplifyCmpInst(Pred, TV, RHS, Q, MaxRecurse);
   if (TCmp == Cond) {
     // It not only simplified, it simplified to the select condition.  Replace
     // it with 'true'.
@@ -459,7 +461,7 @@ static Value *ThreadCmpOverSelect(CmpInst::Predicate Pred, Value *LHS,
   }
 
   // Does "cmp FV, RHS" simplify?
-  Value *FCmp = SimplifyCmpInst(Pred, FV, RHS, TD, TLI, DT, MaxRecurse);
+  Value *FCmp = SimplifyCmpInst(Pred, FV, RHS, Q, MaxRecurse);
   if (FCmp == Cond) {
     // It not only simplified, it simplified to the select condition.  Replace
     // it with 'false'.
@@ -485,19 +487,19 @@ static Value *ThreadCmpOverSelect(CmpInst::Predicate Pred, Value *LHS,
   // is equal to "Cond && TCmp".  This also catches the case when the false
   // value simplified to false and the true value to true, returning "Cond".
   if (match(FCmp, m_Zero()))
-    if (Value *V = SimplifyAndInst(Cond, TCmp, TD, TLI, DT, MaxRecurse))
+    if (Value *V = SimplifyAndInst(Cond, TCmp, Q, MaxRecurse))
       return V;
   // If the true value simplified to true, then the result of the compare
   // is equal to "Cond || FCmp".
   if (match(TCmp, m_One()))
-    if (Value *V = SimplifyOrInst(Cond, FCmp, TD, TLI, DT, MaxRecurse))
+    if (Value *V = SimplifyOrInst(Cond, FCmp, Q, MaxRecurse))
       return V;
   // Finally, if the false value simplified to true and the true value to
   // false, then the result of the compare is equal to "!Cond".
   if (match(FCmp, m_One()) && match(TCmp, m_Zero()))
     if (Value *V =
         SimplifyXorInst(Cond, Constant::getAllOnesValue(Cond->getType()),
-                        TD, TLI, DT, MaxRecurse))
+                        Q, MaxRecurse))
       return V;
 
   return 0;
@@ -508,10 +510,7 @@ static Value *ThreadCmpOverSelect(CmpInst::Predicate Pred, Value *LHS,
 /// it on the incoming phi values yields the same result for every value.  If so
 /// returns the common value, otherwise returns null.
 static Value *ThreadBinOpOverPHI(unsigned Opcode, Value *LHS, Value *RHS,
-                                 const TargetData *TD,
-                                 const TargetLibraryInfo *TLI, 
-                                 const DominatorTree *DT,
-                                 unsigned MaxRecurse) {
+                                 const Query &Q, unsigned MaxRecurse) {
   // Recursion is always used, so bail out at once if we already hit the limit.
   if (!MaxRecurse--)
     return 0;
@@ -520,13 +519,13 @@ static Value *ThreadBinOpOverPHI(unsigned Opcode, Value *LHS, Value *RHS,
   if (isa<PHINode>(LHS)) {
     PI = cast<PHINode>(LHS);
     // Bail out if RHS and the phi may be mutually interdependent due to a loop.
-    if (!ValueDominatesPHI(RHS, PI, DT))
+    if (!ValueDominatesPHI(RHS, PI, Q.DT))
       return 0;
   } else {
     assert(isa<PHINode>(RHS) && "No PHI instruction operand!");
     PI = cast<PHINode>(RHS);
     // Bail out if LHS and the phi may be mutually interdependent due to a loop.
-    if (!ValueDominatesPHI(LHS, PI, DT))
+    if (!ValueDominatesPHI(LHS, PI, Q.DT))
       return 0;
   }
 
@@ -537,8 +536,8 @@ static Value *ThreadBinOpOverPHI(unsigned Opcode, Value *LHS, Value *RHS,
     // If the incoming value is the phi node itself, it can safely be skipped.
     if (Incoming == PI) continue;
     Value *V = PI == LHS ?
-      SimplifyBinOp(Opcode, Incoming, RHS, TD, TLI, DT, MaxRecurse) :
-      SimplifyBinOp(Opcode, LHS, Incoming, TD, TLI, DT, MaxRecurse);
+      SimplifyBinOp(Opcode, Incoming, RHS, Q, MaxRecurse) :
+      SimplifyBinOp(Opcode, LHS, Incoming, Q, MaxRecurse);
     // If the operation failed to simplify, or simplified to a different value
     // to previously, then give up.
     if (!V || (CommonValue && V != CommonValue))
@@ -554,10 +553,7 @@ static Value *ThreadBinOpOverPHI(unsigned Opcode, Value *LHS, Value *RHS,
 /// incoming phi values yields the same result every time.  If so returns the
 /// common result, otherwise returns null.
 static Value *ThreadCmpOverPHI(CmpInst::Predicate Pred, Value *LHS, Value *RHS,
-                               const TargetData *TD,
-                               const TargetLibraryInfo *TLI,
-                               const DominatorTree *DT,
-                               unsigned MaxRecurse) {
+                               const Query &Q, unsigned MaxRecurse) {
   // Recursion is always used, so bail out at once if we already hit the limit.
   if (!MaxRecurse--)
     return 0;
@@ -571,7 +567,7 @@ static Value *ThreadCmpOverPHI(CmpInst::Predicate Pred, Value *LHS, Value *RHS,
   PHINode *PI = cast<PHINode>(LHS);
 
   // Bail out if RHS and the phi may be mutually interdependent due to a loop.
-  if (!ValueDominatesPHI(RHS, PI, DT))
+  if (!ValueDominatesPHI(RHS, PI, Q.DT))
     return 0;
 
   // Evaluate the BinOp on the incoming phi values.
@@ -580,7 +576,7 @@ static Value *ThreadCmpOverPHI(CmpInst::Predicate Pred, Value *LHS, Value *RHS,
     Value *Incoming = PI->getIncomingValue(i);
     // If the incoming value is the phi node itself, it can safely be skipped.
     if (Incoming == PI) continue;
-    Value *V = SimplifyCmpInst(Pred, Incoming, RHS, TD, TLI, DT, MaxRecurse);
+    Value *V = SimplifyCmpInst(Pred, Incoming, RHS, Q, MaxRecurse);
     // If the operation failed to simplify, or simplified to a different value
     // to previously, then give up.
     if (!V || (CommonValue && V != CommonValue))
@@ -594,15 +590,12 @@ static Value *ThreadCmpOverPHI(CmpInst::Predicate Pred, Value *LHS, Value *RHS,
 /// SimplifyAddInst - Given operands for an Add, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyAddInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
-                              const TargetData *TD,
-                              const TargetLibraryInfo *TLI,
-                              const DominatorTree *DT,
-                              unsigned MaxRecurse) {
+                              const Query &Q, unsigned MaxRecurse) {
   if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
     if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
       Constant *Ops[] = { CLHS, CRHS };
-      return ConstantFoldInstOperands(Instruction::Add, CLHS->getType(),
-                                      Ops, TD, TLI);
+      return ConstantFoldInstOperands(Instruction::Add, CLHS->getType(), Ops,
+                                      Q.TD, Q.TLI);
     }
 
     // Canonicalize the constant to the RHS.
@@ -632,17 +625,17 @@ static Value *SimplifyAddInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
 
   /// i1 add -> xor.
   if (MaxRecurse && Op0->getType()->isIntegerTy(1))
-    if (Value *V = SimplifyXorInst(Op0, Op1, TD, TLI, DT, MaxRecurse-1))
+    if (Value *V = SimplifyXorInst(Op0, Op1, Q, MaxRecurse-1))
       return V;
 
   // Try some generic simplifications for associative operations.
-  if (Value *V = SimplifyAssociativeBinOp(Instruction::Add, Op0, Op1, TD, TLI, DT,
+  if (Value *V = SimplifyAssociativeBinOp(Instruction::Add, Op0, Op1, Q,
                                           MaxRecurse))
     return V;
 
   // Mul distributes over Add.  Try some generic simplifications based on this.
   if (Value *V = FactorizeBinOp(Instruction::Add, Op0, Op1, Instruction::Mul,
-                                TD, TLI, DT, MaxRecurse))
+                                Q, MaxRecurse))
     return V;
 
   // Threading Add over selects and phi nodes is pointless, so don't bother.
@@ -658,23 +651,92 @@ static Value *SimplifyAddInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
 }
 
 Value *llvm::SimplifyAddInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
-                             const TargetData *TD, const TargetLibraryInfo *TLI,
+                             const DataLayout *TD, const TargetLibraryInfo *TLI,
                              const DominatorTree *DT) {
-  return ::SimplifyAddInst(Op0, Op1, isNSW, isNUW, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyAddInst(Op0, Op1, isNSW, isNUW, Query (TD, TLI, DT),
+                           RecursionLimit);
+}
+
+/// \brief Compute the base pointer and cumulative constant offsets for V.
+///
+/// This strips all constant offsets off of V, leaving it the base pointer, and
+/// accumulates the total constant offset applied in the returned constant. It
+/// returns 0 if V is not a pointer, and returns the constant '0' if there are
+/// no constant offsets applied.
+///
+/// This is very similar to GetPointerBaseWithConstantOffset except it doesn't
+/// follow non-inbounds geps. This allows it to remain usable for icmp ult/etc.
+/// folding.
+static Constant *stripAndComputeConstantOffsets(const DataLayout *TD,
+                                                Value *&V) {
+  assert(V->getType()->getScalarType()->isPointerTy());
+
+  // Without DataLayout, just be conservative for now. Theoretically, more could
+  // be done in this case.
+  if (!TD)
+    return ConstantInt::get(IntegerType::get(V->getContext(), 64), 0);
+
+  unsigned IntPtrWidth = TD->getPointerSizeInBits();
+  APInt Offset = APInt::getNullValue(IntPtrWidth);
+
+  // Even though we don't look through PHI nodes, we could be called on an
+  // instruction in an unreachable block, which may be on a cycle.
+  SmallPtrSet<Value *, 4> Visited;
+  Visited.insert(V);
+  do {
+    if (GEPOperator *GEP = dyn_cast<GEPOperator>(V)) {
+      if (!GEP->isInBounds() || !GEP->accumulateConstantOffset(*TD, Offset))
+        break;
+      V = GEP->getPointerOperand();
+    } else if (Operator::getOpcode(V) == Instruction::BitCast) {
+      V = cast<Operator>(V)->getOperand(0);
+    } else if (GlobalAlias *GA = dyn_cast<GlobalAlias>(V)) {
+      if (GA->mayBeOverridden())
+        break;
+      V = GA->getAliasee();
+    } else {
+      break;
+    }
+    assert(V->getType()->getScalarType()->isPointerTy() &&
+           "Unexpected operand type!");
+  } while (Visited.insert(V));
+
+  Type *IntPtrTy = TD->getIntPtrType(V->getContext());
+  Constant *OffsetIntPtr = ConstantInt::get(IntPtrTy, Offset);
+  if (V->getType()->isVectorTy())
+    return ConstantVector::getSplat(V->getType()->getVectorNumElements(),
+                                    OffsetIntPtr);
+  return OffsetIntPtr;
+}
+
+/// \brief Compute the constant difference between two pointer values.
+/// If the difference is not a constant, returns zero.
+static Constant *computePointerDifference(const DataLayout *TD,
+                                          Value *LHS, Value *RHS) {
+  Constant *LHSOffset = stripAndComputeConstantOffsets(TD, LHS);
+  Constant *RHSOffset = stripAndComputeConstantOffsets(TD, RHS);
+
+  // If LHS and RHS are not related via constant offsets to the same base
+  // value, there is nothing we can do here.
+  if (LHS != RHS)
+    return 0;
+
+  // Otherwise, the difference of LHS - RHS can be computed as:
+  //    LHS - RHS
+  //  = (LHSOffset + Base) - (RHSOffset + Base)
+  //  = LHSOffset - RHSOffset
+  return ConstantExpr::getSub(LHSOffset, RHSOffset);
 }
 
 /// SimplifySubInst - Given operands for a Sub, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifySubInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
-                              const TargetData *TD,
-                              const TargetLibraryInfo *TLI,
-                              const DominatorTree *DT,
-                              unsigned MaxRecurse) {
+                              const Query &Q, unsigned MaxRecurse) {
   if (Constant *CLHS = dyn_cast<Constant>(Op0))
     if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
       Constant *Ops[] = { CLHS, CRHS };
       return ConstantFoldInstOperands(Instruction::Sub, CLHS->getType(),
-                                      Ops, TD, TLI);
+                                      Ops, Q.TD, Q.TLI);
     }
 
   // X - undef -> undef
@@ -702,19 +764,17 @@ static Value *SimplifySubInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
   Value *Y = 0, *Z = Op1;
   if (MaxRecurse && match(Op0, m_Add(m_Value(X), m_Value(Y)))) { // (X + Y) - Z
     // See if "V === Y - Z" simplifies.
-    if (Value *V = SimplifyBinOp(Instruction::Sub, Y, Z, TD, TLI, DT, MaxRecurse-1))
+    if (Value *V = SimplifyBinOp(Instruction::Sub, Y, Z, Q, MaxRecurse-1))
       // It does!  Now see if "X + V" simplifies.
-      if (Value *W = SimplifyBinOp(Instruction::Add, X, V, TD, TLI, DT,
-                                   MaxRecurse-1)) {
+      if (Value *W = SimplifyBinOp(Instruction::Add, X, V, Q, MaxRecurse-1)) {
         // It does, we successfully reassociated!
         ++NumReassoc;
         return W;
       }
     // See if "V === X - Z" simplifies.
-    if (Value *V = SimplifyBinOp(Instruction::Sub, X, Z, TD, TLI, DT, MaxRecurse-1))
+    if (Value *V = SimplifyBinOp(Instruction::Sub, X, Z, Q, MaxRecurse-1))
       // It does!  Now see if "Y + V" simplifies.
-      if (Value *W = SimplifyBinOp(Instruction::Add, Y, V, TD, TLI, DT,
-                                   MaxRecurse-1)) {
+      if (Value *W = SimplifyBinOp(Instruction::Add, Y, V, Q, MaxRecurse-1)) {
         // It does, we successfully reassociated!
         ++NumReassoc;
         return W;
@@ -726,19 +786,17 @@ static Value *SimplifySubInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
   X = Op0;
   if (MaxRecurse && match(Op1, m_Add(m_Value(Y), m_Value(Z)))) { // X - (Y + Z)
     // See if "V === X - Y" simplifies.
-    if (Value *V = SimplifyBinOp(Instruction::Sub, X, Y, TD, TLI, DT, MaxRecurse-1))
+    if (Value *V = SimplifyBinOp(Instruction::Sub, X, Y, Q, MaxRecurse-1))
       // It does!  Now see if "V - Z" simplifies.
-      if (Value *W = SimplifyBinOp(Instruction::Sub, V, Z, TD, TLI, DT,
-                                   MaxRecurse-1)) {
+      if (Value *W = SimplifyBinOp(Instruction::Sub, V, Z, Q, MaxRecurse-1)) {
         // It does, we successfully reassociated!
         ++NumReassoc;
         return W;
       }
     // See if "V === X - Z" simplifies.
-    if (Value *V = SimplifyBinOp(Instruction::Sub, X, Z, TD, TLI, DT, MaxRecurse-1))
+    if (Value *V = SimplifyBinOp(Instruction::Sub, X, Z, Q, MaxRecurse-1))
       // It does!  Now see if "V - Y" simplifies.
-      if (Value *W = SimplifyBinOp(Instruction::Sub, V, Y, TD, TLI, DT,
-                                   MaxRecurse-1)) {
+      if (Value *W = SimplifyBinOp(Instruction::Sub, V, Y, Q, MaxRecurse-1)) {
         // It does, we successfully reassociated!
         ++NumReassoc;
         return W;
@@ -750,23 +808,39 @@ static Value *SimplifySubInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
   Z = Op0;
   if (MaxRecurse && match(Op1, m_Sub(m_Value(X), m_Value(Y)))) // Z - (X - Y)
     // See if "V === Z - X" simplifies.
-    if (Value *V = SimplifyBinOp(Instruction::Sub, Z, X, TD, TLI, DT, MaxRecurse-1))
+    if (Value *V = SimplifyBinOp(Instruction::Sub, Z, X, Q, MaxRecurse-1))
       // It does!  Now see if "V + Y" simplifies.
-      if (Value *W = SimplifyBinOp(Instruction::Add, V, Y, TD, TLI, DT,
-                                   MaxRecurse-1)) {
+      if (Value *W = SimplifyBinOp(Instruction::Add, V, Y, Q, MaxRecurse-1)) {
         // It does, we successfully reassociated!
         ++NumReassoc;
         return W;
       }
 
+  // trunc(X) - trunc(Y) -> trunc(X - Y) if everything simplifies.
+  if (MaxRecurse && match(Op0, m_Trunc(m_Value(X))) &&
+      match(Op1, m_Trunc(m_Value(Y))))
+    if (X->getType() == Y->getType())
+      // See if "V === X - Y" simplifies.
+      if (Value *V = SimplifyBinOp(Instruction::Sub, X, Y, Q, MaxRecurse-1))
+        // It does!  Now see if "trunc V" simplifies.
+        if (Value *W = SimplifyTruncInst(V, Op0->getType(), Q, MaxRecurse-1))
+          // It does, return the simplified "trunc V".
+          return W;
+
+  // Variations on GEP(base, I, ...) - GEP(base, i, ...) -> GEP(null, I-i, ...).
+  if (match(Op0, m_PtrToInt(m_Value(X))) &&
+      match(Op1, m_PtrToInt(m_Value(Y))))
+    if (Constant *Result = computePointerDifference(Q.TD, X, Y))
+      return ConstantExpr::getIntegerCast(Result, Op0->getType(), true);
+
   // Mul distributes over Sub.  Try some generic simplifications based on this.
   if (Value *V = FactorizeBinOp(Instruction::Sub, Op0, Op1, Instruction::Mul,
-                                TD, TLI, DT, MaxRecurse))
+                                Q, MaxRecurse))
     return V;
 
   // i1 sub -> xor.
   if (MaxRecurse && Op0->getType()->isIntegerTy(1))
-    if (Value *V = SimplifyXorInst(Op0, Op1, TD, TLI, DT, MaxRecurse-1))
+    if (Value *V = SimplifyXorInst(Op0, Op1, Q, MaxRecurse-1))
       return V;
 
   // Threading Sub over selects and phi nodes is pointless, so don't bother.
@@ -782,22 +856,127 @@ static Value *SimplifySubInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
 }
 
 Value *llvm::SimplifySubInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
-                             const TargetData *TD,
-                             const TargetLibraryInfo *TLI,
+                             const DataLayout *TD, const TargetLibraryInfo *TLI,
                              const DominatorTree *DT) {
-  return ::SimplifySubInst(Op0, Op1, isNSW, isNUW, TD, TLI, DT, RecursionLimit);
+  return ::SimplifySubInst(Op0, Op1, isNSW, isNUW, Query (TD, TLI, DT),
+                           RecursionLimit);
+}
+
+/// Given operands for an FAdd, see if we can fold the result.  If not, this
+/// returns null.
+static Value *SimplifyFAddInst(Value *Op0, Value *Op1, FastMathFlags FMF,
+                              const Query &Q, unsigned MaxRecurse) {
+  if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
+    if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
+      Constant *Ops[] = { CLHS, CRHS };
+      return ConstantFoldInstOperands(Instruction::FAdd, CLHS->getType(),
+                                      Ops, Q.TD, Q.TLI);
+    }
+
+    // Canonicalize the constant to the RHS.
+    std::swap(Op0, Op1);
+  }
+
+  // fadd X, -0 ==> X
+  if (match(Op1, m_NegZero()))
+    return Op0;
+
+  // fadd X, 0 ==> X, when we know X is not -0
+  if (match(Op1, m_Zero()) &&
+      (FMF.noSignedZeros() || CannotBeNegativeZero(Op0)))
+    return Op0;
+
+  // fadd [nnan ninf] X, (fsub [nnan ninf] 0, X) ==> 0
+  //   where nnan and ninf have to occur at least once somewhere in this
+  //   expression
+  Value *SubOp = 0;
+  if (match(Op1, m_FSub(m_AnyZero(), m_Specific(Op0))))
+    SubOp = Op1;
+  else if (match(Op0, m_FSub(m_AnyZero(), m_Specific(Op1))))
+    SubOp = Op0;
+  if (SubOp) {
+    Instruction *FSub = cast<Instruction>(SubOp);
+    if ((FMF.noNaNs() || FSub->hasNoNaNs()) &&
+        (FMF.noInfs() || FSub->hasNoInfs()))
+      return Constant::getNullValue(Op0->getType());
+  }
+
+  return 0;
+}
+
+/// Given operands for an FSub, see if we can fold the result.  If not, this
+/// returns null.
+static Value *SimplifyFSubInst(Value *Op0, Value *Op1, FastMathFlags FMF,
+                              const Query &Q, unsigned MaxRecurse) {
+  if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
+    if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
+      Constant *Ops[] = { CLHS, CRHS };
+      return ConstantFoldInstOperands(Instruction::FSub, CLHS->getType(),
+                                      Ops, Q.TD, Q.TLI);
+    }
+  }
+
+  // fsub X, 0 ==> X
+  if (match(Op1, m_Zero()))
+    return Op0;
+
+  // fsub X, -0 ==> X, when we know X is not -0
+  if (match(Op1, m_NegZero()) &&
+      (FMF.noSignedZeros() || CannotBeNegativeZero(Op0)))
+    return Op0;
+
+  // fsub 0, (fsub -0.0, X) ==> X
+  Value *X;
+  if (match(Op0, m_AnyZero())) {
+    if (match(Op1, m_FSub(m_NegZero(), m_Value(X))))
+      return X;
+    if (FMF.noSignedZeros() && match(Op1, m_FSub(m_AnyZero(), m_Value(X))))
+      return X;
+  }
+
+  // fsub nnan ninf x, x ==> 0.0
+  if (FMF.noNaNs() && FMF.noInfs() && Op0 == Op1)
+    return Constant::getNullValue(Op0->getType());
+
+  return 0;
+}
+
+/// Given the operands for an FMul, see if we can fold the result
+static Value *SimplifyFMulInst(Value *Op0, Value *Op1,
+                               FastMathFlags FMF,
+                               const Query &Q,
+                               unsigned MaxRecurse) {
+ if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
+    if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
+      Constant *Ops[] = { CLHS, CRHS };
+      return ConstantFoldInstOperands(Instruction::FMul, CLHS->getType(),
+                                      Ops, Q.TD, Q.TLI);
+    }
+
+    // Canonicalize the constant to the RHS.
+    std::swap(Op0, Op1);
+ }
+
+ // fmul X, 1.0 ==> X
+ if (match(Op1, m_FPOne()))
+   return Op0;
+
+ // fmul nnan nsz X, 0 ==> 0
+ if (FMF.noNaNs() && FMF.noSignedZeros() && match(Op1, m_AnyZero()))
+   return Op1;
+
+ return 0;
 }
 
 /// SimplifyMulInst - Given operands for a Mul, see if we can
 /// fold the result.  If not, this returns null.
-static Value *SimplifyMulInst(Value *Op0, Value *Op1, const TargetData *TD,
-                              const TargetLibraryInfo *TLI,
-                              const DominatorTree *DT, unsigned MaxRecurse) {
+static Value *SimplifyMulInst(Value *Op0, Value *Op1, const Query &Q,
+                              unsigned MaxRecurse) {
   if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
     if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
       Constant *Ops[] = { CLHS, CRHS };
       return ConstantFoldInstOperands(Instruction::Mul, CLHS->getType(),
-                                      Ops, TD, TLI);
+                                      Ops, Q.TD, Q.TLI);
     }
 
     // Canonicalize the constant to the RHS.
@@ -824,51 +1003,70 @@ static Value *SimplifyMulInst(Value *Op0, Value *Op1, const TargetData *TD,
 
   // i1 mul -> and.
   if (MaxRecurse && Op0->getType()->isIntegerTy(1))
-    if (Value *V = SimplifyAndInst(Op0, Op1, TD, TLI, DT, MaxRecurse-1))
+    if (Value *V = SimplifyAndInst(Op0, Op1, Q, MaxRecurse-1))
       return V;
 
   // Try some generic simplifications for associative operations.
-  if (Value *V = SimplifyAssociativeBinOp(Instruction::Mul, Op0, Op1, TD, TLI, DT,
+  if (Value *V = SimplifyAssociativeBinOp(Instruction::Mul, Op0, Op1, Q,
                                           MaxRecurse))
     return V;
 
   // Mul distributes over Add.  Try some generic simplifications based on this.
   if (Value *V = ExpandBinOp(Instruction::Mul, Op0, Op1, Instruction::Add,
-                             TD, TLI, DT, MaxRecurse))
+                             Q, MaxRecurse))
     return V;
 
   // If the operation is with the result of a select instruction, check whether
   // operating on either branch of the select always yields the same value.
   if (isa<SelectInst>(Op0) || isa<SelectInst>(Op1))
-    if (Value *V = ThreadBinOpOverSelect(Instruction::Mul, Op0, Op1, TD, TLI, DT,
+    if (Value *V = ThreadBinOpOverSelect(Instruction::Mul, Op0, Op1, Q,
                                          MaxRecurse))
       return V;
 
   // If the operation is with the result of a phi instruction, check whether
   // operating on all incoming values of the phi always yields the same value.
   if (isa<PHINode>(Op0) || isa<PHINode>(Op1))
-    if (Value *V = ThreadBinOpOverPHI(Instruction::Mul, Op0, Op1, TD, TLI, DT,
+    if (Value *V = ThreadBinOpOverPHI(Instruction::Mul, Op0, Op1, Q,
                                       MaxRecurse))
       return V;
 
   return 0;
 }
 
-Value *llvm::SimplifyMulInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifyFAddInst(Value *Op0, Value *Op1, FastMathFlags FMF,
+                             const DataLayout *TD, const TargetLibraryInfo *TLI,
+                             const DominatorTree *DT) {
+  return ::SimplifyFAddInst(Op0, Op1, FMF, Query (TD, TLI, DT), RecursionLimit);
+}
+
+Value *llvm::SimplifyFSubInst(Value *Op0, Value *Op1, FastMathFlags FMF,
+                             const DataLayout *TD, const TargetLibraryInfo *TLI,
+                             const DominatorTree *DT) {
+  return ::SimplifyFSubInst(Op0, Op1, FMF, Query (TD, TLI, DT), RecursionLimit);
+}
+
+Value *llvm::SimplifyFMulInst(Value *Op0, Value *Op1,
+                              FastMathFlags FMF,
+                              const DataLayout *TD,
+                              const TargetLibraryInfo *TLI,
+                              const DominatorTree *DT) {
+  return ::SimplifyFMulInst(Op0, Op1, FMF, Query (TD, TLI, DT), RecursionLimit);
+}
+
+Value *llvm::SimplifyMulInst(Value *Op0, Value *Op1, const DataLayout *TD,
                              const TargetLibraryInfo *TLI,
                              const DominatorTree *DT) {
-  return ::SimplifyMulInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyMulInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
 /// SimplifyDiv - Given operands for an SDiv or UDiv, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyDiv(Instruction::BinaryOps Opcode, Value *Op0, Value *Op1,
-                          const TargetData *TD, const TargetLibraryInfo *TLI,
-                          const DominatorTree *DT, unsigned MaxRecurse) {
+                          const Query &Q, unsigned MaxRecurse) {
   if (Constant *C0 = dyn_cast<Constant>(Op0)) {
     if (Constant *C1 = dyn_cast<Constant>(Op1)) {
       Constant *Ops[] = { C0, C1 };
-      return ConstantFoldInstOperands(Opcode, C0->getType(), Ops, TD, TLI);
+      return ConstantFoldInstOperands(Opcode, C0->getType(), Ops, Q.TD, Q.TLI);
     }
   }
 
@@ -921,15 +1119,13 @@ static Value *SimplifyDiv(Instruction::BinaryOps Opcode, Value *Op0, Value *Op1,
   // If the operation is with the result of a select instruction, check whether
   // operating on either branch of the select always yields the same value.
   if (isa<SelectInst>(Op0) || isa<SelectInst>(Op1))
-    if (Value *V = ThreadBinOpOverSelect(Opcode, Op0, Op1, TD, TLI, DT,
-                                         MaxRecurse))
+    if (Value *V = ThreadBinOpOverSelect(Opcode, Op0, Op1, Q, MaxRecurse))
       return V;
 
   // If the operation is with the result of a phi instruction, check whether
   // operating on all incoming values of the phi always yields the same value.
   if (isa<PHINode>(Op0) || isa<PHINode>(Op1))
-    if (Value *V = ThreadBinOpOverPHI(Opcode, Op0, Op1, TD, TLI, DT,
-                                      MaxRecurse))
+    if (Value *V = ThreadBinOpOverPHI(Opcode, Op0, Op1, Q, MaxRecurse))
       return V;
 
   return 0;
@@ -937,43 +1133,38 @@ static Value *SimplifyDiv(Instruction::BinaryOps Opcode, Value *Op0, Value *Op1,
 
 /// SimplifySDivInst - Given operands for an SDiv, see if we can
 /// fold the result.  If not, this returns null.
-static Value *SimplifySDivInst(Value *Op0, Value *Op1, const TargetData *TD,
-                               const TargetLibraryInfo *TLI,
-                               const DominatorTree *DT, unsigned MaxRecurse) {
-  if (Value *V = SimplifyDiv(Instruction::SDiv, Op0, Op1, TD, TLI, DT,
-                             MaxRecurse))
+static Value *SimplifySDivInst(Value *Op0, Value *Op1, const Query &Q,
+                               unsigned MaxRecurse) {
+  if (Value *V = SimplifyDiv(Instruction::SDiv, Op0, Op1, Q, MaxRecurse))
     return V;
 
   return 0;
 }
 
-Value *llvm::SimplifySDivInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifySDivInst(Value *Op0, Value *Op1, const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifySDivInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifySDivInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
 /// SimplifyUDivInst - Given operands for a UDiv, see if we can
 /// fold the result.  If not, this returns null.
-static Value *SimplifyUDivInst(Value *Op0, Value *Op1, const TargetData *TD,
-                               const TargetLibraryInfo *TLI,
-                               const DominatorTree *DT, unsigned MaxRecurse) {
-  if (Value *V = SimplifyDiv(Instruction::UDiv, Op0, Op1, TD, TLI, DT,
-                             MaxRecurse))
+static Value *SimplifyUDivInst(Value *Op0, Value *Op1, const Query &Q,
+                               unsigned MaxRecurse) {
+  if (Value *V = SimplifyDiv(Instruction::UDiv, Op0, Op1, Q, MaxRecurse))
     return V;
 
   return 0;
 }
 
-Value *llvm::SimplifyUDivInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifyUDivInst(Value *Op0, Value *Op1, const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifyUDivInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyUDivInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
-static Value *SimplifyFDivInst(Value *Op0, Value *Op1, const TargetData *,
-                               const TargetLibraryInfo *,
-                               const DominatorTree *, unsigned) {
+static Value *SimplifyFDivInst(Value *Op0, Value *Op1, const Query &Q,
+                               unsigned) {
   // undef / X -> undef    (the undef could be a snan).
   if (match(Op0, m_Undef()))
     return Op0;
@@ -985,21 +1176,20 @@ static Value *SimplifyFDivInst(Value *Op0, Value *Op1, const TargetData *,
   return 0;
 }
 
-Value *llvm::SimplifyFDivInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifyFDivInst(Value *Op0, Value *Op1, const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifyFDivInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyFDivInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
 /// SimplifyRem - Given operands for an SRem or URem, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyRem(Instruction::BinaryOps Opcode, Value *Op0, Value *Op1,
-                          const TargetData *TD, const TargetLibraryInfo *TLI,
-                          const DominatorTree *DT, unsigned MaxRecurse) {
+                          const Query &Q, unsigned MaxRecurse) {
   if (Constant *C0 = dyn_cast<Constant>(Op0)) {
     if (Constant *C1 = dyn_cast<Constant>(Op1)) {
       Constant *Ops[] = { C0, C1 };
-      return ConstantFoldInstOperands(Opcode, C0->getType(), Ops, TD, TLI);
+      return ConstantFoldInstOperands(Opcode, C0->getType(), Ops, Q.TD, Q.TLI);
     }
   }
 
@@ -1034,13 +1224,13 @@ static Value *SimplifyRem(Instruction::BinaryOps Opcode, Value *Op0, Value *Op1,
   // If the operation is with the result of a select instruction, check whether
   // operating on either branch of the select always yields the same value.
   if (isa<SelectInst>(Op0) || isa<SelectInst>(Op1))
-    if (Value *V = ThreadBinOpOverSelect(Opcode, Op0, Op1, TD, TLI, DT, MaxRecurse))
+    if (Value *V = ThreadBinOpOverSelect(Opcode, Op0, Op1, Q, MaxRecurse))
       return V;
 
   // If the operation is with the result of a phi instruction, check whether
   // operating on all incoming values of the phi always yields the same value.
   if (isa<PHINode>(Op0) || isa<PHINode>(Op1))
-    if (Value *V = ThreadBinOpOverPHI(Opcode, Op0, Op1, TD, TLI, DT, MaxRecurse))
+    if (Value *V = ThreadBinOpOverPHI(Opcode, Op0, Op1, Q, MaxRecurse))
       return V;
 
   return 0;
@@ -1048,43 +1238,37 @@ static Value *SimplifyRem(Instruction::BinaryOps Opcode, Value *Op0, Value *Op1,
 
 /// SimplifySRemInst - Given operands for an SRem, see if we can
 /// fold the result.  If not, this returns null.
-static Value *SimplifySRemInst(Value *Op0, Value *Op1, const TargetData *TD,
-                               const TargetLibraryInfo *TLI,
-                               const DominatorTree *DT,
-                               unsigned MaxRecurse) {                               
-  if (Value *V = SimplifyRem(Instruction::SRem, Op0, Op1, TD, TLI, DT, MaxRecurse))
+static Value *SimplifySRemInst(Value *Op0, Value *Op1, const Query &Q,
+                               unsigned MaxRecurse) {
+  if (Value *V = SimplifyRem(Instruction::SRem, Op0, Op1, Q, MaxRecurse))
     return V;
 
   return 0;
 }
 
-Value *llvm::SimplifySRemInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifySRemInst(Value *Op0, Value *Op1, const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifySRemInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifySRemInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
 /// SimplifyURemInst - Given operands for a URem, see if we can
 /// fold the result.  If not, this returns null.
-static Value *SimplifyURemInst(Value *Op0, Value *Op1, const TargetData *TD,
-                               const TargetLibraryInfo *TLI,
-                               const DominatorTree *DT,
+static Value *SimplifyURemInst(Value *Op0, Value *Op1, const Query &Q,
                                unsigned MaxRecurse) {
-  if (Value *V = SimplifyRem(Instruction::URem, Op0, Op1, TD, TLI, DT, MaxRecurse))
+  if (Value *V = SimplifyRem(Instruction::URem, Op0, Op1, Q, MaxRecurse))
     return V;
 
   return 0;
 }
 
-Value *llvm::SimplifyURemInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifyURemInst(Value *Op0, Value *Op1, const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifyURemInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyURemInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
-static Value *SimplifyFRemInst(Value *Op0, Value *Op1, const TargetData *,
-                               const TargetLibraryInfo *,
-                               const DominatorTree *,
+static Value *SimplifyFRemInst(Value *Op0, Value *Op1, const Query &,
                                unsigned) {
   // undef % X -> undef    (the undef could be a snan).
   if (match(Op0, m_Undef()))
@@ -1097,21 +1281,20 @@ static Value *SimplifyFRemInst(Value *Op0, Value *Op1, const TargetData *,
   return 0;
 }
 
-Value *llvm::SimplifyFRemInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifyFRemInst(Value *Op0, Value *Op1, const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifyFRemInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyFRemInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
 /// SimplifyShift - Given operands for an Shl, LShr or AShr, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyShift(unsigned Opcode, Value *Op0, Value *Op1,
-                            const TargetData *TD, const TargetLibraryInfo *TLI,
-                            const DominatorTree *DT, unsigned MaxRecurse) {
+                            const Query &Q, unsigned MaxRecurse) {
   if (Constant *C0 = dyn_cast<Constant>(Op0)) {
     if (Constant *C1 = dyn_cast<Constant>(Op1)) {
       Constant *Ops[] = { C0, C1 };
-      return ConstantFoldInstOperands(Opcode, C0->getType(), Ops, TD, TLI);
+      return ConstantFoldInstOperands(Opcode, C0->getType(), Ops, Q.TD, Q.TLI);
     }
   }
 
@@ -1136,13 +1319,13 @@ static Value *SimplifyShift(unsigned Opcode, Value *Op0, Value *Op1,
   // If the operation is with the result of a select instruction, check whether
   // operating on either branch of the select always yields the same value.
   if (isa<SelectInst>(Op0) || isa<SelectInst>(Op1))
-    if (Value *V = ThreadBinOpOverSelect(Opcode, Op0, Op1, TD, TLI, DT, MaxRecurse))
+    if (Value *V = ThreadBinOpOverSelect(Opcode, Op0, Op1, Q, MaxRecurse))
       return V;
 
   // If the operation is with the result of a phi instruction, check whether
   // operating on all incoming values of the phi always yields the same value.
   if (isa<PHINode>(Op0) || isa<PHINode>(Op1))
-    if (Value *V = ThreadBinOpOverPHI(Opcode, Op0, Op1, TD, TLI, DT, MaxRecurse))
+    if (Value *V = ThreadBinOpOverPHI(Opcode, Op0, Op1, Q, MaxRecurse))
       return V;
 
   return 0;
@@ -1151,10 +1334,8 @@ static Value *SimplifyShift(unsigned Opcode, Value *Op0, Value *Op1,
 /// SimplifyShlInst - Given operands for an Shl, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyShlInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
-                              const TargetData *TD,
-                              const TargetLibraryInfo *TLI,
-                              const DominatorTree *DT, unsigned MaxRecurse) {
-  if (Value *V = SimplifyShift(Instruction::Shl, Op0, Op1, TD, TLI, DT, MaxRecurse))
+                              const Query &Q, unsigned MaxRecurse) {
+  if (Value *V = SimplifyShift(Instruction::Shl, Op0, Op1, Q, MaxRecurse))
     return V;
 
   // undef << X -> 0
@@ -1169,19 +1350,17 @@ static Value *SimplifyShlInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
 }
 
 Value *llvm::SimplifyShlInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
-                             const TargetData *TD, const TargetLibraryInfo *TLI,
+                             const DataLayout *TD, const TargetLibraryInfo *TLI,
                              const DominatorTree *DT) {
-  return ::SimplifyShlInst(Op0, Op1, isNSW, isNUW, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyShlInst(Op0, Op1, isNSW, isNUW, Query (TD, TLI, DT),
+                           RecursionLimit);
 }
 
 /// SimplifyLShrInst - Given operands for an LShr, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyLShrInst(Value *Op0, Value *Op1, bool isExact,
-                               const TargetData *TD,
-                               const TargetLibraryInfo *TLI,
-                               const DominatorTree *DT,
-                               unsigned MaxRecurse) {
-  if (Value *V = SimplifyShift(Instruction::LShr, Op0, Op1, TD, TLI, DT, MaxRecurse))
+                               const Query &Q, unsigned MaxRecurse) {
+  if (Value *V = SimplifyShift(Instruction::LShr, Op0, Op1, Q, MaxRecurse))
     return V;
 
   // undef >>l X -> 0
@@ -1198,20 +1377,18 @@ static Value *SimplifyLShrInst(Value *Op0, Value *Op1, bool isExact,
 }
 
 Value *llvm::SimplifyLShrInst(Value *Op0, Value *Op1, bool isExact,
-                              const TargetData *TD,
+                              const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifyLShrInst(Op0, Op1, isExact, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyLShrInst(Op0, Op1, isExact, Query (TD, TLI, DT),
+                            RecursionLimit);
 }
 
 /// SimplifyAShrInst - Given operands for an AShr, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyAShrInst(Value *Op0, Value *Op1, bool isExact,
-                               const TargetData *TD,
-                               const TargetLibraryInfo *TLI,
-                               const DominatorTree *DT,
-                               unsigned MaxRecurse) {
-  if (Value *V = SimplifyShift(Instruction::AShr, Op0, Op1, TD, TLI, DT, MaxRecurse))
+                               const Query &Q, unsigned MaxRecurse) {
+  if (Value *V = SimplifyShift(Instruction::AShr, Op0, Op1, Q, MaxRecurse))
     return V;
 
   // all ones >>a X -> all ones
@@ -1232,23 +1409,22 @@ static Value *SimplifyAShrInst(Value *Op0, Value *Op1, bool isExact,
 }
 
 Value *llvm::SimplifyAShrInst(Value *Op0, Value *Op1, bool isExact,
-                              const TargetData *TD,
+                              const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifyAShrInst(Op0, Op1, isExact, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyAShrInst(Op0, Op1, isExact, Query (TD, TLI, DT),
+                            RecursionLimit);
 }
 
 /// SimplifyAndInst - Given operands for an And, see if we can
 /// fold the result.  If not, this returns null.
-static Value *SimplifyAndInst(Value *Op0, Value *Op1, const TargetData *TD, 
-                              const TargetLibraryInfo *TLI,
-                              const DominatorTree *DT,
+static Value *SimplifyAndInst(Value *Op0, Value *Op1, const Query &Q,
                               unsigned MaxRecurse) {
   if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
     if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
       Constant *Ops[] = { CLHS, CRHS };
       return ConstantFoldInstOperands(Instruction::And, CLHS->getType(),
-                                      Ops, TD, TLI);
+                                      Ops, Q.TD, Q.TLI);
     }
 
     // Canonicalize the constant to the RHS.
@@ -1290,65 +1466,64 @@ static Value *SimplifyAndInst(Value *Op0, Value *Op1, const TargetData *TD,
   // A & (-A) = A if A is a power of two or zero.
   if (match(Op0, m_Neg(m_Specific(Op1))) ||
       match(Op1, m_Neg(m_Specific(Op0)))) {
-    if (isPowerOfTwo(Op0, TD, /*OrZero*/true))
+    if (isKnownToBeAPowerOfTwo(Op0, /*OrZero*/true))
       return Op0;
-    if (isPowerOfTwo(Op1, TD, /*OrZero*/true))
+    if (isKnownToBeAPowerOfTwo(Op1, /*OrZero*/true))
       return Op1;
   }
 
   // Try some generic simplifications for associative operations.
-  if (Value *V = SimplifyAssociativeBinOp(Instruction::And, Op0, Op1, TD, TLI,
-                                          DT, MaxRecurse))
+  if (Value *V = SimplifyAssociativeBinOp(Instruction::And, Op0, Op1, Q,
+                                          MaxRecurse))
     return V;
 
   // And distributes over Or.  Try some generic simplifications based on this.
   if (Value *V = ExpandBinOp(Instruction::And, Op0, Op1, Instruction::Or,
-                             TD, TLI, DT, MaxRecurse))
+                             Q, MaxRecurse))
     return V;
 
   // And distributes over Xor.  Try some generic simplifications based on this.
   if (Value *V = ExpandBinOp(Instruction::And, Op0, Op1, Instruction::Xor,
-                             TD, TLI, DT, MaxRecurse))
+                             Q, MaxRecurse))
     return V;
 
   // Or distributes over And.  Try some generic simplifications based on this.
   if (Value *V = FactorizeBinOp(Instruction::And, Op0, Op1, Instruction::Or,
-                                TD, TLI, DT, MaxRecurse))
+                                Q, MaxRecurse))
     return V;
 
   // If the operation is with the result of a select instruction, check whether
   // operating on either branch of the select always yields the same value.
   if (isa<SelectInst>(Op0) || isa<SelectInst>(Op1))
-    if (Value *V = ThreadBinOpOverSelect(Instruction::And, Op0, Op1, TD, TLI,
-                                         DT, MaxRecurse))
+    if (Value *V = ThreadBinOpOverSelect(Instruction::And, Op0, Op1, Q,
+                                         MaxRecurse))
       return V;
 
   // If the operation is with the result of a phi instruction, check whether
   // operating on all incoming values of the phi always yields the same value.
   if (isa<PHINode>(Op0) || isa<PHINode>(Op1))
-    if (Value *V = ThreadBinOpOverPHI(Instruction::And, Op0, Op1, TD, TLI, DT,
+    if (Value *V = ThreadBinOpOverPHI(Instruction::And, Op0, Op1, Q,
                                       MaxRecurse))
       return V;
 
   return 0;
 }
 
-Value *llvm::SimplifyAndInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifyAndInst(Value *Op0, Value *Op1, const DataLayout *TD,
                              const TargetLibraryInfo *TLI,
                              const DominatorTree *DT) {
-  return ::SimplifyAndInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyAndInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
 /// SimplifyOrInst - Given operands for an Or, see if we can
 /// fold the result.  If not, this returns null.
-static Value *SimplifyOrInst(Value *Op0, Value *Op1, const TargetData *TD, 
-                             const TargetLibraryInfo *TLI,
-                             const DominatorTree *DT, unsigned MaxRecurse) {
+static Value *SimplifyOrInst(Value *Op0, Value *Op1, const Query &Q,
+                             unsigned MaxRecurse) {
   if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
     if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
       Constant *Ops[] = { CLHS, CRHS };
       return ConstantFoldInstOperands(Instruction::Or, CLHS->getType(),
-                                      Ops, TD, TLI);
+                                      Ops, Q.TD, Q.TLI);
     }
 
     // Canonicalize the constant to the RHS.
@@ -1398,53 +1573,51 @@ static Value *SimplifyOrInst(Value *Op0, Value *Op1, const TargetData *TD,
     return Constant::getAllOnesValue(Op0->getType());
 
   // Try some generic simplifications for associative operations.
-  if (Value *V = SimplifyAssociativeBinOp(Instruction::Or, Op0, Op1, TD, TLI,
-                                          DT, MaxRecurse))
+  if (Value *V = SimplifyAssociativeBinOp(Instruction::Or, Op0, Op1, Q,
+                                          MaxRecurse))
     return V;
 
   // Or distributes over And.  Try some generic simplifications based on this.
-  if (Value *V = ExpandBinOp(Instruction::Or, Op0, Op1, Instruction::And, TD,
-                             TLI, DT, MaxRecurse))
+  if (Value *V = ExpandBinOp(Instruction::Or, Op0, Op1, Instruction::And, Q,
+                             MaxRecurse))
     return V;
 
   // And distributes over Or.  Try some generic simplifications based on this.
   if (Value *V = FactorizeBinOp(Instruction::Or, Op0, Op1, Instruction::And,
-                                TD, TLI, DT, MaxRecurse))
+                                Q, MaxRecurse))
     return V;
 
   // If the operation is with the result of a select instruction, check whether
   // operating on either branch of the select always yields the same value.
   if (isa<SelectInst>(Op0) || isa<SelectInst>(Op1))
-    if (Value *V = ThreadBinOpOverSelect(Instruction::Or, Op0, Op1, TD, TLI, DT,
+    if (Value *V = ThreadBinOpOverSelect(Instruction::Or, Op0, Op1, Q,
                                          MaxRecurse))
       return V;
 
   // If the operation is with the result of a phi instruction, check whether
   // operating on all incoming values of the phi always yields the same value.
   if (isa<PHINode>(Op0) || isa<PHINode>(Op1))
-    if (Value *V = ThreadBinOpOverPHI(Instruction::Or, Op0, Op1, TD, TLI, DT,
-                                      MaxRecurse))
+    if (Value *V = ThreadBinOpOverPHI(Instruction::Or, Op0, Op1, Q, MaxRecurse))
       return V;
 
   return 0;
 }
 
-Value *llvm::SimplifyOrInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifyOrInst(Value *Op0, Value *Op1, const DataLayout *TD,
                             const TargetLibraryInfo *TLI,
                             const DominatorTree *DT) {
-  return ::SimplifyOrInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyOrInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
 /// SimplifyXorInst - Given operands for a Xor, see if we can
 /// fold the result.  If not, this returns null.
-static Value *SimplifyXorInst(Value *Op0, Value *Op1, const TargetData *TD,
-                              const TargetLibraryInfo *TLI,
-                              const DominatorTree *DT, unsigned MaxRecurse) {
+static Value *SimplifyXorInst(Value *Op0, Value *Op1, const Query &Q,
+                              unsigned MaxRecurse) {
   if (Constant *CLHS = dyn_cast<Constant>(Op0)) {
     if (Constant *CRHS = dyn_cast<Constant>(Op1)) {
       Constant *Ops[] = { CLHS, CRHS };
       return ConstantFoldInstOperands(Instruction::Xor, CLHS->getType(),
-                                      Ops, TD, TLI);
+                                      Ops, Q.TD, Q.TLI);
     }
 
     // Canonicalize the constant to the RHS.
@@ -1469,13 +1642,13 @@ static Value *SimplifyXorInst(Value *Op0, Value *Op1, const TargetData *TD,
     return Constant::getAllOnesValue(Op0->getType());
 
   // Try some generic simplifications for associative operations.
-  if (Value *V = SimplifyAssociativeBinOp(Instruction::Xor, Op0, Op1, TD, TLI,
-                                          DT, MaxRecurse))
+  if (Value *V = SimplifyAssociativeBinOp(Instruction::Xor, Op0, Op1, Q,
+                                          MaxRecurse))
     return V;
 
   // And distributes over Xor.  Try some generic simplifications based on this.
   if (Value *V = FactorizeBinOp(Instruction::Xor, Op0, Op1, Instruction::And,
-                                TD, TLI, DT, MaxRecurse))
+                                Q, MaxRecurse))
     return V;
 
   // Threading Xor over selects and phi nodes is pointless, so don't bother.
@@ -1490,10 +1663,10 @@ static Value *SimplifyXorInst(Value *Op0, Value *Op1, const TargetData *TD,
   return 0;
 }
 
-Value *llvm::SimplifyXorInst(Value *Op0, Value *Op1, const TargetData *TD,
+Value *llvm::SimplifyXorInst(Value *Op0, Value *Op1, const DataLayout *TD,
                              const TargetLibraryInfo *TLI,
                              const DominatorTree *DT) {
-  return ::SimplifyXorInst(Op0, Op1, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyXorInst(Op0, Op1, Query (TD, TLI, DT), RecursionLimit);
 }
 
 static Type *GetCompareTy(Value *Op) {
@@ -1520,19 +1693,159 @@ static Value *ExtractEquivalentCondition(Value *V, CmpInst::Predicate Pred,
   return 0;
 }
 
+// A significant optimization not implemented here is assuming that alloca
+// addresses are not equal to incoming argument values. They don't *alias*,
+// as we say, but that doesn't mean they aren't equal, so we take a
+// conservative approach.
+//
+// This is inspired in part by C++11 5.10p1:
+//   "Two pointers of the same type compare equal if and only if they are both
+//    null, both point to the same function, or both represent the same
+//    address."
+//
+// This is pretty permissive.
+//
+// It's also partly due to C11 6.5.9p6:
+//   "Two pointers compare equal if and only if both are null pointers, both are
+//    pointers to the same object (including a pointer to an object and a
+//    subobject at its beginning) or function, both are pointers to one past the
+//    last element of the same array object, or one is a pointer to one past the
+//    end of one array object and the other is a pointer to the start of a
+//    different array object that happens to immediately follow the first array
+//    object in the address space.)
+//
+// C11's version is more restrictive, however there's no reason why an argument
+// couldn't be a one-past-the-end value for a stack object in the caller and be
+// equal to the beginning of a stack object in the callee.
+//
+// If the C and C++ standards are ever made sufficiently restrictive in this
+// area, it may be possible to update LLVM's semantics accordingly and reinstate
+// this optimization.
+static Constant *computePointerICmp(const DataLayout *TD,
+                                    const TargetLibraryInfo *TLI,
+                                    CmpInst::Predicate Pred,
+                                    Value *LHS, Value *RHS) {
+  // First, skip past any trivial no-ops.
+  LHS = LHS->stripPointerCasts();
+  RHS = RHS->stripPointerCasts();
+
+  // A non-null pointer is not equal to a null pointer.
+  if (llvm::isKnownNonNull(LHS) && isa<ConstantPointerNull>(RHS) &&
+      (Pred == CmpInst::ICMP_EQ || Pred == CmpInst::ICMP_NE))
+    return ConstantInt::get(GetCompareTy(LHS),
+                            !CmpInst::isTrueWhenEqual(Pred));
+
+  // We can only fold certain predicates on pointer comparisons.
+  switch (Pred) {
+  default:
+    return 0;
+
+    // Equality comaprisons are easy to fold.
+  case CmpInst::ICMP_EQ:
+  case CmpInst::ICMP_NE:
+    break;
+
+    // We can only handle unsigned relational comparisons because 'inbounds' on
+    // a GEP only protects against unsigned wrapping.
+  case CmpInst::ICMP_UGT:
+  case CmpInst::ICMP_UGE:
+  case CmpInst::ICMP_ULT:
+  case CmpInst::ICMP_ULE:
+    // However, we have to switch them to their signed variants to handle
+    // negative indices from the base pointer.
+    Pred = ICmpInst::getSignedPredicate(Pred);
+    break;
+  }
+
+  // Strip off any constant offsets so that we can reason about them.
+  // It's tempting to use getUnderlyingObject or even just stripInBoundsOffsets
+  // here and compare base addresses like AliasAnalysis does, however there are
+  // numerous hazards. AliasAnalysis and its utilities rely on special rules
+  // governing loads and stores which don't apply to icmps. Also, AliasAnalysis
+  // doesn't need to guarantee pointer inequality when it says NoAlias.
+  Constant *LHSOffset = stripAndComputeConstantOffsets(TD, LHS);
+  Constant *RHSOffset = stripAndComputeConstantOffsets(TD, RHS);
+
+  // If LHS and RHS are related via constant offsets to the same base
+  // value, we can replace it with an icmp which just compares the offsets.
+  if (LHS == RHS)
+    return ConstantExpr::getICmp(Pred, LHSOffset, RHSOffset);
+
+  // Various optimizations for (in)equality comparisons.
+  if (Pred == CmpInst::ICMP_EQ || Pred == CmpInst::ICMP_NE) {
+    // Different non-empty allocations that exist at the same time have
+    // different addresses (if the program can tell). Global variables always
+    // exist, so they always exist during the lifetime of each other and all
+    // allocas. Two different allocas usually have different addresses...
+    //
+    // However, if there's an @llvm.stackrestore dynamically in between two
+    // allocas, they may have the same address. It's tempting to reduce the
+    // scope of the problem by only looking at *static* allocas here. That would
+    // cover the majority of allocas while significantly reducing the likelihood
+    // of having an @llvm.stackrestore pop up in the middle. However, it's not
+    // actually impossible for an @llvm.stackrestore to pop up in the middle of
+    // an entry block. Also, if we have a block that's not attached to a
+    // function, we can't tell if it's "static" under the current definition.
+    // Theoretically, this problem could be fixed by creating a new kind of
+    // instruction kind specifically for static allocas. Such a new instruction
+    // could be required to be at the top of the entry block, thus preventing it
+    // from being subject to a @llvm.stackrestore. Instcombine could even
+    // convert regular allocas into these special allocas. It'd be nifty.
+    // However, until then, this problem remains open.
+    //
+    // So, we'll assume that two non-empty allocas have different addresses
+    // for now.
+    //
+    // With all that, if the offsets are within the bounds of their allocations
+    // (and not one-past-the-end! so we can't use inbounds!), and their
+    // allocations aren't the same, the pointers are not equal.
+    //
+    // Note that it's not necessary to check for LHS being a global variable
+    // address, due to canonicalization and constant folding.
+    if (isa<AllocaInst>(LHS) &&
+        (isa<AllocaInst>(RHS) || isa<GlobalVariable>(RHS))) {
+      ConstantInt *LHSOffsetCI = dyn_cast<ConstantInt>(LHSOffset);
+      ConstantInt *RHSOffsetCI = dyn_cast<ConstantInt>(RHSOffset);
+      uint64_t LHSSize, RHSSize;
+      if (LHSOffsetCI && RHSOffsetCI &&
+          getObjectSize(LHS, LHSSize, TD, TLI) &&
+          getObjectSize(RHS, RHSSize, TD, TLI)) {
+        const APInt &LHSOffsetValue = LHSOffsetCI->getValue();
+        const APInt &RHSOffsetValue = RHSOffsetCI->getValue();
+        if (!LHSOffsetValue.isNegative() &&
+            !RHSOffsetValue.isNegative() &&
+            LHSOffsetValue.ult(LHSSize) &&
+            RHSOffsetValue.ult(RHSSize)) {
+          return ConstantInt::get(GetCompareTy(LHS),
+                                  !CmpInst::isTrueWhenEqual(Pred));
+        }
+      }
+
+      // Repeat the above check but this time without depending on DataLayout
+      // or being able to compute a precise size.
+      if (!cast<PointerType>(LHS->getType())->isEmptyTy() &&
+          !cast<PointerType>(RHS->getType())->isEmptyTy() &&
+          LHSOffset->isNullValue() &&
+          RHSOffset->isNullValue())
+        return ConstantInt::get(GetCompareTy(LHS),
+                                !CmpInst::isTrueWhenEqual(Pred));
+    }
+  }
+
+  // Otherwise, fail.
+  return 0;
+}
+
 /// SimplifyICmpInst - Given operands for an ICmpInst, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
-                               const TargetData *TD,
-                               const TargetLibraryInfo *TLI,
-                               const DominatorTree *DT,
-                               unsigned MaxRecurse) {
+                               const Query &Q, unsigned MaxRecurse) {
   CmpInst::Predicate Pred = (CmpInst::Predicate)Predicate;
   assert(CmpInst::isIntPredicate(Pred) && "Not an integer compare!");
 
   if (Constant *CLHS = dyn_cast<Constant>(LHS)) {
     if (Constant *CRHS = dyn_cast<Constant>(RHS))
-      return ConstantFoldCompareInstOperands(Pred, CLHS, CRHS, TD, TLI);
+      return ConstantFoldCompareInstOperands(Pred, CLHS, CRHS, Q.TD, Q.TLI);
 
     // If we have a constant, make sure it is on the RHS.
     std::swap(LHS, RHS);
@@ -1585,21 +1898,6 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
     }
   }
 
-  // icmp <alloca*>, <global/alloca*/null> - Different stack variables have
-  // different addresses, and what's more the address of a stack variable is
-  // never null or equal to the address of a global.  Note that generalizing
-  // to the case where LHS is a global variable address or null is pointless,
-  // since if both LHS and RHS are constants then we already constant folded
-  // the compare, and if only one of them is then we moved it to RHS already.
-  Value *LHSPtr = LHS->stripPointerCasts();
-  Value *RHSPtr = RHS->stripPointerCasts();
-  if (LHSPtr == RHSPtr)
-    return ConstantInt::get(ITy, CmpInst::isTrueWhenEqual(Pred));
-  if (isa<AllocaInst>(LHSPtr) && (isa<GlobalValue>(RHSPtr) ||
-                                  isa<AllocaInst>(RHSPtr)  ||
-                                  isa<ConstantPointerNull>(RHSPtr)))
-    return ConstantInt::get(ITy, CmpInst::isFalseWhenEqual(Pred));
-
   // If we are comparing with zero then try hard since this is a common case.
   if (match(RHS, m_Zero())) {
     bool LHSKnownNonNegative, LHSKnownNegative;
@@ -1611,40 +1909,40 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       return getTrue(ITy);
     case ICmpInst::ICMP_EQ:
     case ICmpInst::ICMP_ULE:
-      if (isKnownNonZero(LHS, TD))
+      if (isKnownNonZero(LHS, Q.TD))
         return getFalse(ITy);
       break;
     case ICmpInst::ICMP_NE:
     case ICmpInst::ICMP_UGT:
-      if (isKnownNonZero(LHS, TD))
+      if (isKnownNonZero(LHS, Q.TD))
         return getTrue(ITy);
       break;
     case ICmpInst::ICMP_SLT:
-      ComputeSignBit(LHS, LHSKnownNonNegative, LHSKnownNegative, TD);
+      ComputeSignBit(LHS, LHSKnownNonNegative, LHSKnownNegative, Q.TD);
       if (LHSKnownNegative)
         return getTrue(ITy);
       if (LHSKnownNonNegative)
         return getFalse(ITy);
       break;
     case ICmpInst::ICMP_SLE:
-      ComputeSignBit(LHS, LHSKnownNonNegative, LHSKnownNegative, TD);
+      ComputeSignBit(LHS, LHSKnownNonNegative, LHSKnownNegative, Q.TD);
       if (LHSKnownNegative)
         return getTrue(ITy);
-      if (LHSKnownNonNegative && isKnownNonZero(LHS, TD))
+      if (LHSKnownNonNegative && isKnownNonZero(LHS, Q.TD))
         return getFalse(ITy);
       break;
     case ICmpInst::ICMP_SGE:
-      ComputeSignBit(LHS, LHSKnownNonNegative, LHSKnownNegative, TD);
+      ComputeSignBit(LHS, LHSKnownNonNegative, LHSKnownNegative, Q.TD);
       if (LHSKnownNegative)
         return getFalse(ITy);
       if (LHSKnownNonNegative)
         return getTrue(ITy);
       break;
     case ICmpInst::ICMP_SGT:
-      ComputeSignBit(LHS, LHSKnownNonNegative, LHSKnownNegative, TD);
+      ComputeSignBit(LHS, LHSKnownNonNegative, LHSKnownNegative, Q.TD);
       if (LHSKnownNegative)
         return getFalse(ITy);
-      if (LHSKnownNonNegative && isKnownNonZero(LHS, TD))
+      if (LHSKnownNonNegative && isKnownNonZero(LHS, Q.TD))
         return getTrue(ITy);
       break;
     }
@@ -1727,19 +2025,19 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
 
     // Turn icmp (ptrtoint x), (ptrtoint/constant) into a compare of the input
     // if the integer type is the same size as the pointer type.
-    if (MaxRecurse && TD && isa<PtrToIntInst>(LI) &&
-        TD->getPointerSizeInBits() == DstTy->getPrimitiveSizeInBits()) {
+    if (MaxRecurse && Q.TD && isa<PtrToIntInst>(LI) &&
+        Q.TD->getPointerSizeInBits() == DstTy->getPrimitiveSizeInBits()) {
       if (Constant *RHSC = dyn_cast<Constant>(RHS)) {
         // Transfer the cast to the constant.
         if (Value *V = SimplifyICmpInst(Pred, SrcOp,
                                         ConstantExpr::getIntToPtr(RHSC, SrcTy),
-                                        TD, TLI, DT, MaxRecurse-1))
+                                        Q, MaxRecurse-1))
           return V;
       } else if (PtrToIntInst *RI = dyn_cast<PtrToIntInst>(RHS)) {
         if (RI->getOperand(0)->getType() == SrcTy)
           // Compare without the cast.
           if (Value *V = SimplifyICmpInst(Pred, SrcOp, RI->getOperand(0),
-                                          TD, TLI, DT, MaxRecurse-1))
+                                          Q, MaxRecurse-1))
             return V;
       }
     }
@@ -1751,7 +2049,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         if (MaxRecurse && SrcTy == RI->getOperand(0)->getType())
           // Compare X and Y.  Note that signed predicates become unsigned.
           if (Value *V = SimplifyICmpInst(ICmpInst::getUnsignedPredicate(Pred),
-                                          SrcOp, RI->getOperand(0), TD, TLI, DT,
+                                          SrcOp, RI->getOperand(0), Q,
                                           MaxRecurse-1))
             return V;
       }
@@ -1767,7 +2065,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         // also a case of comparing two zero-extended values.
         if (RExt == CI && MaxRecurse)
           if (Value *V = SimplifyICmpInst(ICmpInst::getUnsignedPredicate(Pred),
-                                        SrcOp, Trunc, TD, TLI, DT, MaxRecurse-1))
+                                        SrcOp, Trunc, Q, MaxRecurse-1))
             return V;
 
         // Otherwise the upper bits of LHS are zero while RHS has a non-zero bit
@@ -1811,7 +2109,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         if (MaxRecurse && SrcTy == RI->getOperand(0)->getType())
           // Compare X and Y.  Note that the predicate does not change.
           if (Value *V = SimplifyICmpInst(Pred, SrcOp, RI->getOperand(0),
-                                          TD, TLI, DT, MaxRecurse-1))
+                                          Q, MaxRecurse-1))
             return V;
       }
       // Turn icmp (sext X), Cst into a compare of X and Cst if Cst is extended
@@ -1825,8 +2123,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         // If the re-extended constant didn't change then this is effectively
         // also a case of comparing two sign-extended values.
         if (RExt == CI && MaxRecurse)
-          if (Value *V = SimplifyICmpInst(Pred, SrcOp, Trunc, TD, TLI, DT,
-                                          MaxRecurse-1))
+          if (Value *V = SimplifyICmpInst(Pred, SrcOp, Trunc, Q, MaxRecurse-1))
             return V;
 
         // Otherwise the upper bits of LHS are all equal, while RHS has varying
@@ -1860,7 +2157,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
             if (MaxRecurse)
               if (Value *V = SimplifyICmpInst(ICmpInst::ICMP_SLT, SrcOp,
                                               Constant::getNullValue(SrcTy),
-                                              TD, TLI, DT, MaxRecurse-1))
+                                              Q, MaxRecurse-1))
                 return V;
             break;
           case ICmpInst::ICMP_ULT:
@@ -1869,7 +2166,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
             if (MaxRecurse)
               if (Value *V = SimplifyICmpInst(ICmpInst::ICMP_SGE, SrcOp,
                                               Constant::getNullValue(SrcTy),
-                                              TD, TLI, DT, MaxRecurse-1))
+                                              Q, MaxRecurse-1))
                 return V;
             break;
           }
@@ -1903,23 +2200,40 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
     if ((A == RHS || B == RHS) && NoLHSWrapProblem)
       if (Value *V = SimplifyICmpInst(Pred, A == RHS ? B : A,
                                       Constant::getNullValue(RHS->getType()),
-                                      TD, TLI, DT, MaxRecurse-1))
+                                      Q, MaxRecurse-1))
         return V;
 
     // icmp X, (X+Y) -> icmp 0, Y for equalities or if there is no overflow.
     if ((C == LHS || D == LHS) && NoRHSWrapProblem)
       if (Value *V = SimplifyICmpInst(Pred,
                                       Constant::getNullValue(LHS->getType()),
-                                      C == LHS ? D : C, TD, TLI, DT, MaxRecurse-1))
+                                      C == LHS ? D : C, Q, MaxRecurse-1))
         return V;
 
     // icmp (X+Y), (X+Z) -> icmp Y,Z for equalities or if there is no overflow.
     if (A && C && (A == C || A == D || B == C || B == D) &&
         NoLHSWrapProblem && NoRHSWrapProblem) {
       // Determine Y and Z in the form icmp (X+Y), (X+Z).
-      Value *Y = (A == C || A == D) ? B : A;
-      Value *Z = (C == A || C == B) ? D : C;
-      if (Value *V = SimplifyICmpInst(Pred, Y, Z, TD, TLI, DT, MaxRecurse-1))
+      Value *Y, *Z;
+      if (A == C) {
+        // C + B == C + D  ->  B == D
+        Y = B;
+        Z = D;
+      } else if (A == D) {
+        // D + B == C + D  ->  B == C
+        Y = B;
+        Z = C;
+      } else if (B == C) {
+        // A + C == C + D  ->  A == D
+        Y = A;
+        Z = D;
+      } else {
+        assert(B == D);
+        // A + D == C + D  ->  A == C
+        Y = A;
+        Z = C;
+      }
+      if (Value *V = SimplifyICmpInst(Pred, Y, Z, Q, MaxRecurse-1))
         return V;
     }
   }
@@ -1931,7 +2245,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       break;
     case ICmpInst::ICMP_SGT:
     case ICmpInst::ICMP_SGE:
-      ComputeSignBit(LHS, KnownNonNegative, KnownNegative, TD);
+      ComputeSignBit(LHS, KnownNonNegative, KnownNegative, Q.TD);
       if (!KnownNonNegative)
         break;
       // fall-through
@@ -1941,7 +2255,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       return getFalse(ITy);
     case ICmpInst::ICMP_SLT:
     case ICmpInst::ICMP_SLE:
-      ComputeSignBit(LHS, KnownNonNegative, KnownNegative, TD);
+      ComputeSignBit(LHS, KnownNonNegative, KnownNegative, Q.TD);
       if (!KnownNonNegative)
         break;
       // fall-through
@@ -1958,7 +2272,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       break;
     case ICmpInst::ICMP_SGT:
     case ICmpInst::ICMP_SGE:
-      ComputeSignBit(RHS, KnownNonNegative, KnownNegative, TD);
+      ComputeSignBit(RHS, KnownNonNegative, KnownNegative, Q.TD);
       if (!KnownNonNegative)
         break;
       // fall-through
@@ -1968,7 +2282,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       return getTrue(ITy);
     case ICmpInst::ICMP_SLT:
     case ICmpInst::ICMP_SLE:
-      ComputeSignBit(RHS, KnownNonNegative, KnownNegative, TD);
+      ComputeSignBit(RHS, KnownNonNegative, KnownNegative, Q.TD);
       if (!KnownNonNegative)
         break;
       // fall-through
@@ -2002,7 +2316,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       if (!LBO->isExact() || !RBO->isExact())
         break;
       if (Value *V = SimplifyICmpInst(Pred, LBO->getOperand(0),
-                                      RBO->getOperand(0), TD, TLI, DT, MaxRecurse-1))
+                                      RBO->getOperand(0), Q, MaxRecurse-1))
         return V;
       break;
     case Instruction::Shl: {
@@ -2013,7 +2327,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       if (!NSW && ICmpInst::isSigned(Pred))
         break;
       if (Value *V = SimplifyICmpInst(Pred, LBO->getOperand(0),
-                                      RBO->getOperand(0), TD, TLI, DT, MaxRecurse-1))
+                                      RBO->getOperand(0), Q, MaxRecurse-1))
         return V;
       break;
     }
@@ -2067,7 +2381,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         return V;
       // Otherwise, see if "A EqP B" simplifies.
       if (MaxRecurse)
-        if (Value *V = SimplifyICmpInst(EqP, A, B, TD, TLI, DT, MaxRecurse-1))
+        if (Value *V = SimplifyICmpInst(EqP, A, B, Q, MaxRecurse-1))
           return V;
       break;
     case CmpInst::ICMP_NE:
@@ -2081,7 +2395,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         return V;
       // Otherwise, see if "A InvEqP B" simplifies.
       if (MaxRecurse)
-        if (Value *V = SimplifyICmpInst(InvEqP, A, B, TD, TLI, DT, MaxRecurse-1))
+        if (Value *V = SimplifyICmpInst(InvEqP, A, B, Q, MaxRecurse-1))
           return V;
       break;
     }
@@ -2137,7 +2451,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         return V;
       // Otherwise, see if "A EqP B" simplifies.
       if (MaxRecurse)
-        if (Value *V = SimplifyICmpInst(EqP, A, B, TD, TLI, DT, MaxRecurse-1))
+        if (Value *V = SimplifyICmpInst(EqP, A, B, Q, MaxRecurse-1))
           return V;
       break;
     case CmpInst::ICMP_NE:
@@ -2151,7 +2465,7 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
         return V;
       // Otherwise, see if "A InvEqP B" simplifies.
       if (MaxRecurse)
-        if (Value *V = SimplifyICmpInst(InvEqP, A, B, TD, TLI, DT, MaxRecurse-1))
+        if (Value *V = SimplifyICmpInst(InvEqP, A, B, Q, MaxRecurse-1))
           return V;
       break;
     }
@@ -2208,41 +2522,66 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       return getFalse(ITy);
   }
 
+  // Simplify comparisons of related pointers using a powerful, recursive
+  // GEP-walk when we have target data available..
+  if (LHS->getType()->isPointerTy())
+    if (Constant *C = computePointerICmp(Q.TD, Q.TLI, Pred, LHS, RHS))
+      return C;
+
+  if (GetElementPtrInst *GLHS = dyn_cast<GetElementPtrInst>(LHS)) {
+    if (GEPOperator *GRHS = dyn_cast<GEPOperator>(RHS)) {
+      if (GLHS->getPointerOperand() == GRHS->getPointerOperand() &&
+          GLHS->hasAllConstantIndices() && GRHS->hasAllConstantIndices() &&
+          (ICmpInst::isEquality(Pred) ||
+           (GLHS->isInBounds() && GRHS->isInBounds() &&
+            Pred == ICmpInst::getSignedPredicate(Pred)))) {
+        // The bases are equal and the indices are constant.  Build a constant
+        // expression GEP with the same indices and a null base pointer to see
+        // what constant folding can make out of it.
+        Constant *Null = Constant::getNullValue(GLHS->getPointerOperandType());
+        SmallVector<Value *, 4> IndicesLHS(GLHS->idx_begin(), GLHS->idx_end());
+        Constant *NewLHS = ConstantExpr::getGetElementPtr(Null, IndicesLHS);
+
+        SmallVector<Value *, 4> IndicesRHS(GRHS->idx_begin(), GRHS->idx_end());
+        Constant *NewRHS = ConstantExpr::getGetElementPtr(Null, IndicesRHS);
+        return ConstantExpr::getICmp(Pred, NewLHS, NewRHS);
+      }
+    }
+  }
+
   // If the comparison is with the result of a select instruction, check whether
   // comparing with either branch of the select always yields the same value.
   if (isa<SelectInst>(LHS) || isa<SelectInst>(RHS))
-    if (Value *V = ThreadCmpOverSelect(Pred, LHS, RHS, TD, TLI, DT, MaxRecurse))
+    if (Value *V = ThreadCmpOverSelect(Pred, LHS, RHS, Q, MaxRecurse))
       return V;
 
   // If the comparison is with the result of a phi instruction, check whether
   // doing the compare with each incoming phi value yields a common result.
   if (isa<PHINode>(LHS) || isa<PHINode>(RHS))
-    if (Value *V = ThreadCmpOverPHI(Pred, LHS, RHS, TD, TLI, DT, MaxRecurse))
+    if (Value *V = ThreadCmpOverPHI(Pred, LHS, RHS, Q, MaxRecurse))
       return V;
 
   return 0;
 }
 
 Value *llvm::SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
-                              const TargetData *TD,
+                              const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifyICmpInst(Predicate, LHS, RHS, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyICmpInst(Predicate, LHS, RHS, Query (TD, TLI, DT),
+                            RecursionLimit);
 }
 
 /// SimplifyFCmpInst - Given operands for an FCmpInst, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
-                               const TargetData *TD,
-                               const TargetLibraryInfo *TLI,
-                               const DominatorTree *DT,
-                               unsigned MaxRecurse) {
+                               const Query &Q, unsigned MaxRecurse) {
   CmpInst::Predicate Pred = (CmpInst::Predicate)Predicate;
   assert(CmpInst::isFPPredicate(Pred) && "Not an FP compare!");
 
   if (Constant *CLHS = dyn_cast<Constant>(LHS)) {
     if (Constant *CRHS = dyn_cast<Constant>(RHS))
-      return ConstantFoldCompareInstOperands(Pred, CLHS, CRHS, TD, TLI);
+      return ConstantFoldCompareInstOperands(Pred, CLHS, CRHS, Q.TD, Q.TLI);
 
     // If we have a constant, make sure it is on the RHS.
     std::swap(LHS, RHS);
@@ -2310,29 +2649,31 @@ static Value *SimplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
   // If the comparison is with the result of a select instruction, check whether
   // comparing with either branch of the select always yields the same value.
   if (isa<SelectInst>(LHS) || isa<SelectInst>(RHS))
-    if (Value *V = ThreadCmpOverSelect(Pred, LHS, RHS, TD, TLI, DT, MaxRecurse))
+    if (Value *V = ThreadCmpOverSelect(Pred, LHS, RHS, Q, MaxRecurse))
       return V;
 
   // If the comparison is with the result of a phi instruction, check whether
   // doing the compare with each incoming phi value yields a common result.
   if (isa<PHINode>(LHS) || isa<PHINode>(RHS))
-    if (Value *V = ThreadCmpOverPHI(Pred, LHS, RHS, TD, TLI, DT, MaxRecurse))
+    if (Value *V = ThreadCmpOverPHI(Pred, LHS, RHS, Q, MaxRecurse))
       return V;
 
   return 0;
 }
 
 Value *llvm::SimplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
-                              const TargetData *TD,
+                              const DataLayout *TD,
                               const TargetLibraryInfo *TLI,
                               const DominatorTree *DT) {
-  return ::SimplifyFCmpInst(Predicate, LHS, RHS, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyFCmpInst(Predicate, LHS, RHS, Query (TD, TLI, DT),
+                            RecursionLimit);
 }
 
 /// SimplifySelectInst - Given operands for a SelectInst, see if we can fold
 /// the result.  If not, this returns null.
-Value *llvm::SimplifySelectInst(Value *CondVal, Value *TrueVal, Value *FalseVal,
-                                const TargetData *TD, const DominatorTree *) {
+static Value *SimplifySelectInst(Value *CondVal, Value *TrueVal,
+                                 Value *FalseVal, const Query &Q,
+                                 unsigned MaxRecurse) {
   // select true, X, Y  -> X
   // select false, X, Y -> Y
   if (ConstantInt *CB = dyn_cast<ConstantInt>(CondVal))
@@ -2355,10 +2696,17 @@ Value *llvm::SimplifySelectInst(Value *CondVal, Value *TrueVal, Value *FalseVal,
   return 0;
 }
 
+Value *llvm::SimplifySelectInst(Value *Cond, Value *TrueVal, Value *FalseVal,
+                                const DataLayout *TD,
+                                const TargetLibraryInfo *TLI,
+                                const DominatorTree *DT) {
+  return ::SimplifySelectInst(Cond, TrueVal, FalseVal, Query (TD, TLI, DT),
+                              RecursionLimit);
+}
+
 /// SimplifyGEPInst - Given operands for an GetElementPtrInst, see if we can
 /// fold the result.  If not, this returns null.
-Value *llvm::SimplifyGEPInst(ArrayRef<Value *> Ops, const TargetData *TD,
-                             const DominatorTree *) {
+static Value *SimplifyGEPInst(ArrayRef<Value *> Ops, const Query &Q, unsigned) {
   // The type of the GEP pointer operand.
   PointerType *PtrTy = dyn_cast<PointerType>(Ops[0]->getType());
   // The GEP pointer operand is not a pointer, it's a vector of pointers.
@@ -2382,9 +2730,9 @@ Value *llvm::SimplifyGEPInst(ArrayRef<Value *> Ops, const TargetData *TD,
       if (C->isZero())
         return Ops[0];
     // getelementptr P, N -> P if P points to a type of zero size.
-    if (TD) {
+    if (Q.TD) {
       Type *Ty = PtrTy->getElementType();
-      if (Ty->isSized() && TD->getTypeAllocSize(Ty) == 0)
+      if (Ty->isSized() && Q.TD->getTypeAllocSize(Ty) == 0)
         return Ops[0];
     }
   }
@@ -2397,12 +2745,17 @@ Value *llvm::SimplifyGEPInst(ArrayRef<Value *> Ops, const TargetData *TD,
   return ConstantExpr::getGetElementPtr(cast<Constant>(Ops[0]), Ops.slice(1));
 }
 
+Value *llvm::SimplifyGEPInst(ArrayRef<Value *> Ops, const DataLayout *TD,
+                             const TargetLibraryInfo *TLI,
+                             const DominatorTree *DT) {
+  return ::SimplifyGEPInst(Ops, Query (TD, TLI, DT), RecursionLimit);
+}
+
 /// SimplifyInsertValueInst - Given operands for an InsertValueInst, see if we
 /// can fold the result.  If not, this returns null.
-Value *llvm::SimplifyInsertValueInst(Value *Agg, Value *Val,
-                                     ArrayRef<unsigned> Idxs,
-                                     const TargetData *,
-                                     const DominatorTree *) {
+static Value *SimplifyInsertValueInst(Value *Agg, Value *Val,
+                                      ArrayRef<unsigned> Idxs, const Query &Q,
+                                      unsigned) {
   if (Constant *CAgg = dyn_cast<Constant>(Agg))
     if (Constant *CVal = dyn_cast<Constant>(Val))
       return ConstantFoldInsertValueInstruction(CAgg, CVal, Idxs);
@@ -2427,8 +2780,17 @@ Value *llvm::SimplifyInsertValueInst(Value *Agg, Value *Val,
   return 0;
 }
 
+Value *llvm::SimplifyInsertValueInst(Value *Agg, Value *Val,
+                                     ArrayRef<unsigned> Idxs,
+                                     const DataLayout *TD,
+                                     const TargetLibraryInfo *TLI,
+                                     const DominatorTree *DT) {
+  return ::SimplifyInsertValueInst(Agg, Val, Idxs, Query (TD, TLI, DT),
+                                   RecursionLimit);
+}
+
 /// SimplifyPHINode - See if we can fold the given phi.  If not, returns null.
-static Value *SimplifyPHINode(PHINode *PN, const DominatorTree *DT) {
+static Value *SimplifyPHINode(PHINode *PN, const Query &Q) {
   // If all of the PHI's incoming values are the same then replace the PHI node
   // with the common value.
   Value *CommonValue = 0;
@@ -2456,9 +2818,22 @@ static Value *SimplifyPHINode(PHINode *PN, const DominatorTree *DT) {
   // instruction, we cannot return X as the result of the PHI node unless it
   // dominates the PHI block.
   if (HasUndefInput)
-    return ValueDominatesPHI(CommonValue, PN, DT) ? CommonValue : 0;
+    return ValueDominatesPHI(CommonValue, PN, Q.DT) ? CommonValue : 0;
 
   return CommonValue;
+}
+
+static Value *SimplifyTruncInst(Value *Op, Type *Ty, const Query &Q, unsigned) {
+  if (Constant *C = dyn_cast<Constant>(Op))
+    return ConstantFoldInstOperands(Instruction::Trunc, Ty, C, Q.TD, Q.TLI);
+
+  return 0;
+}
+
+Value *llvm::SimplifyTruncInst(Value *Op, Type *Ty, const DataLayout *TD,
+                               const TargetLibraryInfo *TLI,
+                               const DominatorTree *DT) {
+  return ::SimplifyTruncInst(Op, Ty, Query (TD, TLI, DT), RecursionLimit);
 }
 
 //=== Helper functions for higher up the class hierarchy.
@@ -2466,71 +2841,62 @@ static Value *SimplifyPHINode(PHINode *PN, const DominatorTree *DT) {
 /// SimplifyBinOp - Given operands for a BinaryOperator, see if we can
 /// fold the result.  If not, this returns null.
 static Value *SimplifyBinOp(unsigned Opcode, Value *LHS, Value *RHS,
-                            const TargetData *TD, 
-                            const TargetLibraryInfo *TLI,
-                            const DominatorTree *DT,
-                            unsigned MaxRecurse) {
+                            const Query &Q, unsigned MaxRecurse) {
   switch (Opcode) {
   case Instruction::Add:
     return SimplifyAddInst(LHS, RHS, /*isNSW*/false, /*isNUW*/false,
-                           TD, TLI, DT, MaxRecurse);
+                           Q, MaxRecurse);
+  case Instruction::FAdd:
+    return SimplifyFAddInst(LHS, RHS, FastMathFlags(), Q, MaxRecurse);
+
   case Instruction::Sub:
     return SimplifySubInst(LHS, RHS, /*isNSW*/false, /*isNUW*/false,
-                           TD, TLI, DT, MaxRecurse);
-  case Instruction::Mul:  return SimplifyMulInst (LHS, RHS, TD, TLI, DT,
-                                                  MaxRecurse);
-  case Instruction::SDiv: return SimplifySDivInst(LHS, RHS, TD, TLI, DT,
-                                                  MaxRecurse);
-  case Instruction::UDiv: return SimplifyUDivInst(LHS, RHS, TD, TLI, DT,
-                                                  MaxRecurse);
-  case Instruction::FDiv: return SimplifyFDivInst(LHS, RHS, TD, TLI, DT,
-                                                  MaxRecurse);
-  case Instruction::SRem: return SimplifySRemInst(LHS, RHS, TD, TLI, DT,
-                                                  MaxRecurse);
-  case Instruction::URem: return SimplifyURemInst(LHS, RHS, TD, TLI, DT,
-                                                  MaxRecurse);
-  case Instruction::FRem: return SimplifyFRemInst(LHS, RHS, TD, TLI, DT,
-                                                  MaxRecurse);
+                           Q, MaxRecurse);
+  case Instruction::FSub:
+    return SimplifyFSubInst(LHS, RHS, FastMathFlags(), Q, MaxRecurse);
+
+  case Instruction::Mul:  return SimplifyMulInst (LHS, RHS, Q, MaxRecurse);
+  case Instruction::FMul:
+    return SimplifyFMulInst (LHS, RHS, FastMathFlags(), Q, MaxRecurse);
+  case Instruction::SDiv: return SimplifySDivInst(LHS, RHS, Q, MaxRecurse);
+  case Instruction::UDiv: return SimplifyUDivInst(LHS, RHS, Q, MaxRecurse);
+  case Instruction::FDiv: return SimplifyFDivInst(LHS, RHS, Q, MaxRecurse);
+  case Instruction::SRem: return SimplifySRemInst(LHS, RHS, Q, MaxRecurse);
+  case Instruction::URem: return SimplifyURemInst(LHS, RHS, Q, MaxRecurse);
+  case Instruction::FRem: return SimplifyFRemInst(LHS, RHS, Q, MaxRecurse);
   case Instruction::Shl:
     return SimplifyShlInst(LHS, RHS, /*isNSW*/false, /*isNUW*/false,
-                           TD, TLI, DT, MaxRecurse);
+                           Q, MaxRecurse);
   case Instruction::LShr:
-    return SimplifyLShrInst(LHS, RHS, /*isExact*/false, TD, TLI, DT,
-                            MaxRecurse);
+    return SimplifyLShrInst(LHS, RHS, /*isExact*/false, Q, MaxRecurse);
   case Instruction::AShr:
-    return SimplifyAShrInst(LHS, RHS, /*isExact*/false, TD, TLI, DT,
-                            MaxRecurse);
-  case Instruction::And: return SimplifyAndInst(LHS, RHS, TD, TLI, DT,
-                                                MaxRecurse);
-  case Instruction::Or:  return SimplifyOrInst (LHS, RHS, TD, TLI, DT,
-                                                MaxRecurse);
-  case Instruction::Xor: return SimplifyXorInst(LHS, RHS, TD, TLI, DT,
-                                                MaxRecurse);
+    return SimplifyAShrInst(LHS, RHS, /*isExact*/false, Q, MaxRecurse);
+  case Instruction::And: return SimplifyAndInst(LHS, RHS, Q, MaxRecurse);
+  case Instruction::Or:  return SimplifyOrInst (LHS, RHS, Q, MaxRecurse);
+  case Instruction::Xor: return SimplifyXorInst(LHS, RHS, Q, MaxRecurse);
   default:
     if (Constant *CLHS = dyn_cast<Constant>(LHS))
       if (Constant *CRHS = dyn_cast<Constant>(RHS)) {
         Constant *COps[] = {CLHS, CRHS};
-        return ConstantFoldInstOperands(Opcode, LHS->getType(), COps, TD, TLI);
+        return ConstantFoldInstOperands(Opcode, LHS->getType(), COps, Q.TD,
+                                        Q.TLI);
       }
 
     // If the operation is associative, try some generic simplifications.
     if (Instruction::isAssociative(Opcode))
-      if (Value *V = SimplifyAssociativeBinOp(Opcode, LHS, RHS, TD, TLI, DT,
-                                              MaxRecurse))
+      if (Value *V = SimplifyAssociativeBinOp(Opcode, LHS, RHS, Q, MaxRecurse))
         return V;
 
-    // If the operation is with the result of a select instruction, check whether
+    // If the operation is with the result of a select instruction check whether
     // operating on either branch of the select always yields the same value.
     if (isa<SelectInst>(LHS) || isa<SelectInst>(RHS))
-      if (Value *V = ThreadBinOpOverSelect(Opcode, LHS, RHS, TD, TLI, DT,
-                                           MaxRecurse))
+      if (Value *V = ThreadBinOpOverSelect(Opcode, LHS, RHS, Q, MaxRecurse))
         return V;
 
     // If the operation is with the result of a phi instruction, check whether
     // operating on all incoming values of the phi always yields the same value.
     if (isa<PHINode>(LHS) || isa<PHINode>(RHS))
-      if (Value *V = ThreadBinOpOverPHI(Opcode, LHS, RHS, TD, TLI, DT,
-                                        MaxRecurse))
+      if (Value *V = ThreadBinOpOverPHI(Opcode, LHS, RHS, Q, MaxRecurse))
         return V;
 
     return 0;
@@ -2538,40 +2904,112 @@ static Value *SimplifyBinOp(unsigned Opcode, Value *LHS, Value *RHS,
 }
 
 Value *llvm::SimplifyBinOp(unsigned Opcode, Value *LHS, Value *RHS,
-                           const TargetData *TD, const TargetLibraryInfo *TLI,
+                           const DataLayout *TD, const TargetLibraryInfo *TLI,
                            const DominatorTree *DT) {
-  return ::SimplifyBinOp(Opcode, LHS, RHS, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyBinOp(Opcode, LHS, RHS, Query (TD, TLI, DT), RecursionLimit);
 }
 
 /// SimplifyCmpInst - Given operands for a CmpInst, see if we can
 /// fold the result.
 static Value *SimplifyCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
-                              const TargetData *TD,
-                              const TargetLibraryInfo *TLI,
-                              const DominatorTree *DT,
-                              unsigned MaxRecurse) {
+                              const Query &Q, unsigned MaxRecurse) {
   if (CmpInst::isIntPredicate((CmpInst::Predicate)Predicate))
-    return SimplifyICmpInst(Predicate, LHS, RHS, TD, TLI, DT, MaxRecurse);
-  return SimplifyFCmpInst(Predicate, LHS, RHS, TD, TLI, DT, MaxRecurse);
+    return SimplifyICmpInst(Predicate, LHS, RHS, Q, MaxRecurse);
+  return SimplifyFCmpInst(Predicate, LHS, RHS, Q, MaxRecurse);
 }
 
 Value *llvm::SimplifyCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
-                             const TargetData *TD, const TargetLibraryInfo *TLI,
+                             const DataLayout *TD, const TargetLibraryInfo *TLI,
                              const DominatorTree *DT) {
-  return ::SimplifyCmpInst(Predicate, LHS, RHS, TD, TLI, DT, RecursionLimit);
+  return ::SimplifyCmpInst(Predicate, LHS, RHS, Query (TD, TLI, DT),
+                           RecursionLimit);
 }
 
-static Value *SimplifyCallInst(CallInst *CI) {
-  // call undef -> undef
-  if (isa<UndefValue>(CI->getCalledValue()))
-    return UndefValue::get(CI->getType());
+static bool IsIdempotent(Intrinsic::ID ID) {
+  switch (ID) {
+  default: return false;
+
+  // Unary idempotent: f(f(x)) = f(x)
+  case Intrinsic::fabs:
+  case Intrinsic::floor:
+  case Intrinsic::ceil:
+  case Intrinsic::trunc:
+  case Intrinsic::rint:
+  case Intrinsic::nearbyint:
+    return true;
+  }
+}
+
+template <typename IterTy>
+static Value *SimplifyIntrinsic(Intrinsic::ID IID, IterTy ArgBegin, IterTy ArgEnd,
+                                const Query &Q, unsigned MaxRecurse) {
+  // Perform idempotent optimizations
+  if (!IsIdempotent(IID))
+    return 0;
+
+  // Unary Ops
+  if (std::distance(ArgBegin, ArgEnd) == 1)
+    if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(*ArgBegin))
+      if (II->getIntrinsicID() == IID)
+        return II;
 
   return 0;
 }
 
+template <typename IterTy>
+static Value *SimplifyCall(Value *V, IterTy ArgBegin, IterTy ArgEnd,
+                           const Query &Q, unsigned MaxRecurse) {
+  Type *Ty = V->getType();
+  if (PointerType *PTy = dyn_cast<PointerType>(Ty))
+    Ty = PTy->getElementType();
+  FunctionType *FTy = cast<FunctionType>(Ty);
+
+  // call undef -> undef
+  if (isa<UndefValue>(V))
+    return UndefValue::get(FTy->getReturnType());
+
+  Function *F = dyn_cast<Function>(V);
+  if (!F)
+    return 0;
+
+  if (unsigned IID = F->getIntrinsicID())
+    if (Value *Ret =
+        SimplifyIntrinsic((Intrinsic::ID) IID, ArgBegin, ArgEnd, Q, MaxRecurse))
+      return Ret;
+
+  if (!canConstantFoldCallTo(F))
+    return 0;
+
+  SmallVector<Constant *, 4> ConstantArgs;
+  ConstantArgs.reserve(ArgEnd - ArgBegin);
+  for (IterTy I = ArgBegin, E = ArgEnd; I != E; ++I) {
+    Constant *C = dyn_cast<Constant>(*I);
+    if (!C)
+      return 0;
+    ConstantArgs.push_back(C);
+  }
+
+  return ConstantFoldCall(F, ConstantArgs, Q.TLI);
+}
+
+Value *llvm::SimplifyCall(Value *V, User::op_iterator ArgBegin,
+                          User::op_iterator ArgEnd, const DataLayout *TD,
+                          const TargetLibraryInfo *TLI,
+                          const DominatorTree *DT) {
+  return ::SimplifyCall(V, ArgBegin, ArgEnd, Query(TD, TLI, DT),
+                        RecursionLimit);
+}
+
+Value *llvm::SimplifyCall(Value *V, ArrayRef<Value *> Args,
+                          const DataLayout *TD, const TargetLibraryInfo *TLI,
+                          const DominatorTree *DT) {
+  return ::SimplifyCall(V, Args.begin(), Args.end(), Query(TD, TLI, DT),
+                        RecursionLimit);
+}
+
 /// SimplifyInstruction - See if we can compute a simplified version of this
 /// instruction.  If not, this returns null.
-Value *llvm::SimplifyInstruction(Instruction *I, const TargetData *TD,
+Value *llvm::SimplifyInstruction(Instruction *I, const DataLayout *TD,
                                  const TargetLibraryInfo *TLI,
                                  const DominatorTree *DT) {
   Value *Result;
@@ -2580,17 +3018,29 @@ Value *llvm::SimplifyInstruction(Instruction *I, const TargetData *TD,
   default:
     Result = ConstantFoldInstruction(I, TD, TLI);
     break;
+  case Instruction::FAdd:
+    Result = SimplifyFAddInst(I->getOperand(0), I->getOperand(1),
+                              I->getFastMathFlags(), TD, TLI, DT);
+    break;
   case Instruction::Add:
     Result = SimplifyAddInst(I->getOperand(0), I->getOperand(1),
                              cast<BinaryOperator>(I)->hasNoSignedWrap(),
                              cast<BinaryOperator>(I)->hasNoUnsignedWrap(),
                              TD, TLI, DT);
     break;
+  case Instruction::FSub:
+    Result = SimplifyFSubInst(I->getOperand(0), I->getOperand(1),
+                              I->getFastMathFlags(), TD, TLI, DT);
+    break;
   case Instruction::Sub:
     Result = SimplifySubInst(I->getOperand(0), I->getOperand(1),
                              cast<BinaryOperator>(I)->hasNoSignedWrap(),
                              cast<BinaryOperator>(I)->hasNoUnsignedWrap(),
                              TD, TLI, DT);
+    break;
+  case Instruction::FMul:
+    Result = SimplifyFMulInst(I->getOperand(0), I->getOperand(1),
+                              I->getFastMathFlags(), TD, TLI, DT);
     break;
   case Instruction::Mul:
     Result = SimplifyMulInst(I->getOperand(0), I->getOperand(1), TD, TLI, DT);
@@ -2648,25 +3098,31 @@ Value *llvm::SimplifyInstruction(Instruction *I, const TargetData *TD,
     break;
   case Instruction::Select:
     Result = SimplifySelectInst(I->getOperand(0), I->getOperand(1),
-                                I->getOperand(2), TD, DT);
+                                I->getOperand(2), TD, TLI, DT);
     break;
   case Instruction::GetElementPtr: {
     SmallVector<Value*, 8> Ops(I->op_begin(), I->op_end());
-    Result = SimplifyGEPInst(Ops, TD, DT);
+    Result = SimplifyGEPInst(Ops, TD, TLI, DT);
     break;
   }
   case Instruction::InsertValue: {
     InsertValueInst *IV = cast<InsertValueInst>(I);
     Result = SimplifyInsertValueInst(IV->getAggregateOperand(),
                                      IV->getInsertedValueOperand(),
-                                     IV->getIndices(), TD, DT);
+                                     IV->getIndices(), TD, TLI, DT);
     break;
   }
   case Instruction::PHI:
-    Result = SimplifyPHINode(cast<PHINode>(I), DT);
+    Result = SimplifyPHINode(cast<PHINode>(I), Query (TD, TLI, DT));
     break;
-  case Instruction::Call:
-    Result = SimplifyCallInst(cast<CallInst>(I));
+  case Instruction::Call: {
+    CallSite CS(cast<CallInst>(I));
+    Result = SimplifyCall(CS.getCalledValue(), CS.arg_begin(), CS.arg_end(),
+                          TD, TLI, DT);
+    break;
+  }
+  case Instruction::Trunc:
+    Result = SimplifyTruncInst(I->getOperand(0), I->getType(), TD, TLI, DT);
     break;
   }
 
@@ -2676,58 +3132,84 @@ Value *llvm::SimplifyInstruction(Instruction *I, const TargetData *TD,
   return Result == I ? UndefValue::get(I->getType()) : Result;
 }
 
-/// ReplaceAndSimplifyAllUses - Perform From->replaceAllUsesWith(To) and then
-/// delete the From instruction.  In addition to a basic RAUW, this does a
-/// recursive simplification of the newly formed instructions.  This catches
-/// things where one simplification exposes other opportunities.  This only
-/// simplifies and deletes scalar operations, it does not change the CFG.
+/// \brief Implementation of recursive simplification through an instructions
+/// uses.
 ///
-void llvm::ReplaceAndSimplifyAllUses(Instruction *From, Value *To,
-                                     const TargetData *TD,
-                                     const TargetLibraryInfo *TLI,
-                                     const DominatorTree *DT) {
-  assert(From != To && "ReplaceAndSimplifyAllUses(X,X) is not valid!");
+/// This is the common implementation of the recursive simplification routines.
+/// If we have a pre-simplified value in 'SimpleV', that is forcibly used to
+/// replace the instruction 'I'. Otherwise, we simply add 'I' to the list of
+/// instructions to process and attempt to simplify it using
+/// InstructionSimplify.
+///
+/// This routine returns 'true' only when *it* simplifies something. The passed
+/// in simplified value does not count toward this.
+static bool replaceAndRecursivelySimplifyImpl(Instruction *I, Value *SimpleV,
+                                              const DataLayout *TD,
+                                              const TargetLibraryInfo *TLI,
+                                              const DominatorTree *DT) {
+  bool Simplified = false;
+  SmallSetVector<Instruction *, 8> Worklist;
 
-  // FromHandle/ToHandle - This keeps a WeakVH on the from/to values so that
-  // we can know if it gets deleted out from under us or replaced in a
-  // recursive simplification.
-  WeakVH FromHandle(From);
-  WeakVH ToHandle(To);
+  // If we have an explicit value to collapse to, do that round of the
+  // simplification loop by hand initially.
+  if (SimpleV) {
+    for (Value::use_iterator UI = I->use_begin(), UE = I->use_end(); UI != UE;
+         ++UI)
+      if (*UI != I)
+        Worklist.insert(cast<Instruction>(*UI));
 
-  while (!From->use_empty()) {
-    // Update the instruction to use the new value.
-    Use &TheUse = From->use_begin().getUse();
-    Instruction *User = cast<Instruction>(TheUse.getUser());
-    TheUse = To;
+    // Replace the instruction with its simplified value.
+    I->replaceAllUsesWith(SimpleV);
 
-    // Check to see if the instruction can be folded due to the operand
-    // replacement.  For example changing (or X, Y) into (or X, -1) can replace
-    // the 'or' with -1.
-    Value *SimplifiedVal;
-    {
-      // Sanity check to make sure 'User' doesn't dangle across
-      // SimplifyInstruction.
-      AssertingVH<> UserHandle(User);
-
-      SimplifiedVal = SimplifyInstruction(User, TD, TLI, DT);
-      if (SimplifiedVal == 0) continue;
-    }
-
-    // Recursively simplify this user to the new value.
-    ReplaceAndSimplifyAllUses(User, SimplifiedVal, TD, TLI, DT);
-    From = dyn_cast_or_null<Instruction>((Value*)FromHandle);
-    To = ToHandle;
-
-    assert(ToHandle && "To value deleted by recursive simplification?");
-
-    // If the recursive simplification ended up revisiting and deleting
-    // 'From' then we're done.
-    if (From == 0)
-      return;
+    // Gracefully handle edge cases where the instruction is not wired into any
+    // parent block.
+    if (I->getParent())
+      I->eraseFromParent();
+  } else {
+    Worklist.insert(I);
   }
 
-  // If 'From' has value handles referring to it, do a real RAUW to update them.
-  From->replaceAllUsesWith(To);
+  // Note that we must test the size on each iteration, the worklist can grow.
+  for (unsigned Idx = 0; Idx != Worklist.size(); ++Idx) {
+    I = Worklist[Idx];
 
-  From->eraseFromParent();
+    // See if this instruction simplifies.
+    SimpleV = SimplifyInstruction(I, TD, TLI, DT);
+    if (!SimpleV)
+      continue;
+
+    Simplified = true;
+
+    // Stash away all the uses of the old instruction so we can check them for
+    // recursive simplifications after a RAUW. This is cheaper than checking all
+    // uses of To on the recursive step in most cases.
+    for (Value::use_iterator UI = I->use_begin(), UE = I->use_end(); UI != UE;
+         ++UI)
+      Worklist.insert(cast<Instruction>(*UI));
+
+    // Replace the instruction with its simplified value.
+    I->replaceAllUsesWith(SimpleV);
+
+    // Gracefully handle edge cases where the instruction is not wired into any
+    // parent block.
+    if (I->getParent())
+      I->eraseFromParent();
+  }
+  return Simplified;
+}
+
+bool llvm::recursivelySimplifyInstruction(Instruction *I,
+                                          const DataLayout *TD,
+                                          const TargetLibraryInfo *TLI,
+                                          const DominatorTree *DT) {
+  return replaceAndRecursivelySimplifyImpl(I, 0, TD, TLI, DT);
+}
+
+bool llvm::replaceAndRecursivelySimplify(Instruction *I, Value *SimpleV,
+                                         const DataLayout *TD,
+                                         const TargetLibraryInfo *TLI,
+                                         const DominatorTree *DT) {
+  assert(I != SimpleV && "replaceAndRecursivelySimplify(X,X) is not valid!");
+  assert(SimpleV && "Must provide a simplified value.");
+  return replaceAndRecursivelySimplifyImpl(I, SimpleV, TD, TLI, DT);
 }

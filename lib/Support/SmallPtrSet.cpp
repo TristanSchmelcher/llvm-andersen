@@ -13,7 +13,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/Support/MathExtras.h"
+#include <algorithm>
 #include <cstdlib>
 
 using namespace llvm;
@@ -27,13 +29,9 @@ void SmallPtrSetImpl::shrink_and_clear() {
   NumElements = NumTombstones = 0;
 
   // Install the new array.  Clear all the buckets to empty.
-  CurArray = (const void**)malloc(sizeof(void*) * (CurArraySize+1));
+  CurArray = (const void**)malloc(sizeof(void*) * CurArraySize);
   assert(CurArray && "Failed to allocate memory?");
   memset(CurArray, -1, CurArraySize*sizeof(void*));
-  
-  // The end pointer, always valid, is set to a valid element to help the
-  // iterator.
-  CurArray[CurArraySize] = 0;
 }
 
 bool SmallPtrSetImpl::insert_imp(const void * Ptr) {
@@ -101,7 +99,7 @@ bool SmallPtrSetImpl::erase_imp(const void * Ptr) {
 }
 
 const void * const *SmallPtrSetImpl::FindBucketFor(const void *Ptr) const {
-  unsigned Bucket = Hash(Ptr);
+  unsigned Bucket = DenseMapInfo<void *>::getHashValue(Ptr) & (CurArraySize-1);
   unsigned ArraySize = CurArraySize;
   unsigned ProbeAmt = 1;
   const void *const *Array = CurArray;
@@ -137,14 +135,10 @@ void SmallPtrSetImpl::Grow(unsigned NewSize) {
   bool WasSmall = isSmall();
   
   // Install the new array.  Clear all the buckets to empty.
-  CurArray = (const void**)malloc(sizeof(void*) * (NewSize+1));
+  CurArray = (const void**)malloc(sizeof(void*) * NewSize);
   assert(CurArray && "Failed to allocate memory?");
   CurArraySize = NewSize;
   memset(CurArray, -1, NewSize*sizeof(void*));
-  
-  // The end pointer, always valid, is set to a valid element to help the
-  // iterator.
-  CurArray[NewSize] = 0;
   
   // Copy over all the elements.
   if (WasSmall) {
@@ -178,7 +172,7 @@ SmallPtrSetImpl::SmallPtrSetImpl(const void **SmallStorage,
     CurArray = SmallArray;
   // Otherwise, allocate new heap space (unless we were the same size)
   } else {
-    CurArray = (const void**)malloc(sizeof(void*) * (that.CurArraySize+1));
+    CurArray = (const void**)malloc(sizeof(void*) * that.CurArraySize);
     assert(CurArray && "Failed to allocate memory?");
   }
   
@@ -186,7 +180,7 @@ SmallPtrSetImpl::SmallPtrSetImpl(const void **SmallStorage,
   CurArraySize = that.CurArraySize;
 
   // Copy over the contents from the other set
-  memcpy(CurArray, that.CurArray, sizeof(void*)*(CurArraySize+1));
+  memcpy(CurArray, that.CurArray, sizeof(void*)*CurArraySize);
   
   NumElements = that.NumElements;
   NumTombstones = that.NumTombstones;
@@ -198,7 +192,7 @@ void SmallPtrSetImpl::CopyFrom(const SmallPtrSetImpl &RHS) {
   if (isSmall() && RHS.isSmall())
     assert(CurArraySize == RHS.CurArraySize &&
            "Cannot assign sets with different small sizes");
-           
+
   // If we're becoming small, prepare to insert into our stack space
   if (RHS.isSmall()) {
     if (!isSmall())
@@ -207,9 +201,9 @@ void SmallPtrSetImpl::CopyFrom(const SmallPtrSetImpl &RHS) {
   // Otherwise, allocate new heap space (unless we were the same size)
   } else if (CurArraySize != RHS.CurArraySize) {
     if (isSmall())
-      CurArray = (const void**)malloc(sizeof(void*) * (RHS.CurArraySize+1));
+      CurArray = (const void**)malloc(sizeof(void*) * RHS.CurArraySize);
     else
-      CurArray = (const void**)realloc(CurArray, sizeof(void*)*(RHS.CurArraySize+1));
+      CurArray = (const void**)realloc(CurArray, sizeof(void*)*RHS.CurArraySize);
     assert(CurArray && "Failed to allocate memory?");
   }
   
@@ -217,10 +211,60 @@ void SmallPtrSetImpl::CopyFrom(const SmallPtrSetImpl &RHS) {
   CurArraySize = RHS.CurArraySize;
 
   // Copy over the contents from the other set
-  memcpy(CurArray, RHS.CurArray, sizeof(void*)*(CurArraySize+1));
+  memcpy(CurArray, RHS.CurArray, sizeof(void*)*CurArraySize);
   
   NumElements = RHS.NumElements;
   NumTombstones = RHS.NumTombstones;
+}
+
+void SmallPtrSetImpl::swap(SmallPtrSetImpl &RHS) {
+  if (this == &RHS) return;
+
+  // We can only avoid copying elements if neither set is small.
+  if (!this->isSmall() && !RHS.isSmall()) {
+    std::swap(this->CurArray, RHS.CurArray);
+    std::swap(this->CurArraySize, RHS.CurArraySize);
+    std::swap(this->NumElements, RHS.NumElements);
+    std::swap(this->NumTombstones, RHS.NumTombstones);
+    return;
+  }
+
+  // FIXME: From here on we assume that both sets have the same small size.
+
+  // If only RHS is small, copy the small elements into LHS and move the pointer
+  // from LHS to RHS.
+  if (!this->isSmall() && RHS.isSmall()) {
+    std::copy(RHS.SmallArray, RHS.SmallArray+RHS.CurArraySize,
+              this->SmallArray);
+    std::swap(this->NumElements, RHS.NumElements);
+    std::swap(this->CurArraySize, RHS.CurArraySize);
+    RHS.CurArray = this->CurArray;
+    RHS.NumTombstones = this->NumTombstones;
+    this->CurArray = this->SmallArray;
+    this->NumTombstones = 0;
+    return;
+  }
+
+  // If only LHS is small, copy the small elements into RHS and move the pointer
+  // from RHS to LHS.
+  if (this->isSmall() && !RHS.isSmall()) {
+    std::copy(this->SmallArray, this->SmallArray+this->CurArraySize,
+              RHS.SmallArray);
+    std::swap(RHS.NumElements, this->NumElements);
+    std::swap(RHS.CurArraySize, this->CurArraySize);
+    this->CurArray = RHS.CurArray;
+    this->NumTombstones = RHS.NumTombstones;
+    RHS.CurArray = RHS.SmallArray;
+    RHS.NumTombstones = 0;
+    return;
+  }
+
+  // Both a small, just swap the small elements.
+  assert(this->isSmall() && RHS.isSmall());
+  assert(this->CurArraySize == RHS.CurArraySize);
+  std::swap_ranges(this->SmallArray, this->SmallArray+this->CurArraySize,
+                   RHS.SmallArray);
+  std::swap(this->NumElements, RHS.NumElements);
 }
 
 SmallPtrSetImpl::~SmallPtrSetImpl() {

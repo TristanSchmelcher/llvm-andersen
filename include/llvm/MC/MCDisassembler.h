@@ -6,21 +6,22 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#ifndef MCDISASSEMBLER_H
-#define MCDISASSEMBLER_H
+#ifndef LLVM_MC_MCDISASSEMBLER_H
+#define LLVM_MC_MCDISASSEMBLER_H
 
-#include "llvm/Support/DataTypes.h"
 #include "llvm-c/Disassembler.h"
+#include "llvm/ADT/OwningPtr.h"
+#include "llvm/MC/MCSymbolizer.h"
+#include "llvm/MC/MCRelocationInfo.h"
+#include "llvm/Support/DataTypes.h"
 
 namespace llvm {
-  
+
 class MCInst;
 class MCSubtargetInfo;
 class MemoryObject;
 class raw_ostream;
 class MCContext;
-  
-struct EDInstInfo;
 
 /// MCDisassembler - Superclass for all disassemblers.  Consumes a memory region
 ///   and provides an array of assembly instructions.
@@ -57,13 +58,14 @@ public:
   /// Constructor     - Performs initial setup for the disassembler.
   MCDisassembler(const MCSubtargetInfo &STI) : GetOpInfo(0), SymbolLookUp(0),
                                                DisInfo(0), Ctx(0),
-                                               STI(STI), CommentStream(0) {}
-  
+                                               STI(STI), Symbolizer(0),
+                                               CommentStream(0) {}
+
   virtual ~MCDisassembler();
-  
+
   /// getInstruction  - Returns the disassembly of a single instruction.
   ///
-  /// @param instr    - An MCInst to populate with the contents of the 
+  /// @param instr    - An MCInst to populate with the contents of the
   ///                   instruction.
   /// @param size     - A value to populate with the size of the instruction, or
   ///                   the number of bytes consumed while attempting to decode
@@ -74,24 +76,15 @@ public:
   /// @param vStream  - The stream to print warnings and diagnostic messages on.
   /// @param cStream  - The stream to print comments and annotations on.
   /// @return         - MCDisassembler::Success if the instruction is valid,
-  ///                   MCDisassembler::SoftFail if the instruction was 
+  ///                   MCDisassembler::SoftFail if the instruction was
   ///                                            disassemblable but invalid,
   ///                   MCDisassembler::Fail if the instruction was invalid.
   virtual DecodeStatus  getInstruction(MCInst& instr,
                                        uint64_t& size,
-                                       MemoryObject &region,
+                                       const MemoryObject &region,
                                        uint64_t address,
                                        raw_ostream &vStream,
                                        raw_ostream &cStream) const = 0;
-
-  /// getEDInfo - Returns the enhanced instruction information corresponding to
-  ///   the disassembler.
-  ///
-  /// @return         - An array of instruction information, with one entry for
-  ///                   each MCInst opcode this disassembler returns.
-  ///                   NULL if there is no info for this target.
-  virtual const EDInstInfo   *getEDInfo() const { return (EDInstInfo*)0; }
-
 private:
   //
   // Hooks for symbolic disassembly via the public 'C' interface.
@@ -105,20 +98,32 @@ private:
   // The assembly context for creating symbols and MCExprs in place of
   // immediate operands when there is symbolic information.
   MCContext *Ctx;
+
 protected:
   // Subtarget information, for instruction decoding predicates if required.
   const MCSubtargetInfo &STI;
+  OwningPtr<MCSymbolizer> Symbolizer;
 
 public:
-  void setupForSymbolicDisassembly(LLVMOpInfoCallback getOpInfo,
-                                   LLVMSymbolLookupCallback symbolLookUp,
-                                   void *disInfo,
-                                   MCContext *ctx) {
-    GetOpInfo = getOpInfo;
-    SymbolLookUp = symbolLookUp;
-    DisInfo = disInfo;
-    Ctx = ctx;
-  }
+  // Helpers around MCSymbolizer
+  bool tryAddingSymbolicOperand(MCInst &Inst,
+                                int64_t Value,
+                                uint64_t Address, bool IsBranch,
+                                uint64_t Offset, uint64_t InstSize) const;
+
+  void tryAddingPcLoadReferenceComment(int64_t Value, uint64_t Address) const;
+
+  /// Set \p Symzer as the current symbolizer.
+  /// This takes ownership of \p Symzer, and deletes the previously set one.
+  void setSymbolizer(OwningPtr<MCSymbolizer> &Symzer);
+
+  /// Sets up an external symbolizer that uses the C API callbacks.
+  void setupForSymbolicDisassembly(LLVMOpInfoCallback GetOpInfo,
+                                   LLVMSymbolLookupCallback SymbolLookUp,
+                                   void *DisInfo,
+                                   MCContext *Ctx,
+                                   OwningPtr<MCRelocationInfo> &RelInfo);
+
   LLVMOpInfoCallback getLLVMOpInfoCallback() const { return GetOpInfo; }
   LLVMSymbolLookupCallback getLLVMSymbolLookupCallback() const {
     return SymbolLookUp;

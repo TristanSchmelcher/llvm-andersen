@@ -10,6 +10,7 @@
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/raw_ostream.h"
@@ -22,7 +23,7 @@ MCSectionELF::~MCSectionELF() {} // anchor.
 // should be printed before the section name
 bool MCSectionELF::ShouldOmitSectionDirective(StringRef Name,
                                               const MCAsmInfo &MAI) const {
-  
+
   // FIXME: Does .section .bss/.data/.text work everywhere??
   if (Name == ".text" || Name == ".data" ||
       (Name == ".bss" && !MAI.usesELFSectionDirectiveForBSS()))
@@ -32,10 +33,14 @@ bool MCSectionELF::ShouldOmitSectionDirective(StringRef Name,
 }
 
 void MCSectionELF::PrintSwitchToSection(const MCAsmInfo &MAI,
-                                        raw_ostream &OS) const {
-   
+                                        raw_ostream &OS,
+                                        const MCExpr *Subsection) const {
+
   if (ShouldOmitSectionDirective(SectionName, MAI)) {
-    OS << '\t' << getSectionName() << '\n';
+    OS << '\t' << getSectionName();
+    if (Subsection)
+      OS << '\t' << *Subsection;
+    OS << '\n';
     return;
   }
 
@@ -62,7 +67,7 @@ void MCSectionELF::PrintSwitchToSection(const MCAsmInfo &MAI,
   }
 
   // Handle the weird solaris syntax if desired.
-  if (MAI.usesSunStyleELFSectionSwitchSyntax() && 
+  if (MAI.usesSunStyleELFSectionSwitchSyntax() &&
       !(Flags & ELF::SHF_MERGE)) {
     if (Flags & ELF::SHF_ALLOC)
       OS << ",#alloc";
@@ -75,7 +80,7 @@ void MCSectionELF::PrintSwitchToSection(const MCAsmInfo &MAI,
     OS << '\n';
     return;
   }
-  
+
   OS << ",\"";
   if (Flags & ELF::SHF_ALLOC)
     OS << 'a';
@@ -91,13 +96,13 @@ void MCSectionELF::PrintSwitchToSection(const MCAsmInfo &MAI,
     OS << 'S';
   if (Flags & ELF::SHF_TLS)
     OS << 'T';
-  
+
   // If there are target-specific flags, print them.
   if (Flags & ELF::XCORE_SHF_CP_SECTION)
     OS << 'c';
   if (Flags & ELF::XCORE_SHF_DP_SECTION)
     OS << 'd';
-  
+
   OS << '"';
 
   OS << ',';
@@ -129,6 +134,9 @@ void MCSectionELF::PrintSwitchToSection(const MCAsmInfo &MAI,
   if (Flags & ELF::SHF_GROUP)
     OS << "," << Group->getName() << ",comdat";
   OS << '\n';
+
+  if (Subsection)
+    OS << "\t.subsection\t" << *Subsection << '\n';
 }
 
 bool MCSectionELF::UseCodeAlign() const {

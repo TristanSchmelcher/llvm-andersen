@@ -11,14 +11,23 @@
 #ifndef __ppc__
 
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "gtest/gtest.h"
 
 using namespace llvm;
 
 namespace {
 
-TEST(BitVectorTest, TrivialOperation) {
-  BitVector Vec;
+// Test fixture
+template <typename T>
+class BitVectorTest : public ::testing::Test { };
+
+// Test both BitVector and SmallBitVector with the same suite of tests.
+typedef ::testing::Types<BitVector, SmallBitVector> BitVectorTestTypes;
+TYPED_TEST_CASE(BitVectorTest, BitVectorTestTypes);
+
+TYPED_TEST(BitVectorTest, TrivialOperation) {
+  TypeParam Vec;
   EXPECT_EQ(0U, Vec.count());
   EXPECT_EQ(0U, Vec.size());
   EXPECT_FALSE(Vec.any());
@@ -42,7 +51,8 @@ TEST(BitVectorTest, TrivialOperation) {
   EXPECT_FALSE(Vec.none());
   EXPECT_FALSE(Vec.empty());
 
-  BitVector Inv = ~Vec;
+  TypeParam Inv = Vec;
+  Inv.flip();
   EXPECT_EQ(6U, Inv.count());
   EXPECT_EQ(11U, Inv.size());
   EXPECT_TRUE(Inv.any());
@@ -52,7 +62,7 @@ TEST(BitVectorTest, TrivialOperation) {
 
   EXPECT_FALSE(Inv == Vec);
   EXPECT_TRUE(Inv != Vec);
-  Vec = ~Vec;
+  Vec.flip();
   EXPECT_TRUE(Inv == Vec);
   EXPECT_FALSE(Inv != Vec);
 
@@ -76,8 +86,8 @@ TEST(BitVectorTest, TrivialOperation) {
   EXPECT_FALSE(Vec[56]);
   Vec.resize(61, false);
 
-  BitVector Copy = Vec;
-  BitVector Alt(3, false);
+  TypeParam Copy = Vec;
+  TypeParam Alt(3, false);
   Alt.resize(6, true);
   std::swap(Alt, Vec);
   EXPECT_TRUE(Copy == Alt);
@@ -131,7 +141,31 @@ TEST(BitVectorTest, TrivialOperation) {
   EXPECT_TRUE(Vec.none());
   EXPECT_FALSE(Vec.empty());
 
-  Inv = ~BitVector();
+  Vec.flip();
+  EXPECT_EQ(130U, Vec.count());
+  EXPECT_EQ(130U, Vec.size());
+  EXPECT_TRUE(Vec.any());
+  EXPECT_TRUE(Vec.all());
+  EXPECT_FALSE(Vec.none());
+  EXPECT_FALSE(Vec.empty());
+
+  Vec.resize(64);
+  EXPECT_EQ(64U, Vec.count());
+  EXPECT_EQ(64U, Vec.size());
+  EXPECT_TRUE(Vec.any());
+  EXPECT_TRUE(Vec.all());
+  EXPECT_FALSE(Vec.none());
+  EXPECT_FALSE(Vec.empty());
+
+  Vec.flip();
+  EXPECT_EQ(0U, Vec.count());
+  EXPECT_EQ(64U, Vec.size());
+  EXPECT_FALSE(Vec.any());
+  EXPECT_FALSE(Vec.all());
+  EXPECT_TRUE(Vec.none());
+  EXPECT_FALSE(Vec.empty());
+
+  Inv = TypeParam().flip();
   EXPECT_EQ(0U, Inv.count());
   EXPECT_EQ(0U, Inv.size());
   EXPECT_FALSE(Inv.any());
@@ -148,13 +182,13 @@ TEST(BitVectorTest, TrivialOperation) {
   EXPECT_TRUE(Vec.empty());
 }
 
-TEST(BitVectorTest, CompoundAssignment) {
-  BitVector A;
+TYPED_TEST(BitVectorTest, CompoundAssignment) {
+  TypeParam A;
   A.resize(10);
   A.set(4);
   A.set(7);
 
-  BitVector B;
+  TypeParam B;
   B.resize(50);
   B.set(5);
   B.set(18);
@@ -187,8 +221,8 @@ TEST(BitVectorTest, CompoundAssignment) {
   EXPECT_EQ(100U, A.size());
 }
 
-TEST(BitVectorTest, ProxyIndex) {
-  BitVector Vec(3);
+TYPED_TEST(BitVectorTest, ProxyIndex) {
+  TypeParam Vec(3);
   EXPECT_TRUE(Vec.none());
   Vec[0] = Vec[1] = Vec[2] = true;
   EXPECT_EQ(Vec.size(), Vec.count());
@@ -196,8 +230,8 @@ TEST(BitVectorTest, ProxyIndex) {
   EXPECT_TRUE(Vec.none());
 }
 
-TEST(BitVectorTest, PortableBitMask) {
-  BitVector A;
+TYPED_TEST(BitVectorTest, PortableBitMask) {
+  TypeParam A;
   const uint32_t Mask1[] = { 0x80000000, 6, 5 };
 
   A.resize(10);
@@ -242,6 +276,86 @@ TEST(BitVectorTest, PortableBitMask) {
   A.clearBitsNotInMask(Mask1, 1);
   EXPECT_EQ(64-4u, A.count());
 }
+
+TYPED_TEST(BitVectorTest, BinOps) {
+  TypeParam A;
+  TypeParam B;
+
+  A.resize(65);
+  EXPECT_FALSE(A.anyCommon(B));
+  EXPECT_FALSE(B.anyCommon(B));
+
+  B.resize(64);
+  A.set(64);
+  EXPECT_FALSE(A.anyCommon(B));
+  EXPECT_FALSE(B.anyCommon(A));
+
+  B.set(63);
+  EXPECT_FALSE(A.anyCommon(B));
+  EXPECT_FALSE(B.anyCommon(A));
+
+  A.set(63);
+  EXPECT_TRUE(A.anyCommon(B));
+  EXPECT_TRUE(B.anyCommon(A));
+
+  B.resize(70);
+  B.set(64);
+  B.reset(63);
+  A.resize(64);
+  EXPECT_FALSE(A.anyCommon(B));
+  EXPECT_FALSE(B.anyCommon(A));
 }
 
+TYPED_TEST(BitVectorTest, RangeOps) {
+  TypeParam A;
+  A.resize(256);
+  A.reset();
+  A.set(1, 255);
+
+  EXPECT_FALSE(A.test(0));
+  EXPECT_TRUE( A.test(1));
+  EXPECT_TRUE( A.test(23));
+  EXPECT_TRUE( A.test(254));
+  EXPECT_FALSE(A.test(255));
+
+  TypeParam B;
+  B.resize(256);
+  B.set();
+  B.reset(1, 255);
+
+  EXPECT_TRUE( B.test(0));
+  EXPECT_FALSE(B.test(1));
+  EXPECT_FALSE(B.test(23));
+  EXPECT_FALSE(B.test(254));
+  EXPECT_TRUE( B.test(255));
+
+  TypeParam C;
+  C.resize(3);
+  C.reset();
+  C.set(0, 1);
+
+  EXPECT_TRUE(C.test(0));
+  EXPECT_FALSE( C.test(1));
+  EXPECT_FALSE( C.test(2));
+
+  TypeParam D;
+  D.resize(3);
+  D.set();
+  D.reset(0, 1);
+
+  EXPECT_FALSE(D.test(0));
+  EXPECT_TRUE( D.test(1));
+  EXPECT_TRUE( D.test(2));
+
+  TypeParam E;
+  E.resize(128);
+  E.reset();
+  E.set(1, 33);
+
+  EXPECT_FALSE(E.test(0));
+  EXPECT_TRUE( E.test(1));
+  EXPECT_TRUE( E.test(32));
+  EXPECT_FALSE(E.test(33));
+}
+}
 #endif

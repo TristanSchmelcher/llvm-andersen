@@ -15,11 +15,10 @@
 #define MBLAZE_FRAMEINFO_H
 
 #include "MBlaze.h"
-#include "MBlazeSubtarget.h"
 #include "llvm/Target/TargetFrameLowering.h"
 
 namespace llvm {
-  class MBlazeSubtarget;
+class MBlazeSubtarget;
 
 class MBlazeFrameLowering : public TargetFrameLowering {
 protected:
@@ -39,6 +38,10 @@ public:
   /// the function.
   void emitPrologue(MachineFunction &MF) const;
   void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const;
+
+  void eliminateCallFramePseudoInstr(MachineFunction &MF,
+                                     MachineBasicBlock &MBB,
+                                     MachineBasicBlock::iterator I) const;
 
   bool hasFP(const MachineFunction &MF) const;
 

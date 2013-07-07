@@ -24,6 +24,8 @@ using namespace llvm;
 
 MCAsmInfo::MCAsmInfo() {
   PointerSize = 4;
+  CalleeSaveStackSlotSize = 4;
+
   IsLittleEndian = true;
   StackGrowsUp = false;
   HasSubsectionsViaSymbols = false;
@@ -32,11 +34,13 @@ MCAsmInfo::MCAsmInfo() {
   HasStaticCtorDtorReferenceInStaticMode = false;
   LinkerRequiresNonEmptyDwarfLines = false;
   MaxInstLength = 4;
+  MinInstAlignment = 1;
   PCSymbol = "$";
   SeparatorString = ";";
   CommentColumn = 40;
   CommentString = "#";
   LabelSuffix = ":";
+  DebugLabelSuffix = ":";
   GlobalPrefix = "";
   PrivateGlobalPrefix = ".";
   LinkerPrivateGlobalPrefix = "";
@@ -49,6 +53,8 @@ MCAsmInfo::MCAsmInfo() {
   AllowQuotesInName = false;
   AllowNameToStartWithDigit = false;
   AllowPeriodsInName = true;
+  AllowUTF8 = true;
+  UseDataRegionDirectives = false;
   ZeroDirective = "\t.zero\t";
   AsciiDirective = "\t.ascii\t";
   AscizDirective = "\t.asciz\t";
@@ -56,12 +62,6 @@ MCAsmInfo::MCAsmInfo() {
   Data16bitsDirective = "\t.short\t";
   Data32bitsDirective = "\t.long\t";
   Data64bitsDirective = "\t.quad\t";
-  DataBegin = "$d.";
-  CodeBegin = "$a.";
-  JT8Begin = "$d.";
-  JT16Begin = "$d.";
-  JT32Begin = "$d.";
-  SupportsDataRegions = false;
   SunStyleELFSectionSwitchSyntax = false;
   UsesELFSectionDirectiveForBSS = false;
   AlignDirective = "\t.align\t";
@@ -72,8 +72,8 @@ MCAsmInfo::MCAsmInfo() {
   GlobalDirective = "\t.globl\t";
   HasSetDirective = true;
   HasAggressiveSymbolFolding = true;
-  LCOMMDirectiveType = LCOMM::None;
   COMMDirectiveAlignmentIsInBytes = true;
+  LCOMMDirectiveAlignmentType = LCOMM::NoAlignment;
   HasDotTypeDotSizeDirective = true;
   HasSingleParameterDotFile = true;
   HasNoDeadStrip = false;
@@ -88,21 +88,17 @@ MCAsmInfo::MCAsmInfo() {
   SupportsDebugInformation = false;
   ExceptionsType = ExceptionHandling::None;
   DwarfUsesInlineInfoSection = false;
-  DwarfRequiresRelocationForSectionOffset = true;
-  DwarfSectionOffsetDirective = 0;
-  DwarfUsesLabelOffsetForRanges = true;
-  DwarfUsesRelocationsForStringPool = true;
+  DwarfUsesRelocationsAcrossSections = true;
   DwarfRegNumForCFI = false;
   HasMicrosoftFastStdCallMangling = false;
-
-  AsmTransCBE = 0;
+  NeedsDwarfSectionOffsetDirective = false;
 }
 
 MCAsmInfo::~MCAsmInfo() {
 }
 
 
-unsigned MCAsmInfo::getULEB128Size(unsigned Value) {
+unsigned MCAsmInfo::getULEB128Size(uint64_t Value) {
   unsigned Size = 0;
   do {
     Value >>= 7;
@@ -111,7 +107,7 @@ unsigned MCAsmInfo::getULEB128Size(unsigned Value) {
   return Size;
 }
 
-unsigned MCAsmInfo::getSLEB128Size(int Value) {
+unsigned MCAsmInfo::getSLEB128Size(int64_t Value) {
   unsigned Size = 0;
   int Sign = Value >> (8 * sizeof(Value) - 1);
   bool IsMore;

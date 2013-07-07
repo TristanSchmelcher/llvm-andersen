@@ -20,18 +20,31 @@
 namespace llvm {
   class Value;
   class Instruction;
-  typedef ValueMap<const Value *, TrackingVH<Value> > ValueToValueMapTy;
+  typedef ValueMap<const Value *, WeakVH> ValueToValueMapTy;
 
   /// ValueMapTypeRemapper - This is a class that can be implemented by clients
   /// to remap types when cloning constants and instructions.
   class ValueMapTypeRemapper {
-    virtual void Anchor();  // Out of line method.
+    virtual void anchor();  // Out of line method.
   public:
     virtual ~ValueMapTypeRemapper() {}
     
     /// remapType - The client should implement this method if they want to
     /// remap types while mapping values.
     virtual Type *remapType(Type *SrcTy) = 0;
+  };
+
+  /// ValueMaterializer - This is a class that can be implemented by clients
+  /// to materialize Values on demand.
+  class ValueMaterializer {
+    virtual void anchor(); // Out of line method.
+  public:
+    virtual ~ValueMaterializer() {}
+
+    /// materializeValueFor - The client should implement this method if they
+    /// want to generate a mapped Value on demand. For example, if linking
+    /// lazily.
+    virtual Value *materializeValueFor(Value *V) = 0;
   };
   
   /// RemapFlags - These are flags that the value mapping APIs allow.
@@ -55,23 +68,29 @@ namespace llvm {
   
   Value *MapValue(const Value *V, ValueToValueMapTy &VM,
                   RemapFlags Flags = RF_None,
-                  ValueMapTypeRemapper *TypeMapper = 0);
+                  ValueMapTypeRemapper *TypeMapper = 0,
+                  ValueMaterializer *Materializer = 0);
 
   void RemapInstruction(Instruction *I, ValueToValueMapTy &VM,
                         RemapFlags Flags = RF_None,
-                        ValueMapTypeRemapper *TypeMapper = 0);
+                        ValueMapTypeRemapper *TypeMapper = 0,
+                        ValueMaterializer *Materializer = 0);
   
   /// MapValue - provide versions that preserve type safety for MDNode and
   /// Constants.
   inline MDNode *MapValue(const MDNode *V, ValueToValueMapTy &VM,
                           RemapFlags Flags = RF_None,
-                          ValueMapTypeRemapper *TypeMapper = 0) {
-    return cast<MDNode>(MapValue((const Value*)V, VM, Flags, TypeMapper));
+                          ValueMapTypeRemapper *TypeMapper = 0,
+                          ValueMaterializer *Materializer = 0) {
+    return cast<MDNode>(MapValue((const Value*)V, VM, Flags, TypeMapper,
+                                 Materializer));
   }
   inline Constant *MapValue(const Constant *V, ValueToValueMapTy &VM,
                             RemapFlags Flags = RF_None,
-                            ValueMapTypeRemapper *TypeMapper = 0) {
-    return cast<Constant>(MapValue((const Value*)V, VM, Flags, TypeMapper));
+                            ValueMapTypeRemapper *TypeMapper = 0,
+                            ValueMaterializer *Materializer = 0) {
+    return cast<Constant>(MapValue((const Value*)V, VM, Flags, TypeMapper,
+                                   Materializer));
   }
   
 

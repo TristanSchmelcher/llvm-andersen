@@ -14,12 +14,12 @@
 #ifndef LLVM_CODEGEN_ANALYSIS_H
 #define LLVM_CODEGEN_ANALYSIS_H
 
-#include "llvm/Instructions.h"
-#include "llvm/InlineAsm.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
+#include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Support/CallSite.h"
 
 namespace llvm {
@@ -27,6 +27,7 @@ namespace llvm {
 class GlobalVariable;
 class TargetLowering;
 class SDNode;
+class SDValue;
 class SelectionDAG;
 
 /// ComputeLinearIndex - Given an LLVM IR aggregate type and a sequence
@@ -85,11 +86,7 @@ ISD::CondCode getICmpCondCode(ICmpInst::Predicate Pred);
 /// between it and the return.
 ///
 /// This function only tests target-independent requirements.
-bool isInTailCallPosition(ImmutableCallSite CS, Attributes CalleeRetAttr,
-                          const TargetLowering &TLI);
-
-bool isInTailCallPosition(SelectionDAG &DAG, SDNode *Node,
-                          const TargetLowering &TLI);
+bool isInTailCallPosition(ImmutableCallSite CS, const TargetLowering &TLI);
 
 } // End llvm namespace
 

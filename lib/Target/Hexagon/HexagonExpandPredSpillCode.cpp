@@ -7,9 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 // The Hexagon processor has no instructions that load or store predicate
-// registers directly.  So, when these registers must be spilled a general 
-// purpose register must be found and the value copied to/from it from/to 
-// the predicate register.  This code currently does not use the register 
+// registers directly.  So, when these registers must be spilled a general
+// purpose register must be found and the value copied to/from it from/to
+// the predicate register.  This code currently does not use the register
 // scavenger mechanism available in the allocator.  There are two registers
 // reserved to allow spilling/restoring predicate registers.  One is used to
 // hold the predicate value.  The other is used when stack frame offsets are
@@ -17,9 +17,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "HexagonTargetMachine.h"
-#include "HexagonSubtarget.h"
+#include "Hexagon.h"
 #include "HexagonMachineFunctionInfo.h"
+#include "HexagonSubtarget.h"
+#include "HexagonTargetMachine.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/LatencyPriorityQueue.h"
 #include "llvm/CodeGen/MachineDominators.h"
@@ -30,26 +31,34 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/ScheduleHazardRecognizer.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 
 using namespace llvm;
+
+
+namespace llvm {
+  void initializeHexagonExpandPredSpillCodePass(PassRegistry&);
+}
 
 
 namespace {
 
 class HexagonExpandPredSpillCode : public MachineFunctionPass {
-    HexagonTargetMachine& QTM;
+    const HexagonTargetMachine& QTM;
     const HexagonSubtarget &QST;
 
  public:
     static char ID;
-    HexagonExpandPredSpillCode(HexagonTargetMachine& TM) :
-      MachineFunctionPass(ID), QTM(TM), QST(*TM.getSubtargetImpl()) {}
+    HexagonExpandPredSpillCode(const HexagonTargetMachine& TM) :
+      MachineFunctionPass(ID), QTM(TM), QST(*TM.getSubtargetImpl()) {
+      PassRegistry &Registry = *PassRegistry::getPassRegistry();
+      initializeHexagonExpandPredSpillCodePass(Registry);
+    }
 
     const char *getPassName() const {
       return "Hexagon Expand Predicate Spill Code";
@@ -84,7 +93,7 @@ bool HexagonExpandPredSpillCode::runOnMachineFunction(MachineFunction &Fn) {
         int SrcReg = MI->getOperand(2).getReg();
         assert(Hexagon::PredRegsRegClass.contains(SrcReg) &&
                "Not a predicate register");
-        if (!TII->isValidOffset(Hexagon::STriw, Offset)) {
+        if (!TII->isValidOffset(Hexagon::STriw_indexed, Offset)) {
           if (!TII->isValidOffset(Hexagon::ADD_ri, Offset)) {
             BuildMI(*MBB, MII, MI->getDebugLoc(),
                     TII->get(Hexagon::CONST32_Int_Real),
@@ -95,7 +104,7 @@ bool HexagonExpandPredSpillCode::runOnMachineFunction(MachineFunction &Fn) {
             BuildMI(*MBB, MII, MI->getDebugLoc(), TII->get(Hexagon::TFR_RsPd),
                       HEXAGON_RESERVED_REG_2).addReg(SrcReg);
             BuildMI(*MBB, MII, MI->getDebugLoc(),
-                    TII->get(Hexagon::STriw))
+                    TII->get(Hexagon::STriw_indexed))
               .addReg(HEXAGON_RESERVED_REG_1)
               .addImm(0).addReg(HEXAGON_RESERVED_REG_2);
           } else {
@@ -103,7 +112,8 @@ bool HexagonExpandPredSpillCode::runOnMachineFunction(MachineFunction &Fn) {
                       HEXAGON_RESERVED_REG_1).addReg(FP).addImm(Offset);
             BuildMI(*MBB, MII, MI->getDebugLoc(), TII->get(Hexagon::TFR_RsPd),
                       HEXAGON_RESERVED_REG_2).addReg(SrcReg);
-            BuildMI(*MBB, MII, MI->getDebugLoc(), TII->get(Hexagon::STriw))
+            BuildMI(*MBB, MII, MI->getDebugLoc(),
+                          TII->get(Hexagon::STriw_indexed))
               .addReg(HEXAGON_RESERVED_REG_1)
               .addImm(0)
               .addReg(HEXAGON_RESERVED_REG_2);
@@ -111,7 +121,8 @@ bool HexagonExpandPredSpillCode::runOnMachineFunction(MachineFunction &Fn) {
         } else {
           BuildMI(*MBB, MII, MI->getDebugLoc(), TII->get(Hexagon::TFR_RsPd),
                     HEXAGON_RESERVED_REG_2).addReg(SrcReg);
-          BuildMI(*MBB, MII, MI->getDebugLoc(), TII->get(Hexagon::STriw)).
+          BuildMI(*MBB, MII, MI->getDebugLoc(),
+                        TII->get(Hexagon::STriw_indexed)).
                     addReg(FP).addImm(Offset).addReg(HEXAGON_RESERVED_REG_2);
         }
         MII = MBB->erase(MI);
@@ -172,6 +183,19 @@ bool HexagonExpandPredSpillCode::runOnMachineFunction(MachineFunction &Fn) {
 //                         Public Constructor Functions
 //===----------------------------------------------------------------------===//
 
-FunctionPass *llvm::createHexagonExpandPredSpillCode(HexagonTargetMachine &TM) {
+static void initializePassOnce(PassRegistry &Registry) {
+  const char *Name = "Hexagon Expand Predicate Spill Code";
+  PassInfo *PI = new PassInfo(Name, "hexagon-spill-pred",
+                              &HexagonExpandPredSpillCode::ID,
+                              0, false, false);
+  Registry.registerPass(*PI, true);
+}
+
+void llvm::initializeHexagonExpandPredSpillCodePass(PassRegistry &Registry) {
+  CALL_ONCE_INITIALIZATION(initializePassOnce)
+}
+
+FunctionPass*
+llvm::createHexagonExpandPredSpillCode(const HexagonTargetMachine &TM) {
   return new HexagonExpandPredSpillCode(TM);
 }

@@ -14,16 +14,15 @@
 #ifndef SPARCTARGETASMINFO_H
 #define SPARCTARGETASMINFO_H
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCAsmInfo.h"
 
 namespace llvm {
-  class Target;
+  class StringRef;
 
   class SparcELFMCAsmInfo : public MCAsmInfo {
     virtual void anchor();
   public:
-    explicit SparcELFMCAsmInfo(const Target &T, StringRef TT);
+    explicit SparcELFMCAsmInfo(StringRef TT);
   };
 
 } // namespace llvm

@@ -56,9 +56,9 @@ entry:
   %div = sdiv i16 %x, 10
   ret i16 %div
 ; CHECK: test6:
-; CHECK: imull	$26215, %eax, %eax
-; CHECK: shrl	$31, %ecx
-; CHECK: sarl	$18, %eax
+; CHECK: imull $26215, %eax, %ecx
+; CHECK: sarl $18, %ecx
+; CHECK: shrl $15, %eax
 }
 
 define i32 @test7(i32 %x) nounwind {
@@ -69,5 +69,26 @@ define i32 @test7(i32 %x) nounwind {
 ; CHECK: movl $613566757
 ; CHECK: mull
 ; CHECK-NOT: shrl
+; CHECK: ret
+}
+
+; PR13326
+define i8 @test8(i8 %x) nounwind {
+  %div = udiv i8 %x, 78
+  ret i8 %div
+; CHECK: test8:
+; CHECK: shrb %
+; CHECK: imull $211
+; CHECK: shrl $13
+; CHECK: ret
+}
+
+define i8 @test9(i8 %x) nounwind {
+  %div = udiv i8 %x, 116
+  ret i8 %div
+; CHECK: test9:
+; CHECK: shrb $2
+; CHECK: imull $71
+; CHECK: shrl $11
 ; CHECK: ret
 }

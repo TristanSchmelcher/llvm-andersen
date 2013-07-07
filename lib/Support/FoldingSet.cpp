@@ -8,17 +8,16 @@
 //===----------------------------------------------------------------------===//
 //
 // This file implements a hash set that can be used to remove duplication of
-// nodes in a graph.  This code was originally created by Chris Lattner for use
-// with SelectionDAGCSEMap, but was isolated to provide use across the llvm code
-// set. 
+// nodes in a graph.
 //
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/FoldingSet.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Host.h"
+#include "llvm/Support/MathExtras.h"
 #include <cassert>
 #include <cstring>
 using namespace llvm;
@@ -29,29 +28,20 @@ using namespace llvm;
 /// ComputeHash - Compute a strong hash value for this FoldingSetNodeIDRef,
 /// used to lookup the node in the FoldingSetImpl.
 unsigned FoldingSetNodeIDRef::ComputeHash() const {
-  // This is adapted from SuperFastHash by Paul Hsieh.
-  unsigned Hash = static_cast<unsigned>(Size);
-  for (const unsigned *BP = Data, *E = BP+Size; BP != E; ++BP) {
-    unsigned Data = *BP;
-    Hash         += Data & 0xFFFF;
-    unsigned Tmp  = ((Data >> 16) << 11) ^ Hash;
-    Hash          = (Hash << 16) ^ Tmp;
-    Hash         += Hash >> 11;
-  }
-  
-  // Force "avalanching" of final 127 bits.
-  Hash ^= Hash << 3;
-  Hash += Hash >> 5;
-  Hash ^= Hash << 4;
-  Hash += Hash >> 17;
-  Hash ^= Hash << 25;
-  Hash += Hash >> 6;
-  return Hash;
+  return static_cast<unsigned>(hash_combine_range(Data, Data+Size));
 }
 
 bool FoldingSetNodeIDRef::operator==(FoldingSetNodeIDRef RHS) const {
   if (Size != RHS.Size) return false;
   return memcmp(Data, RHS.Data, Size*sizeof(*Data)) == 0;
+}
+
+/// Used to compare the "ordering" of two nodes as defined by the
+/// profiled bits and their ordering defined by memcmp().
+bool FoldingSetNodeIDRef::operator<(FoldingSetNodeIDRef RHS) const {
+  if (Size != RHS.Size)
+    return Size < RHS.Size;
+  return memcmp(Data, RHS.Data, Size*sizeof(*Data)) < 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -111,7 +101,7 @@ void FoldingSetNodeID::AddString(StringRef String) {
     // Otherwise do it the hard way.
     // To be compatible with above bulk transfer, we need to take endianness
     // into account.
-    if (sys::isBigEndianHost()) {
+    if (sys::IsBigEndianHost) {
       for (Pos += 4; Pos <= Size; Pos += 4) {
         unsigned V = ((unsigned char)String[Pos - 4] << 24) |
                      ((unsigned char)String[Pos - 3] << 16) |
@@ -120,7 +110,7 @@ void FoldingSetNodeID::AddString(StringRef String) {
         Bits.push_back(V);
       }
     } else {
-      assert(sys::isLittleEndianHost() && "Unexpected host endianness");
+      assert(sys::IsLittleEndianHost && "Unexpected host endianness");
       for (Pos += 4; Pos <= Size; Pos += 4) {
         unsigned V = ((unsigned char)String[Pos - 1] << 24) |
                      ((unsigned char)String[Pos - 2] << 16) |
@@ -158,7 +148,7 @@ unsigned FoldingSetNodeID::ComputeHash() const {
 
 /// operator== - Used to compare two nodes to each other.
 ///
-bool FoldingSetNodeID::operator==(const FoldingSetNodeID &RHS)const{
+bool FoldingSetNodeID::operator==(const FoldingSetNodeID &RHS) const {
   return *this == FoldingSetNodeIDRef(RHS.Bits.data(), RHS.Bits.size());
 }
 
@@ -166,6 +156,16 @@ bool FoldingSetNodeID::operator==(const FoldingSetNodeID &RHS)const{
 ///
 bool FoldingSetNodeID::operator==(FoldingSetNodeIDRef RHS) const {
   return FoldingSetNodeIDRef(Bits.data(), Bits.size()) == RHS;
+}
+
+/// Used to compare the "ordering" of two nodes as defined by the
+/// profiled bits and their ordering defined by memcmp().
+bool FoldingSetNodeID::operator<(const FoldingSetNodeID &RHS) const {
+  return *this < FoldingSetNodeIDRef(RHS.Bits.data(), RHS.Bits.size());
+}
+
+bool FoldingSetNodeID::operator<(FoldingSetNodeIDRef RHS) const {
+  return FoldingSetNodeIDRef(Bits.data(), Bits.size()) < RHS;
 }
 
 /// Intern - Copy this node's data to a memory region allocated from the
@@ -281,15 +281,15 @@ void FoldingSetImpl::GrowHashTable() {
 FoldingSetImpl::Node
 *FoldingSetImpl::FindNodeOrInsertPos(const FoldingSetNodeID &ID,
                                      void *&InsertPos) {
-  
-  void **Bucket = GetBucketFor(ID.ComputeHash(), Buckets, NumBuckets);
+  unsigned IDHash = ID.ComputeHash();
+  void **Bucket = GetBucketFor(IDHash, Buckets, NumBuckets);
   void *Probe = *Bucket;
   
   InsertPos = 0;
   
   FoldingSetNodeID TempID;
   while (Node *NodeInBucket = GetNextPtr(Probe)) {
-    if (NodeEquals(NodeInBucket, ID, TempID))
+    if (NodeEquals(NodeInBucket, ID, IDHash, TempID))
       return NodeInBucket;
     TempID.clear();
 

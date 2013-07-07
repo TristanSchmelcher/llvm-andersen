@@ -14,8 +14,8 @@
 #ifndef XCOREINSTRUCTIONINFO_H
 #define XCOREINSTRUCTIONINFO_H
 
-#include "llvm/Target/TargetInstrInfo.h"
 #include "XCoreRegisterInfo.h"
+#include "llvm/Target/TargetInstrInfo.h"
 
 #define GET_INSTRINFO_HEADER
 #include "XCoreGenInstrInfo.inc"
@@ -77,12 +77,6 @@ public:
                                     unsigned DestReg, int FrameIndex,
                                     const TargetRegisterClass *RC,
                                     const TargetRegisterInfo *TRI) const;
-
-  virtual MachineInstr *emitFrameIndexDebugValue(MachineFunction &MF,
-                                                 int FrameIx,
-                                                 uint64_t Offset,
-                                                 const MDNode *MDPtr,
-                                                 DebugLoc DL) const;
 
   virtual bool ReverseBranchCondition(
                             SmallVectorImpl<MachineOperand> &Cond) const;

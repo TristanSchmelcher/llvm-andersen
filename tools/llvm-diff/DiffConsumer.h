@@ -15,12 +15,11 @@
 #define _LLVM_DIFFCONSUMER_H_
 
 #include "DiffLog.h"
-
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
   class Module;
@@ -67,8 +66,6 @@ namespace llvm {
     };
 
     raw_ostream &out;
-    Module *LModule;
-    Module *RModule;
     SmallVector<DiffContext, 5> contexts;
     bool Differences;
     unsigned Indent;
@@ -78,8 +75,8 @@ namespace llvm {
     void indent();
 
   public:
-    DiffConsumer(Module *L, Module *R)
-      : out(errs()), LModule(L), RModule(R), Differences(false), Indent(0) {}
+    DiffConsumer()
+      : out(errs()), Differences(false), Indent(0) {}
 
     bool hadDifferences() const;
     void enterContext(Value *L, Value *R);

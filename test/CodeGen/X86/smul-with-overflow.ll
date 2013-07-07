@@ -19,7 +19,7 @@ overflow:
   ret i1 false
 ; CHECK: test1:
 ; CHECK: imull
-; CHECK-NEXT: jo
+; CHECK-NEXT: jno
 }
 
 define i1 @test2(i32 %v1, i32 %v2) nounwind {
@@ -66,4 +66,18 @@ entry:
 ; CHECK: addl
 ; CHECK: mull
 ; CHECK-NEXT: ret
+}
+
+declare { i63, i1 } @llvm.smul.with.overflow.i63(i63, i63) nounwind readnone
+
+define i1 @test5() nounwind {
+entry:
+  %res = call { i63, i1 } @llvm.smul.with.overflow.i63(i63 4, i63 4611686018427387903)
+  %sum = extractvalue { i63, i1 } %res, 0
+  %overflow = extractvalue { i63, i1 } %res, 1
+  ret i1 %overflow
+; Was returning false, should return true (not constant folded yet though).
+; PR13991
+; CHECK: test5:
+; CHECK-NOT: xorb
 }

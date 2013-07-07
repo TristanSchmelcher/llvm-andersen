@@ -1,4 +1,4 @@
-; RUN: llc < %s -mtriple=x86_64-apple-darwin -march=x86 -mcpu=corei7 -mattr=avx | FileCheck %s
+; RUN: llc < %s -mtriple=x86_64-apple-darwin -march=x86 -mcpu=corei7-avx | FileCheck %s
 
 define <2 x i64> @test_x86_aesni_aesdec(<2 x i64> %a0, <2 x i64> %a1) {
   ; CHECK: vaesdec
@@ -671,7 +671,9 @@ define void @test_x86_sse2_storeu_dq(i8* %a0, <16 x i8> %a1) {
   ; CHECK: test_x86_sse2_storeu_dq
   ; CHECK: movl
   ; CHECK: vmovdqu
-  call void @llvm.x86.sse2.storeu.dq(i8* %a0, <16 x i8> %a1)
+  ; add operation forces the execution domain.
+  %a2 = add <16 x i8> %a1, <i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1>
+  call void @llvm.x86.sse2.storeu.dq(i8* %a0, <16 x i8> %a2)
   ret void
 }
 declare void @llvm.x86.sse2.storeu.dq(i8*, <16 x i8>) nounwind
@@ -681,6 +683,7 @@ define void @test_x86_sse2_storeu_pd(i8* %a0, <2 x double> %a1) {
   ; CHECK: test_x86_sse2_storeu_pd
   ; CHECK: movl
   ; CHECK: vmovupd
+  ; fadd operation forces the execution domain.
   %a2 = fadd <2 x double> %a1, <double 0x0, double 0x4200000000000000>
   call void @llvm.x86.sse2.storeu.pd(i8* %a0, <2 x double> %a2)
   ret void
@@ -1078,33 +1081,33 @@ define <2 x i64> @test_x86_sse41_pmuldq(<4 x i32> %a0, <4 x i32> %a1) {
 declare <2 x i64> @llvm.x86.sse41.pmuldq(<4 x i32>, <4 x i32>) nounwind readnone
 
 
-define i32 @test_x86_sse41_ptestc(<4 x float> %a0, <4 x float> %a1) {
+define i32 @test_x86_sse41_ptestc(<2 x i64> %a0, <2 x i64> %a1) {
   ; CHECK: vptest 
   ; CHECK: sbbl
-  %res = call i32 @llvm.x86.sse41.ptestc(<4 x float> %a0, <4 x float> %a1) ; <i32> [#uses=1]
+  %res = call i32 @llvm.x86.sse41.ptestc(<2 x i64> %a0, <2 x i64> %a1) ; <i32> [#uses=1]
   ret i32 %res
 }
-declare i32 @llvm.x86.sse41.ptestc(<4 x float>, <4 x float>) nounwind readnone
+declare i32 @llvm.x86.sse41.ptestc(<2 x i64>, <2 x i64>) nounwind readnone
 
 
-define i32 @test_x86_sse41_ptestnzc(<4 x float> %a0, <4 x float> %a1) {
+define i32 @test_x86_sse41_ptestnzc(<2 x i64> %a0, <2 x i64> %a1) {
   ; CHECK: vptest 
   ; CHECK: seta
   ; CHECK: movzbl
-  %res = call i32 @llvm.x86.sse41.ptestnzc(<4 x float> %a0, <4 x float> %a1) ; <i32> [#uses=1]
+  %res = call i32 @llvm.x86.sse41.ptestnzc(<2 x i64> %a0, <2 x i64> %a1) ; <i32> [#uses=1]
   ret i32 %res
 }
-declare i32 @llvm.x86.sse41.ptestnzc(<4 x float>, <4 x float>) nounwind readnone
+declare i32 @llvm.x86.sse41.ptestnzc(<2 x i64>, <2 x i64>) nounwind readnone
 
 
-define i32 @test_x86_sse41_ptestz(<4 x float> %a0, <4 x float> %a1) {
+define i32 @test_x86_sse41_ptestz(<2 x i64> %a0, <2 x i64> %a1) {
   ; CHECK: vptest 
   ; CHECK: sete
   ; CHECK: movzbl
-  %res = call i32 @llvm.x86.sse41.ptestz(<4 x float> %a0, <4 x float> %a1) ; <i32> [#uses=1]
+  %res = call i32 @llvm.x86.sse41.ptestz(<2 x i64> %a0, <2 x i64> %a1) ; <i32> [#uses=1]
   ret i32 %res
 }
-declare i32 @llvm.x86.sse41.ptestz(<4 x float>, <4 x float>) nounwind readnone
+declare i32 @llvm.x86.sse41.ptestz(<2 x i64>, <2 x i64>) nounwind readnone
 
 
 define <2 x double> @test_x86_sse41_round_pd(<2 x double> %a0) {
@@ -1140,9 +1143,9 @@ declare <4 x float> @llvm.x86.sse41.round.ss(<4 x float>, <4 x float>, i32) noun
 
 
 define i32 @test_x86_sse42_pcmpestri128(<16 x i8> %a0, <16 x i8> %a2) {
-  ; CHECK: movl
-  ; CHECK: movl
-  ; CHECK: vpcmpestri
+  ; CHECK: movl $7
+  ; CHECK: movl $7
+  ; CHECK: vpcmpestri $7
   ; CHECK: movl
   %res = call i32 @llvm.x86.sse42.pcmpestri128(<16 x i8> %a0, i32 7, <16 x i8> %a2, i32 7, i8 7) ; <i32> [#uses=1]
   ret i32 %res
@@ -1150,11 +1153,23 @@ define i32 @test_x86_sse42_pcmpestri128(<16 x i8> %a0, <16 x i8> %a2) {
 declare i32 @llvm.x86.sse42.pcmpestri128(<16 x i8>, i32, <16 x i8>, i32, i8) nounwind readnone
 
 
+define i32 @test_x86_sse42_pcmpestri128_load(<16 x i8>* %a0, <16 x i8>* %a2) {
+  ; CHECK: movl $7
+  ; CHECK: movl $7
+  ; CHECK: vpcmpestri $7, (
+  ; CHECK: movl
+  %1 = load <16 x i8>* %a0
+  %2 = load <16 x i8>* %a2
+  %res = call i32 @llvm.x86.sse42.pcmpestri128(<16 x i8> %1, i32 7, <16 x i8> %2, i32 7, i8 7) ; <i32> [#uses=1]
+  ret i32 %res
+}
+
+
 define i32 @test_x86_sse42_pcmpestria128(<16 x i8> %a0, <16 x i8> %a2) {
   ; CHECK: movl
   ; CHECK: movl
   ; CHECK: vpcmpestri
-  ; CHECK: movl
+  ; CHECK: seta
   %res = call i32 @llvm.x86.sse42.pcmpestria128(<16 x i8> %a0, i32 7, <16 x i8> %a2, i32 7, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1165,7 +1180,7 @@ define i32 @test_x86_sse42_pcmpestric128(<16 x i8> %a0, <16 x i8> %a2) {
   ; CHECK: movl
   ; CHECK: movl
   ; CHECK: vpcmpestri
-  ; CHECK: movl
+  ; CHECK: sbbl
   %res = call i32 @llvm.x86.sse42.pcmpestric128(<16 x i8> %a0, i32 7, <16 x i8> %a2, i32 7, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1176,7 +1191,7 @@ define i32 @test_x86_sse42_pcmpestrio128(<16 x i8> %a0, <16 x i8> %a2) {
   ; CHECK: movl
   ; CHECK: movl
   ; CHECK: vpcmpestri
-  ; CHECK: movl
+  ; CHECK: seto
   %res = call i32 @llvm.x86.sse42.pcmpestrio128(<16 x i8> %a0, i32 7, <16 x i8> %a2, i32 7, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1187,7 +1202,7 @@ define i32 @test_x86_sse42_pcmpestris128(<16 x i8> %a0, <16 x i8> %a2) {
   ; CHECK: movl
   ; CHECK: movl
   ; CHECK: vpcmpestri
-  ; CHECK: movl
+  ; CHECK: sets
   %res = call i32 @llvm.x86.sse42.pcmpestris128(<16 x i8> %a0, i32 7, <16 x i8> %a2, i32 7, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1198,7 +1213,7 @@ define i32 @test_x86_sse42_pcmpestriz128(<16 x i8> %a0, <16 x i8> %a2) {
   ; CHECK: movl
   ; CHECK: movl
   ; CHECK: vpcmpestri
-  ; CHECK: movl
+  ; CHECK: sete
   %res = call i32 @llvm.x86.sse42.pcmpestriz128(<16 x i8> %a0, i32 7, <16 x i8> %a2, i32 7, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1209,14 +1224,26 @@ define <16 x i8> @test_x86_sse42_pcmpestrm128(<16 x i8> %a0, <16 x i8> %a2) {
   ; CHECK: movl
   ; CHECK: movl
   ; CHECK: vpcmpestrm
+  ; CHECK-NOT: vmov
   %res = call <16 x i8> @llvm.x86.sse42.pcmpestrm128(<16 x i8> %a0, i32 7, <16 x i8> %a2, i32 7, i8 7) ; <<16 x i8>> [#uses=1]
   ret <16 x i8> %res
 }
 declare <16 x i8> @llvm.x86.sse42.pcmpestrm128(<16 x i8>, i32, <16 x i8>, i32, i8) nounwind readnone
 
 
+define <16 x i8> @test_x86_sse42_pcmpestrm128_load(<16 x i8> %a0, <16 x i8>* %a2) {
+  ; CHECK: movl $7
+  ; CHECK: movl $7
+  ; CHECK: vpcmpestrm $7,
+  ; CHECK-NOT: vmov
+  %1 = load <16 x i8>* %a2
+  %res = call <16 x i8> @llvm.x86.sse42.pcmpestrm128(<16 x i8> %a0, i32 7, <16 x i8> %1, i32 7, i8 7) ; <<16 x i8>> [#uses=1]
+  ret <16 x i8> %res
+}
+
+
 define i32 @test_x86_sse42_pcmpistri128(<16 x i8> %a0, <16 x i8> %a1) {
-  ; CHECK: vpcmpistri
+  ; CHECK: vpcmpistri $7
   ; CHECK: movl
   %res = call i32 @llvm.x86.sse42.pcmpistri128(<16 x i8> %a0, <16 x i8> %a1, i8 7) ; <i32> [#uses=1]
   ret i32 %res
@@ -1224,9 +1251,19 @@ define i32 @test_x86_sse42_pcmpistri128(<16 x i8> %a0, <16 x i8> %a1) {
 declare i32 @llvm.x86.sse42.pcmpistri128(<16 x i8>, <16 x i8>, i8) nounwind readnone
 
 
+define i32 @test_x86_sse42_pcmpistri128_load(<16 x i8>* %a0, <16 x i8>* %a1) {
+  ; CHECK: vpcmpistri $7, (
+  ; CHECK: movl
+  %1 = load <16 x i8>* %a0
+  %2 = load <16 x i8>* %a1
+  %res = call i32 @llvm.x86.sse42.pcmpistri128(<16 x i8> %1, <16 x i8> %2, i8 7) ; <i32> [#uses=1]
+  ret i32 %res
+}
+
+
 define i32 @test_x86_sse42_pcmpistria128(<16 x i8> %a0, <16 x i8> %a1) {
   ; CHECK: vpcmpistri
-  ; CHECK: movl
+  ; CHECK: seta
   %res = call i32 @llvm.x86.sse42.pcmpistria128(<16 x i8> %a0, <16 x i8> %a1, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1235,7 +1272,7 @@ declare i32 @llvm.x86.sse42.pcmpistria128(<16 x i8>, <16 x i8>, i8) nounwind rea
 
 define i32 @test_x86_sse42_pcmpistric128(<16 x i8> %a0, <16 x i8> %a1) {
   ; CHECK: vpcmpistri
-  ; CHECK: movl
+  ; CHECK: sbbl
   %res = call i32 @llvm.x86.sse42.pcmpistric128(<16 x i8> %a0, <16 x i8> %a1, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1244,7 +1281,7 @@ declare i32 @llvm.x86.sse42.pcmpistric128(<16 x i8>, <16 x i8>, i8) nounwind rea
 
 define i32 @test_x86_sse42_pcmpistrio128(<16 x i8> %a0, <16 x i8> %a1) {
   ; CHECK: vpcmpistri
-  ; CHECK: movl
+  ; CHECK: seto
   %res = call i32 @llvm.x86.sse42.pcmpistrio128(<16 x i8> %a0, <16 x i8> %a1, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1253,7 +1290,7 @@ declare i32 @llvm.x86.sse42.pcmpistrio128(<16 x i8>, <16 x i8>, i8) nounwind rea
 
 define i32 @test_x86_sse42_pcmpistris128(<16 x i8> %a0, <16 x i8> %a1) {
   ; CHECK: vpcmpistri
-  ; CHECK: movl
+  ; CHECK: sets
   %res = call i32 @llvm.x86.sse42.pcmpistris128(<16 x i8> %a0, <16 x i8> %a1, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1262,7 +1299,7 @@ declare i32 @llvm.x86.sse42.pcmpistris128(<16 x i8>, <16 x i8>, i8) nounwind rea
 
 define i32 @test_x86_sse42_pcmpistriz128(<16 x i8> %a0, <16 x i8> %a1) {
   ; CHECK: vpcmpistri
-  ; CHECK: movl
+  ; CHECK: sete
   %res = call i32 @llvm.x86.sse42.pcmpistriz128(<16 x i8> %a0, <16 x i8> %a1, i8 7) ; <i32> [#uses=1]
   ret i32 %res
 }
@@ -1270,11 +1307,21 @@ declare i32 @llvm.x86.sse42.pcmpistriz128(<16 x i8>, <16 x i8>, i8) nounwind rea
 
 
 define <16 x i8> @test_x86_sse42_pcmpistrm128(<16 x i8> %a0, <16 x i8> %a1) {
-  ; CHECK: vpcmpistrm
+  ; CHECK: vpcmpistrm $7
+  ; CHECK-NOT: vmov
   %res = call <16 x i8> @llvm.x86.sse42.pcmpistrm128(<16 x i8> %a0, <16 x i8> %a1, i8 7) ; <<16 x i8>> [#uses=1]
   ret <16 x i8> %res
 }
 declare <16 x i8> @llvm.x86.sse42.pcmpistrm128(<16 x i8>, <16 x i8>, i8) nounwind readnone
+
+
+define <16 x i8> @test_x86_sse42_pcmpistrm128_load(<16 x i8> %a0, <16 x i8>* %a1) {
+  ; CHECK: vpcmpistrm $7, (
+  ; CHECK-NOT: vmov
+  %1 = load <16 x i8>* %a1
+  %res = call <16 x i8> @llvm.x86.sse42.pcmpistrm128(<16 x i8> %a0, <16 x i8> %1, i8 7) ; <<16 x i8>> [#uses=1]
+  ret <16 x i8> %res
+}
 
 
 define <4 x float> @test_x86_sse_add_ss(<4 x float> %a0, <4 x float> %a1) {
@@ -2301,7 +2348,7 @@ declare <4 x double> @llvm.x86.avx.vpermil.pd.256(<4 x double>, i8) nounwind rea
 
 
 define <4 x float> @test_x86_avx_vpermil_ps(<4 x float> %a0) {
-  ; CHECK: vpermilps
+  ; CHECK: vpshufd
   %res = call <4 x float> @llvm.x86.avx.vpermil.ps(<4 x float> %a0, i8 7) ; <<4 x float>> [#uses=1]
   ret <4 x float> %res
 }
@@ -2555,3 +2602,36 @@ define i32 @crc32_32_32(i32 %a, i32 %b) nounwind {
   ret i32 %tmp
 }
 declare i32 @llvm.x86.sse42.crc32.32.32(i32, i32) nounwind
+
+; CHECK: movntdq
+define void @movnt_dq(i8* %p, <4 x i64> %a1) nounwind {
+  %a2 = add <4 x i64> %a1, <i64 1, i64 1, i64 1, i64 1>
+  tail call void @llvm.x86.avx.movnt.dq.256(i8* %p, <4 x i64> %a2) nounwind
+  ret void
+}
+declare void @llvm.x86.avx.movnt.dq.256(i8*, <4 x i64>) nounwind
+
+; CHECK: movntps
+define void @movnt_ps(i8* %p, <8 x float> %a) nounwind {
+  tail call void @llvm.x86.avx.movnt.ps.256(i8* %p, <8 x float> %a) nounwind
+  ret void
+}
+declare void @llvm.x86.avx.movnt.ps.256(i8*, <8 x float>) nounwind
+
+; CHECK: movntpd
+define void @movnt_pd(i8* %p, <4 x double> %a1) nounwind {
+  ; add operation forces the execution domain.
+  %a2 = fadd <4 x double> %a1, <double 0x0, double 0x0, double 0x0, double 0x0>
+  tail call void @llvm.x86.avx.movnt.pd.256(i8* %p, <4 x double> %a2) nounwind
+  ret void
+}
+declare void @llvm.x86.avx.movnt.pd.256(i8*, <4 x double>) nounwind
+
+
+; Check for pclmulqdq
+define <2 x i64> @test_x86_pclmulqdq(<2 x i64> %a0, <2 x i64> %a1) {
+; CHECK: vpclmulqdq
+  %res = call <2 x i64> @llvm.x86.pclmulqdq(<2 x i64> %a0, <2 x i64> %a1, i8 0) ; <<2 x i64>> [#uses=1]
+  ret <2 x i64> %res
+}
+declare <2 x i64> @llvm.x86.pclmulqdq(<2 x i64>, <2 x i64>, i8) nounwind readnone

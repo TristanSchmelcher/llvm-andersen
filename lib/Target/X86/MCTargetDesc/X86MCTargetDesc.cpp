@@ -12,19 +12,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86MCTargetDesc.h"
-#include "X86MCAsmInfo.h"
 #include "InstPrinter/X86ATTInstPrinter.h"
 #include "InstPrinter/X86IntelInstPrinter.h"
-#include "llvm/MC/MachineLocation.h"
+#include "X86MCAsmInfo.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
-#include "llvm/ADT/Triple.h"
-#include "llvm/Support/Host.h"
+#include "llvm/MC/MachineLocation.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/TargetRegistry.h"
 
 #define GET_REGINFO_MC_DESC
@@ -35,6 +35,10 @@
 
 #define GET_SUBTARGETINFO_MC_DESC
 #include "X86GenSubtargetInfo.inc"
+
+#if _MSC_VER
+#include <intrin.h>
+#endif
 
 using namespace llvm;
 
@@ -205,117 +209,10 @@ unsigned X86_MC::getDwarfRegFlavour(StringRef TT, bool isEH) {
   return DWARFFlavour::X86_32_Generic;
 }
 
-/// getX86RegNum - This function maps LLVM register identifiers to their X86
-/// specific numbering, which is used in various places encoding instructions.
-unsigned X86_MC::getX86RegNum(unsigned RegNo) {
-  switch(RegNo) {
-  case X86::RAX: case X86::EAX: case X86::AX: case X86::AL: return N86::EAX;
-  case X86::RCX: case X86::ECX: case X86::CX: case X86::CL: return N86::ECX;
-  case X86::RDX: case X86::EDX: case X86::DX: case X86::DL: return N86::EDX;
-  case X86::RBX: case X86::EBX: case X86::BX: case X86::BL: return N86::EBX;
-  case X86::RSP: case X86::ESP: case X86::SP: case X86::SPL: case X86::AH:
-    return N86::ESP;
-  case X86::RBP: case X86::EBP: case X86::BP: case X86::BPL: case X86::CH:
-    return N86::EBP;
-  case X86::RSI: case X86::ESI: case X86::SI: case X86::SIL: case X86::DH:
-    return N86::ESI;
-  case X86::RDI: case X86::EDI: case X86::DI: case X86::DIL: case X86::BH:
-    return N86::EDI;
-
-  case X86::R8:  case X86::R8D:  case X86::R8W:  case X86::R8B:
-    return N86::EAX;
-  case X86::R9:  case X86::R9D:  case X86::R9W:  case X86::R9B:
-    return N86::ECX;
-  case X86::R10: case X86::R10D: case X86::R10W: case X86::R10B:
-    return N86::EDX;
-  case X86::R11: case X86::R11D: case X86::R11W: case X86::R11B:
-    return N86::EBX;
-  case X86::R12: case X86::R12D: case X86::R12W: case X86::R12B:
-    return N86::ESP;
-  case X86::R13: case X86::R13D: case X86::R13W: case X86::R13B:
-    return N86::EBP;
-  case X86::R14: case X86::R14D: case X86::R14W: case X86::R14B:
-    return N86::ESI;
-  case X86::R15: case X86::R15D: case X86::R15W: case X86::R15B:
-    return N86::EDI;
-
-  case X86::ST0: case X86::ST1: case X86::ST2: case X86::ST3:
-  case X86::ST4: case X86::ST5: case X86::ST6: case X86::ST7:
-    return RegNo-X86::ST0;
-
-  case X86::XMM0: case X86::XMM8:
-  case X86::YMM0: case X86::YMM8: case X86::MM0:
-    return 0;
-  case X86::XMM1: case X86::XMM9:
-  case X86::YMM1: case X86::YMM9: case X86::MM1:
-    return 1;
-  case X86::XMM2: case X86::XMM10:
-  case X86::YMM2: case X86::YMM10: case X86::MM2:
-    return 2;
-  case X86::XMM3: case X86::XMM11:
-  case X86::YMM3: case X86::YMM11: case X86::MM3:
-    return 3;
-  case X86::XMM4: case X86::XMM12:
-  case X86::YMM4: case X86::YMM12: case X86::MM4:
-    return 4;
-  case X86::XMM5: case X86::XMM13:
-  case X86::YMM5: case X86::YMM13: case X86::MM5:
-    return 5;
-  case X86::XMM6: case X86::XMM14:
-  case X86::YMM6: case X86::YMM14: case X86::MM6:
-    return 6;
-  case X86::XMM7: case X86::XMM15:
-  case X86::YMM7: case X86::YMM15: case X86::MM7:
-    return 7;
-
-  case X86::ES: return 0;
-  case X86::CS: return 1;
-  case X86::SS: return 2;
-  case X86::DS: return 3;
-  case X86::FS: return 4;
-  case X86::GS: return 5;
-
-  case X86::CR0: case X86::CR8 : case X86::DR0: return 0;
-  case X86::CR1: case X86::CR9 : case X86::DR1: return 1;
-  case X86::CR2: case X86::CR10: case X86::DR2: return 2;
-  case X86::CR3: case X86::CR11: case X86::DR3: return 3;
-  case X86::CR4: case X86::CR12: case X86::DR4: return 4;
-  case X86::CR5: case X86::CR13: case X86::DR5: return 5;
-  case X86::CR6: case X86::CR14: case X86::DR6: return 6;
-  case X86::CR7: case X86::CR15: case X86::DR7: return 7;
-
-  // Pseudo index registers are equivalent to a "none"
-  // scaled index (See Intel Manual 2A, table 2-3)
-  case X86::EIZ:
-  case X86::RIZ:
-    return 4;
-
-  default:
-    assert((int(RegNo) > 0) && "Unknown physical register!");
-    return 0;
-  }
-}
-
 void X86_MC::InitLLVM2SEHRegisterMapping(MCRegisterInfo *MRI) {
   // FIXME: TableGen these.
   for (unsigned Reg = X86::NoRegister+1; Reg < X86::NUM_TARGET_REGS; ++Reg) {
-    int SEH = X86_MC::getX86RegNum(Reg);
-    switch (Reg) {
-    case X86::R8:  case X86::R8D:  case X86::R8W:  case X86::R8B:
-    case X86::R9:  case X86::R9D:  case X86::R9W:  case X86::R9B:
-    case X86::R10: case X86::R10D: case X86::R10W: case X86::R10B:
-    case X86::R11: case X86::R11D: case X86::R11W: case X86::R11B:
-    case X86::R12: case X86::R12D: case X86::R12W: case X86::R12B:
-    case X86::R13: case X86::R13D: case X86::R13W: case X86::R13B:
-    case X86::R14: case X86::R14D: case X86::R14W: case X86::R14B:
-    case X86::R15: case X86::R15D: case X86::R15W: case X86::R15B:
-    case X86::XMM8:  case X86::XMM9:  case X86::XMM10: case X86::XMM11:
-    case X86::XMM12: case X86::XMM13: case X86::XMM14: case X86::XMM15:
-    case X86::YMM8:  case X86::YMM9:  case X86::YMM10: case X86::YMM11:
-    case X86::YMM12: case X86::YMM13: case X86::YMM14: case X86::YMM15:
-      SEH += 8;
-      break;
-    }
+    unsigned SEH = MRI->getEncodingValue(Reg);
     MRI->mapLLVMRegToSEHReg(Reg, SEH);
   }
 }
@@ -360,12 +257,13 @@ static MCRegisterInfo *createX86MCRegisterInfo(StringRef TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
   InitX86MCRegisterInfo(X, RA,
                         X86_MC::getDwarfRegFlavour(TT, false),
-                        X86_MC::getDwarfRegFlavour(TT, true));
+                        X86_MC::getDwarfRegFlavour(TT, true),
+                        RA);
   X86_MC::InitLLVM2SEHRegisterMapping(X);
   return X;
 }
 
-static MCAsmInfo *createX86MCAsmInfo(const Target &T, StringRef TT) {
+static MCAsmInfo *createX86MCAsmInfo(const MCRegisterInfo &MRI, StringRef TT) {
   Triple TheTriple(TT);
   bool is64Bit = TheTriple.getArch() == Triple::x86_64;
 
@@ -375,11 +273,15 @@ static MCAsmInfo *createX86MCAsmInfo(const Target &T, StringRef TT) {
       MAI = new X86_64MCAsmInfoDarwin(TheTriple);
     else
       MAI = new X86MCAsmInfoDarwin(TheTriple);
+  } else if (TheTriple.getEnvironment() == Triple::ELF) {
+    // Force the use of an ELF container.
+    MAI = new X86ELFMCAsmInfo(TheTriple);
   } else if (TheTriple.getOS() == Triple::Win32) {
     MAI = new X86MCAsmInfoMicrosoft(TheTriple);
   } else if (TheTriple.getOS() == Triple::MinGW32 || TheTriple.getOS() == Triple::Cygwin) {
     MAI = new X86MCAsmInfoGNUCOFF(TheTriple);
   } else {
+    // The default is ELF.
     MAI = new X86ELFMCAsmInfo(TheTriple);
   }
 
@@ -388,14 +290,16 @@ static MCAsmInfo *createX86MCAsmInfo(const Target &T, StringRef TT) {
   int stackGrowth = is64Bit ? -8 : -4;
 
   // Initial state of the frame pointer is esp+stackGrowth.
-  MachineLocation Dst(MachineLocation::VirtualFP);
-  MachineLocation Src(is64Bit ? X86::RSP : X86::ESP, stackGrowth);
-  MAI->addInitialFrameState(0, Dst, Src);
+  unsigned StackPtr = is64Bit ? X86::RSP : X86::ESP;
+  MCCFIInstruction Inst = MCCFIInstruction::createDefCfa(
+      0, MRI.getDwarfRegNum(StackPtr, true), -stackGrowth);
+  MAI->addInitialFrameState(Inst);
 
   // Add return address to move list
-  MachineLocation CSDst(is64Bit ? X86::RSP : X86::ESP, stackGrowth);
-  MachineLocation CSSrc(is64Bit ? X86::RIP : X86::EIP);
-  MAI->addInitialFrameState(0, CSDst, CSSrc);
+  unsigned InstPtr = is64Bit ? X86::RIP : X86::EIP;
+  MCCFIInstruction Inst2 = MCCFIInstruction::createOffset(
+      0, MRI.getDwarfRegNum(InstPtr, true), stackGrowth);
+  MAI->addInitialFrameState(Inst2);
 
   return MAI;
 }
@@ -461,7 +365,7 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
   if (TheTriple.isOSDarwin() || TheTriple.getEnvironment() == Triple::MachO)
     return createMachOStreamer(Ctx, MAB, _OS, _Emitter, RelaxAll);
 
-  if (TheTriple.isOSWindows())
+  if (TheTriple.isOSWindows() && TheTriple.getEnvironment() != Triple::ELF)
     return createWinCOFFStreamer(Ctx, MAB, *_Emitter, _OS, RelaxAll);
 
   return createELFStreamer(Ctx, MAB, _OS, _Emitter, RelaxAll, NoExecStack);
@@ -470,12 +374,25 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
 static MCInstPrinter *createX86MCInstPrinter(const Target &T,
                                              unsigned SyntaxVariant,
                                              const MCAsmInfo &MAI,
+                                             const MCInstrInfo &MII,
+                                             const MCRegisterInfo &MRI,
                                              const MCSubtargetInfo &STI) {
   if (SyntaxVariant == 0)
-    return new X86ATTInstPrinter(MAI);
+    return new X86ATTInstPrinter(MAI, MII, MRI);
   if (SyntaxVariant == 1)
-    return new X86IntelInstPrinter(MAI);
+    return new X86IntelInstPrinter(MAI, MII, MRI);
   return 0;
+}
+
+static MCRelocationInfo *createX86MCRelocationInfo(StringRef TT,
+                                                   MCContext &Ctx) {
+  Triple TheTriple(TT);
+  if (TheTriple.isEnvironmentMachO() && TheTriple.getArch() == Triple::x86_64)
+    return createX86_64MachORelocationInfo(Ctx);
+  else if (TheTriple.isOSBinFormatELF())
+    return createX86_64ELFRelocationInfo(Ctx);
+  // Default to the stock relocation info.
+  return llvm::createMCRelocationInfo(TT, Ctx);
 }
 
 static MCInstrAnalysis *createX86MCInstrAnalysis(const MCInstrInfo *Info) {
@@ -535,4 +452,10 @@ extern "C" void LLVMInitializeX86TargetMC() {
                                         createX86MCInstPrinter);
   TargetRegistry::RegisterMCInstPrinter(TheX86_64Target,
                                         createX86MCInstPrinter);
+
+  // Register the MC relocation info.
+  TargetRegistry::RegisterMCRelocationInfo(TheX86_32Target,
+                                           createX86MCRelocationInfo);
+  TargetRegistry::RegisterMCRelocationInfo(TheX86_64Target,
+                                           createX86MCRelocationInfo);
 }

@@ -40,9 +40,9 @@ def SDT_MSP430Shift        : SDTypeProfile<1, 2, [SDTCisSameAs<0, 1>,
 // MSP430 Specific Node Definitions.
 //===----------------------------------------------------------------------===//
 def MSP430retflag  : SDNode<"MSP430ISD::RET_FLAG", SDTNone,
-                       [SDNPHasChain, SDNPOptInGlue]>;
+                       [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 def MSP430retiflag : SDNode<"MSP430ISD::RETI_FLAG", SDTNone,
-                       [SDNPHasChain, SDNPOptInGlue]>;
+                       [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
 def MSP430rra     : SDNode<"MSP430ISD::RRA", SDTIntUnaryOp, []>;
 def MSP430rla     : SDNode<"MSP430ISD::RLA", SDTIntUnaryOp, []>;
@@ -210,13 +210,13 @@ let isCall = 1 in
   let Defs = [R12W, R13W, R14W, R15W, SRW],
       Uses = [SPW] in {
     def CALLi     : II16i<0x0,
-                          (outs), (ins i16imm:$dst, variable_ops),
+                          (outs), (ins i16imm:$dst),
                           "call\t$dst", [(MSP430call imm:$dst)]>;
     def CALLr     : II16r<0x0,
-                          (outs), (ins GR16:$dst, variable_ops),
+                          (outs), (ins GR16:$dst),
                           "call\t$dst", [(MSP430call GR16:$dst)]>;
     def CALLm     : II16m<0x0,
-                          (outs), (ins memsrc:$dst, variable_ops),
+                          (outs), (ins memsrc:$dst),
                           "call\t${dst:mem}", [(MSP430call (load addr:$dst))]>;
   }
 

@@ -16,24 +16,25 @@
 #include "ARMBaseInstrInfo.h"
 #include "ARMTargetMachine.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
-#include "llvm/CallingConv.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/LLVMContext.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
-#include "llvm/Target/TargetLowering.h"
-#include "llvm/Target/TargetOptions.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetLowering.h"
+#include "llvm/Target/TargetOptions.h"
 
 using namespace llvm;
 
@@ -46,11 +47,6 @@ static cl::opt<bool>
 CheckVMLxHazard("check-vmlx-hazard", cl::Hidden,
   cl::desc("Check fp vmla / vmls hazard at isel time"),
   cl::init(true));
-
-static cl::opt<bool>
-DisableARMIntABS("disable-arm-int-abs", cl::Hidden,
-  cl::desc("Enable / disable ARM integer abs transform"),
-  cl::init(false));
 
 //===--------------------------------------------------------------------===//
 /// ARMDAGToDAGISel - ARM specific code to select ARM machine
@@ -65,7 +61,6 @@ enum AddrMode2Type {
 
 class ARMDAGToDAGISel : public SelectionDAGISel {
   ARMBaseTargetMachine &TM;
-  const ARMBaseInstrInfo *TII;
 
   /// Subtarget - Keep a pointer to the ARMSubtarget around so that we can
   /// make the right decision when generating code for different targets.
@@ -75,13 +70,14 @@ public:
   explicit ARMDAGToDAGISel(ARMBaseTargetMachine &tm,
                            CodeGenOpt::Level OptLevel)
     : SelectionDAGISel(tm, OptLevel), TM(tm),
-      TII(static_cast<const ARMBaseInstrInfo*>(TM.getInstrInfo())),
       Subtarget(&TM.getSubtarget<ARMSubtarget>()) {
   }
 
   virtual const char *getPassName() const {
     return "ARM Instruction Selection";
   }
+
+  virtual void PreprocessISelDAG();
 
   /// getI32Imm - Return a target constant of type i32 with the specified
   /// value.
@@ -210,29 +206,29 @@ private:
   /// loads of D registers and even subregs and odd subregs of Q registers.
   /// For NumVecs <= 2, QOpcodes1 is not used.
   SDNode *SelectVLD(SDNode *N, bool isUpdating, unsigned NumVecs,
-                    unsigned *DOpcodes,
-                    unsigned *QOpcodes0, unsigned *QOpcodes1);
+                    const uint16_t *DOpcodes,
+                    const uint16_t *QOpcodes0, const uint16_t *QOpcodes1);
 
   /// SelectVST - Select NEON store intrinsics.  NumVecs should
   /// be 1, 2, 3 or 4.  The opcode arrays specify the instructions used for
   /// stores of D registers and even subregs and odd subregs of Q registers.
   /// For NumVecs <= 2, QOpcodes1 is not used.
   SDNode *SelectVST(SDNode *N, bool isUpdating, unsigned NumVecs,
-                    unsigned *DOpcodes,
-                    unsigned *QOpcodes0, unsigned *QOpcodes1);
+                    const uint16_t *DOpcodes,
+                    const uint16_t *QOpcodes0, const uint16_t *QOpcodes1);
 
   /// SelectVLDSTLane - Select NEON load/store lane intrinsics.  NumVecs should
   /// be 2, 3 or 4.  The opcode arrays specify the instructions used for
   /// load/store of D registers and Q registers.
   SDNode *SelectVLDSTLane(SDNode *N, bool IsLoad,
                           bool isUpdating, unsigned NumVecs,
-                          unsigned *DOpcodes, unsigned *QOpcodes);
+                          const uint16_t *DOpcodes, const uint16_t *QOpcodes);
 
   /// SelectVLDDup - Select NEON load-duplicate intrinsics.  NumVecs
   /// should be 2, 3 or 4.  The opcode array specifies the instructions used
   /// for loading D registers.  (Q registers are not supported.)
   SDNode *SelectVLDDup(SDNode *N, bool isUpdating, unsigned NumVecs,
-                       unsigned *Opcodes);
+                       const uint16_t *Opcodes);
 
   /// SelectVTBL - Select NEON VTBL and VTBX intrinsics.  NumVecs should be 2,
   /// 3 or 4.  These are custom-selected so that a REG_SEQUENCE can be
@@ -260,6 +256,8 @@ private:
   // Select special operations if node forms integer ABS pattern
   SDNode *SelectABSOp(SDNode *N);
 
+  SDNode *SelectInlineAsm(SDNode *N);
+
   SDNode *SelectConcatVector(SDNode *N);
 
   SDNode *SelectAtomic64(SDNode *Node, unsigned Opc);
@@ -270,15 +268,16 @@ private:
                                             char ConstraintCode,
                                             std::vector<SDValue> &OutOps);
 
-  // Form pairs of consecutive S, D, or Q registers.
-  SDNode *PairSRegs(EVT VT, SDValue V0, SDValue V1);
-  SDNode *PairDRegs(EVT VT, SDValue V0, SDValue V1);
-  SDNode *PairQRegs(EVT VT, SDValue V0, SDValue V1);
+  // Form pairs of consecutive R, S, D, or Q registers.
+  SDNode *createGPRPairNode(EVT VT, SDValue V0, SDValue V1);
+  SDNode *createSRegPairNode(EVT VT, SDValue V0, SDValue V1);
+  SDNode *createDRegPairNode(EVT VT, SDValue V0, SDValue V1);
+  SDNode *createQRegPairNode(EVT VT, SDValue V0, SDValue V1);
 
   // Form sequences of 4 consecutive S, D, or Q registers.
-  SDNode *QuadSRegs(EVT VT, SDValue V0, SDValue V1, SDValue V2, SDValue V3);
-  SDNode *QuadDRegs(EVT VT, SDValue V0, SDValue V1, SDValue V2, SDValue V3);
-  SDNode *QuadQRegs(EVT VT, SDValue V0, SDValue V1, SDValue V2, SDValue V3);
+  SDNode *createQuadSRegsNode(EVT VT, SDValue V0, SDValue V1, SDValue V2, SDValue V3);
+  SDNode *createQuadDRegsNode(EVT VT, SDValue V0, SDValue V1, SDValue V2, SDValue V3);
+  SDNode *createQuadQRegsNode(EVT VT, SDValue V0, SDValue V1, SDValue V2, SDValue V3);
 
   // Get the alignment operand for a NEON VLD or VST instruction.
   SDValue GetVLDSTAlign(SDValue Align, unsigned NumVecs, bool is64BitVector);
@@ -310,7 +309,7 @@ static bool isOpcWithIntImmediate(SDNode *N, unsigned Opc, unsigned& Imm) {
 }
 
 /// \brief Check whether a particular node is a constant value representable as
-/// (N * Scale) where (N in [\arg RangeMin, \arg RangeMax).
+/// (N * Scale) where (N in [\p RangeMin, \p RangeMax).
 ///
 /// \param ScaledConstant [out] - On success, the pre-scaled constant value.
 static bool isScaledConstantInRange(SDValue Node, int Scale,
@@ -331,6 +330,87 @@ static bool isScaledConstantInRange(SDValue Node, int Scale,
   return ScaledConstant >= RangeMin && ScaledConstant < RangeMax;
 }
 
+void ARMDAGToDAGISel::PreprocessISelDAG() {
+  if (!Subtarget->hasV6T2Ops())
+    return;
+
+  bool isThumb2 = Subtarget->isThumb();
+  for (SelectionDAG::allnodes_iterator I = CurDAG->allnodes_begin(),
+       E = CurDAG->allnodes_end(); I != E; ) {
+    SDNode *N = I++;  // Preincrement iterator to avoid invalidation issues.
+
+    if (N->getOpcode() != ISD::ADD)
+      continue;
+
+    // Look for (add X1, (and (srl X2, c1), c2)) where c2 is constant with
+    // leading zeros, followed by consecutive set bits, followed by 1 or 2
+    // trailing zeros, e.g. 1020.
+    // Transform the expression to
+    // (add X1, (shl (and (srl X2, c1), (c2>>tz)), tz)) where tz is the number
+    // of trailing zeros of c2. The left shift would be folded as an shifter
+    // operand of 'add' and the 'and' and 'srl' would become a bits extraction
+    // node (UBFX).
+
+    SDValue N0 = N->getOperand(0);
+    SDValue N1 = N->getOperand(1);
+    unsigned And_imm = 0;
+    if (!isOpcWithIntImmediate(N1.getNode(), ISD::AND, And_imm)) {
+      if (isOpcWithIntImmediate(N0.getNode(), ISD::AND, And_imm))
+        std::swap(N0, N1);
+    }
+    if (!And_imm)
+      continue;
+
+    // Check if the AND mask is an immediate of the form: 000.....1111111100
+    unsigned TZ = countTrailingZeros(And_imm);
+    if (TZ != 1 && TZ != 2)
+      // Be conservative here. Shifter operands aren't always free. e.g. On
+      // Swift, left shifter operand of 1 / 2 for free but others are not.
+      // e.g.
+      //  ubfx   r3, r1, #16, #8
+      //  ldr.w  r3, [r0, r3, lsl #2]
+      // vs.
+      //  mov.w  r9, #1020
+      //  and.w  r2, r9, r1, lsr #14
+      //  ldr    r2, [r0, r2]
+      continue;
+    And_imm >>= TZ;
+    if (And_imm & (And_imm + 1))
+      continue;
+
+    // Look for (and (srl X, c1), c2).
+    SDValue Srl = N1.getOperand(0);
+    unsigned Srl_imm = 0;
+    if (!isOpcWithIntImmediate(Srl.getNode(), ISD::SRL, Srl_imm) ||
+        (Srl_imm <= 2))
+      continue;
+
+    // Make sure first operand is not a shifter operand which would prevent
+    // folding of the left shift.
+    SDValue CPTmp0;
+    SDValue CPTmp1;
+    SDValue CPTmp2;
+    if (isThumb2) {
+      if (SelectT2ShifterOperandReg(N0, CPTmp0, CPTmp1))
+        continue;
+    } else {
+      if (SelectImmShifterOperand(N0, CPTmp0, CPTmp1) ||
+          SelectRegShifterOperand(N0, CPTmp0, CPTmp1, CPTmp2))
+        continue;
+    }
+
+    // Now make the transformation.
+    Srl = CurDAG->getNode(ISD::SRL, SDLoc(Srl), MVT::i32,
+                          Srl.getOperand(0),
+                          CurDAG->getConstant(Srl_imm+TZ, MVT::i32));
+    N1 = CurDAG->getNode(ISD::AND, SDLoc(N1), MVT::i32,
+                         Srl, CurDAG->getConstant(And_imm, MVT::i32));
+    N1 = CurDAG->getNode(ISD::SHL, SDLoc(N1), MVT::i32,
+                         N1, CurDAG->getConstant(TZ, MVT::i32));
+    CurDAG->UpdateNodeOperands(N, N0, N1);
+  }  
+}
+
 /// hasNoVMLxHazardUse - Return true if it's desirable to select a FP MLA / MLS
 /// node. VFP / NEON fp VMLA / VMLS instructions have special RAW hazards (at
 /// least on current ARM implementations) which should be avoidded.
@@ -341,7 +421,8 @@ bool ARMDAGToDAGISel::hasNoVMLxHazardUse(SDNode *N) const {
   if (!CheckVMLxHazard)
     return true;
 
-  if (!Subtarget->isCortexA8() && !Subtarget->isCortexA9())
+  if (!Subtarget->isCortexA8() && !Subtarget->isLikeA9() &&
+      !Subtarget->isSwift())
     return true;
 
   if (!N->hasOneUse())
@@ -351,6 +432,9 @@ bool ARMDAGToDAGISel::hasNoVMLxHazardUse(SDNode *N) const {
   if (Use->getOpcode() == ISD::CopyToReg)
     return true;
   if (Use->isMachineOpcode()) {
+    const ARMBaseInstrInfo *TII =
+      static_cast<const ARMBaseInstrInfo*>(TM.getInstrInfo());
+
     const MCInstrDesc &MCID = TII->get(Use->getMachineOpcode());
     if (MCID.mayStore())
       return true;
@@ -379,12 +463,13 @@ bool ARMDAGToDAGISel::hasNoVMLxHazardUse(SDNode *N) const {
 bool ARMDAGToDAGISel::isShifterOpProfitable(const SDValue &Shift,
                                             ARM_AM::ShiftOpc ShOpcVal,
                                             unsigned ShAmt) {
-  if (!Subtarget->isCortexA9())
+  if (!Subtarget->isLikeA9() && !Subtarget->isSwift())
     return true;
   if (Shift.hasOneUse())
     return true;
   // R << 2 is free.
-  return ShOpcVal == ARM_AM::lsl && ShAmt == 2;
+  return ShOpcVal == ARM_AM::lsl &&
+         (ShAmt == 2 || (Subtarget->isSwift() && ShAmt == 1));
 }
 
 bool ARMDAGToDAGISel::SelectImmShifterOperand(SDValue N,
@@ -449,7 +534,8 @@ bool ARMDAGToDAGISel::SelectAddrModeImm12(SDValue N,
     if (N.getOpcode() == ISD::FrameIndex) {
       // Match frame index.
       int FI = cast<FrameIndexSDNode>(N)->getIndex();
-      Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+      Base = CurDAG->getTargetFrameIndex(FI,
+                                         getTargetLowering()->getPointerTy());
       OffImm  = CurDAG->getTargetConstant(0, MVT::i32);
       return true;
     }
@@ -473,7 +559,8 @@ bool ARMDAGToDAGISel::SelectAddrModeImm12(SDValue N,
       Base   = N.getOperand(0);
       if (Base.getOpcode() == ISD::FrameIndex) {
         int FI = cast<FrameIndexSDNode>(Base)->getIndex();
-        Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+        Base = CurDAG->getTargetFrameIndex(FI,
+                                           getTargetLowering()->getPointerTy());
       }
       OffImm = CurDAG->getTargetConstant(RHSC, MVT::i32);
       return true;
@@ -491,7 +578,7 @@ bool ARMDAGToDAGISel::SelectAddrModeImm12(SDValue N,
 bool ARMDAGToDAGISel::SelectLdStSOReg(SDValue N, SDValue &Base, SDValue &Offset,
                                       SDValue &Opc) {
   if (N.getOpcode() == ISD::MUL &&
-      (!Subtarget->isCortexA9() || N.hasOneUse())) {
+      ((!Subtarget->isLikeA9() && !Subtarget->isSwift()) || N.hasOneUse())) {
     if (ConstantSDNode *RHS = dyn_cast<ConstantSDNode>(N.getOperand(1))) {
       // X * [3,5,9] -> X + X * [2,4,8] etc.
       int RHSC = (int)RHS->getZExtValue();
@@ -555,7 +642,8 @@ bool ARMDAGToDAGISel::SelectLdStSOReg(SDValue N, SDValue &Base, SDValue &Offset,
 
   // Try matching (R shl C) + (R).
   if (N.getOpcode() != ISD::SUB && ShOpcVal == ARM_AM::no_shift &&
-      !(Subtarget->isCortexA9() || N.getOperand(0).hasOneUse())) {
+      !(Subtarget->isLikeA9() || Subtarget->isSwift() ||
+        N.getOperand(0).hasOneUse())) {
     ShOpcVal = ARM_AM::getShiftOpcForNode(N.getOperand(0).getOpcode());
     if (ShOpcVal != ARM_AM::no_shift) {
       // Check to see if the RHS of the shift is a constant, if not, we can't
@@ -582,8 +670,6 @@ bool ARMDAGToDAGISel::SelectLdStSOReg(SDValue N, SDValue &Base, SDValue &Offset,
 }
 
 
-
-
 //-----
 
 AddrMode2Type ARMDAGToDAGISel::SelectAddrMode2Worker(SDValue N,
@@ -591,7 +677,7 @@ AddrMode2Type ARMDAGToDAGISel::SelectAddrMode2Worker(SDValue N,
                                                      SDValue &Offset,
                                                      SDValue &Opc) {
   if (N.getOpcode() == ISD::MUL &&
-      (!Subtarget->isCortexA9() || N.hasOneUse())) {
+      (!(Subtarget->isLikeA9() || Subtarget->isSwift()) || N.hasOneUse())) {
     if (ConstantSDNode *RHS = dyn_cast<ConstantSDNode>(N.getOperand(1))) {
       // X * [3,5,9] -> X + X * [2,4,8] etc.
       int RHSC = (int)RHS->getZExtValue();
@@ -620,7 +706,8 @@ AddrMode2Type ARMDAGToDAGISel::SelectAddrMode2Worker(SDValue N,
     Base = N;
     if (N.getOpcode() == ISD::FrameIndex) {
       int FI = cast<FrameIndexSDNode>(N)->getIndex();
-      Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+      Base = CurDAG->getTargetFrameIndex(FI,
+                                         getTargetLowering()->getPointerTy());
     } else if (N.getOpcode() == ARMISD::Wrapper &&
                !(Subtarget->useMovt() &&
                  N.getOperand(0).getOpcode() == ISD::TargetGlobalAddress)) {
@@ -641,7 +728,8 @@ AddrMode2Type ARMDAGToDAGISel::SelectAddrMode2Worker(SDValue N,
       Base = N.getOperand(0);
       if (Base.getOpcode() == ISD::FrameIndex) {
         int FI = cast<FrameIndexSDNode>(Base)->getIndex();
-        Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+        Base = CurDAG->getTargetFrameIndex(FI,
+                                           getTargetLowering()->getPointerTy());
       }
       Offset = CurDAG->getRegister(0, MVT::i32);
 
@@ -657,7 +745,7 @@ AddrMode2Type ARMDAGToDAGISel::SelectAddrMode2Worker(SDValue N,
     }
   }
 
-  if (Subtarget->isCortexA9() && !N.hasOneUse()) {
+  if ((Subtarget->isLikeA9() || Subtarget->isSwift()) && !N.hasOneUse()) {
     // Compute R +/- (R << N) and reuse it.
     Base = N;
     Offset = CurDAG->getRegister(0, MVT::i32);
@@ -695,7 +783,8 @@ AddrMode2Type ARMDAGToDAGISel::SelectAddrMode2Worker(SDValue N,
 
   // Try matching (R shl C) + (R).
   if (N.getOpcode() != ISD::SUB && ShOpcVal == ARM_AM::no_shift &&
-      !(Subtarget->isCortexA9() || N.getOperand(0).hasOneUse())) {
+      !(Subtarget->isLikeA9() || Subtarget->isSwift() ||
+        N.getOperand(0).hasOneUse())) {
     ShOpcVal = ARM_AM::getShiftOpcForNode(N.getOperand(0).getOpcode());
     if (ShOpcVal != ARM_AM::no_shift) {
       // Check to see if the RHS of the shift is a constant, if not, we can't
@@ -817,7 +906,8 @@ bool ARMDAGToDAGISel::SelectAddrMode3(SDValue N,
     Base = N;
     if (N.getOpcode() == ISD::FrameIndex) {
       int FI = cast<FrameIndexSDNode>(N)->getIndex();
-      Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+      Base = CurDAG->getTargetFrameIndex(FI,
+                                         getTargetLowering()->getPointerTy());
     }
     Offset = CurDAG->getRegister(0, MVT::i32);
     Opc = CurDAG->getTargetConstant(ARM_AM::getAM3Opc(ARM_AM::add, 0),MVT::i32);
@@ -831,7 +921,8 @@ bool ARMDAGToDAGISel::SelectAddrMode3(SDValue N,
     Base = N.getOperand(0);
     if (Base.getOpcode() == ISD::FrameIndex) {
       int FI = cast<FrameIndexSDNode>(Base)->getIndex();
-      Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+      Base = CurDAG->getTargetFrameIndex(FI,
+                                         getTargetLowering()->getPointerTy());
     }
     Offset = CurDAG->getRegister(0, MVT::i32);
 
@@ -876,7 +967,8 @@ bool ARMDAGToDAGISel::SelectAddrMode5(SDValue N,
     Base = N;
     if (N.getOpcode() == ISD::FrameIndex) {
       int FI = cast<FrameIndexSDNode>(N)->getIndex();
-      Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+      Base = CurDAG->getTargetFrameIndex(FI,
+                                         getTargetLowering()->getPointerTy());
     } else if (N.getOpcode() == ARMISD::Wrapper &&
                !(Subtarget->useMovt() &&
                  N.getOperand(0).getOpcode() == ISD::TargetGlobalAddress)) {
@@ -894,7 +986,8 @@ bool ARMDAGToDAGISel::SelectAddrMode5(SDValue N,
     Base = N.getOperand(0);
     if (Base.getOpcode() == ISD::FrameIndex) {
       int FI = cast<FrameIndexSDNode>(Base)->getIndex();
-      Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+      Base = CurDAG->getTargetFrameIndex(FI,
+                                         getTargetLowering()->getPointerTy());
     }
 
     ARM_AM::AddrOpc AddSub = ARM_AM::add;
@@ -1118,7 +1211,8 @@ bool ARMDAGToDAGISel::SelectThumbAddrModeSP(SDValue N,
                                             SDValue &Base, SDValue &OffImm) {
   if (N.getOpcode() == ISD::FrameIndex) {
     int FI = cast<FrameIndexSDNode>(N)->getIndex();
-    Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+    Base = CurDAG->getTargetFrameIndex(FI,
+                                       getTargetLowering()->getPointerTy());
     OffImm = CurDAG->getTargetConstant(0, MVT::i32);
     return true;
   }
@@ -1135,7 +1229,8 @@ bool ARMDAGToDAGISel::SelectThumbAddrModeSP(SDValue N,
       Base = N.getOperand(0);
       if (Base.getOpcode() == ISD::FrameIndex) {
         int FI = cast<FrameIndexSDNode>(Base)->getIndex();
-        Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+        Base = CurDAG->getTargetFrameIndex(FI,
+                                           getTargetLowering()->getPointerTy());
       }
       OffImm = CurDAG->getTargetConstant(RHSC, MVT::i32);
       return true;
@@ -1183,7 +1278,8 @@ bool ARMDAGToDAGISel::SelectT2AddrModeImm12(SDValue N,
     if (N.getOpcode() == ISD::FrameIndex) {
       // Match frame index.
       int FI = cast<FrameIndexSDNode>(N)->getIndex();
-      Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+      Base = CurDAG->getTargetFrameIndex(FI,
+                                         getTargetLowering()->getPointerTy());
       OffImm  = CurDAG->getTargetConstant(0, MVT::i32);
       return true;
     }
@@ -1213,7 +1309,8 @@ bool ARMDAGToDAGISel::SelectT2AddrModeImm12(SDValue N,
       Base   = N.getOperand(0);
       if (Base.getOpcode() == ISD::FrameIndex) {
         int FI = cast<FrameIndexSDNode>(Base)->getIndex();
-        Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+        Base = CurDAG->getTargetFrameIndex(FI,
+                                           getTargetLowering()->getPointerTy());
       }
       OffImm = CurDAG->getTargetConstant(RHSC, MVT::i32);
       return true;
@@ -1242,7 +1339,8 @@ bool ARMDAGToDAGISel::SelectT2AddrModeImm8(SDValue N,
       Base = N.getOperand(0);
       if (Base.getOpcode() == ISD::FrameIndex) {
         int FI = cast<FrameIndexSDNode>(Base)->getIndex();
-        Base = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+        Base = CurDAG->getTargetFrameIndex(FI,
+                                           getTargetLowering()->getPointerTy());
       }
       OffImm = CurDAG->getTargetConstant(RHSC, MVT::i32);
       return true;
@@ -1384,15 +1482,15 @@ SDNode *ARMDAGToDAGISel::SelectARMIndexedLoad(SDNode *N) {
       SDValue Base = LD->getBasePtr();
       SDValue Ops[]= { Base, AMOpc, getAL(CurDAG),
                        CurDAG->getRegister(0, MVT::i32), Chain };
-      return CurDAG->getMachineNode(Opcode, N->getDebugLoc(), MVT::i32,
-                                    MVT::i32, MVT::Other, Ops, 5);
+      return CurDAG->getMachineNode(Opcode, SDLoc(N), MVT::i32,
+                                    MVT::i32, MVT::Other, Ops);
     } else {
       SDValue Chain = LD->getChain();
       SDValue Base = LD->getBasePtr();
       SDValue Ops[]= { Base, Offset, AMOpc, getAL(CurDAG),
                        CurDAG->getRegister(0, MVT::i32), Chain };
-      return CurDAG->getMachineNode(Opcode, N->getDebugLoc(), MVT::i32,
-                                    MVT::i32, MVT::Other, Ops, 6);
+      return CurDAG->getMachineNode(Opcode, SDLoc(N), MVT::i32,
+                                    MVT::i32, MVT::Other, Ops);
     }
   }
 
@@ -1440,52 +1538,59 @@ SDNode *ARMDAGToDAGISel::SelectT2IndexedLoad(SDNode *N) {
     SDValue Base = LD->getBasePtr();
     SDValue Ops[]= { Base, Offset, getAL(CurDAG),
                      CurDAG->getRegister(0, MVT::i32), Chain };
-    return CurDAG->getMachineNode(Opcode, N->getDebugLoc(), MVT::i32, MVT::i32,
-                                  MVT::Other, Ops, 5);
+    return CurDAG->getMachineNode(Opcode, SDLoc(N), MVT::i32, MVT::i32,
+                                  MVT::Other, Ops);
   }
 
   return NULL;
 }
 
-/// PairSRegs - Form a D register from a pair of S registers.
-///
-SDNode *ARMDAGToDAGISel::PairSRegs(EVT VT, SDValue V0, SDValue V1) {
-  DebugLoc dl = V0.getNode()->getDebugLoc();
+/// \brief Form a GPRPair pseudo register from a pair of GPR regs.
+SDNode *ARMDAGToDAGISel::createGPRPairNode(EVT VT, SDValue V0, SDValue V1) {
+  SDLoc dl(V0.getNode());
+  SDValue RegClass =
+    CurDAG->getTargetConstant(ARM::GPRPairRegClassID, MVT::i32);
+  SDValue SubReg0 = CurDAG->getTargetConstant(ARM::gsub_0, MVT::i32);
+  SDValue SubReg1 = CurDAG->getTargetConstant(ARM::gsub_1, MVT::i32);
+  const SDValue Ops[] = { RegClass, V0, SubReg0, V1, SubReg1 };
+  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops);
+}
+
+/// \brief Form a D register from a pair of S registers.
+SDNode *ARMDAGToDAGISel::createSRegPairNode(EVT VT, SDValue V0, SDValue V1) {
+  SDLoc dl(V0.getNode());
   SDValue RegClass =
     CurDAG->getTargetConstant(ARM::DPR_VFP2RegClassID, MVT::i32);
   SDValue SubReg0 = CurDAG->getTargetConstant(ARM::ssub_0, MVT::i32);
   SDValue SubReg1 = CurDAG->getTargetConstant(ARM::ssub_1, MVT::i32);
   const SDValue Ops[] = { RegClass, V0, SubReg0, V1, SubReg1 };
-  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops, 5);
+  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops);
 }
 
-/// PairDRegs - Form a quad register from a pair of D registers.
-///
-SDNode *ARMDAGToDAGISel::PairDRegs(EVT VT, SDValue V0, SDValue V1) {
-  DebugLoc dl = V0.getNode()->getDebugLoc();
+/// \brief Form a quad register from a pair of D registers.
+SDNode *ARMDAGToDAGISel::createDRegPairNode(EVT VT, SDValue V0, SDValue V1) {
+  SDLoc dl(V0.getNode());
   SDValue RegClass = CurDAG->getTargetConstant(ARM::QPRRegClassID, MVT::i32);
   SDValue SubReg0 = CurDAG->getTargetConstant(ARM::dsub_0, MVT::i32);
   SDValue SubReg1 = CurDAG->getTargetConstant(ARM::dsub_1, MVT::i32);
   const SDValue Ops[] = { RegClass, V0, SubReg0, V1, SubReg1 };
-  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops, 5);
+  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops);
 }
 
-/// PairQRegs - Form 4 consecutive D registers from a pair of Q registers.
-///
-SDNode *ARMDAGToDAGISel::PairQRegs(EVT VT, SDValue V0, SDValue V1) {
-  DebugLoc dl = V0.getNode()->getDebugLoc();
+/// \brief Form 4 consecutive D registers from a pair of Q registers.
+SDNode *ARMDAGToDAGISel::createQRegPairNode(EVT VT, SDValue V0, SDValue V1) {
+  SDLoc dl(V0.getNode());
   SDValue RegClass = CurDAG->getTargetConstant(ARM::QQPRRegClassID, MVT::i32);
   SDValue SubReg0 = CurDAG->getTargetConstant(ARM::qsub_0, MVT::i32);
   SDValue SubReg1 = CurDAG->getTargetConstant(ARM::qsub_1, MVT::i32);
   const SDValue Ops[] = { RegClass, V0, SubReg0, V1, SubReg1 };
-  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops, 5);
+  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops);
 }
 
-/// QuadSRegs - Form 4 consecutive S registers.
-///
-SDNode *ARMDAGToDAGISel::QuadSRegs(EVT VT, SDValue V0, SDValue V1,
+/// \brief Form 4 consecutive S registers.
+SDNode *ARMDAGToDAGISel::createQuadSRegsNode(EVT VT, SDValue V0, SDValue V1,
                                    SDValue V2, SDValue V3) {
-  DebugLoc dl = V0.getNode()->getDebugLoc();
+  SDLoc dl(V0.getNode());
   SDValue RegClass =
     CurDAG->getTargetConstant(ARM::QPR_VFP2RegClassID, MVT::i32);
   SDValue SubReg0 = CurDAG->getTargetConstant(ARM::ssub_0, MVT::i32);
@@ -1494,14 +1599,13 @@ SDNode *ARMDAGToDAGISel::QuadSRegs(EVT VT, SDValue V0, SDValue V1,
   SDValue SubReg3 = CurDAG->getTargetConstant(ARM::ssub_3, MVT::i32);
   const SDValue Ops[] = { RegClass, V0, SubReg0, V1, SubReg1,
                                     V2, SubReg2, V3, SubReg3 };
-  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops, 9);
+  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops);
 }
 
-/// QuadDRegs - Form 4 consecutive D registers.
-///
-SDNode *ARMDAGToDAGISel::QuadDRegs(EVT VT, SDValue V0, SDValue V1,
+/// \brief Form 4 consecutive D registers.
+SDNode *ARMDAGToDAGISel::createQuadDRegsNode(EVT VT, SDValue V0, SDValue V1,
                                    SDValue V2, SDValue V3) {
-  DebugLoc dl = V0.getNode()->getDebugLoc();
+  SDLoc dl(V0.getNode());
   SDValue RegClass = CurDAG->getTargetConstant(ARM::QQPRRegClassID, MVT::i32);
   SDValue SubReg0 = CurDAG->getTargetConstant(ARM::dsub_0, MVT::i32);
   SDValue SubReg1 = CurDAG->getTargetConstant(ARM::dsub_1, MVT::i32);
@@ -1509,14 +1613,13 @@ SDNode *ARMDAGToDAGISel::QuadDRegs(EVT VT, SDValue V0, SDValue V1,
   SDValue SubReg3 = CurDAG->getTargetConstant(ARM::dsub_3, MVT::i32);
   const SDValue Ops[] = { RegClass, V0, SubReg0, V1, SubReg1,
                                     V2, SubReg2, V3, SubReg3 };
-  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops, 9);
+  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops);
 }
 
-/// QuadQRegs - Form 4 consecutive Q registers.
-///
-SDNode *ARMDAGToDAGISel::QuadQRegs(EVT VT, SDValue V0, SDValue V1,
+/// \brief Form 4 consecutive Q registers.
+SDNode *ARMDAGToDAGISel::createQuadQRegsNode(EVT VT, SDValue V0, SDValue V1,
                                    SDValue V2, SDValue V3) {
-  DebugLoc dl = V0.getNode()->getDebugLoc();
+  SDLoc dl(V0.getNode());
   SDValue RegClass = CurDAG->getTargetConstant(ARM::QQQQPRRegClassID, MVT::i32);
   SDValue SubReg0 = CurDAG->getTargetConstant(ARM::qsub_0, MVT::i32);
   SDValue SubReg1 = CurDAG->getTargetConstant(ARM::qsub_1, MVT::i32);
@@ -1524,7 +1627,7 @@ SDNode *ARMDAGToDAGISel::QuadQRegs(EVT VT, SDValue V0, SDValue V1,
   SDValue SubReg3 = CurDAG->getTargetConstant(ARM::qsub_3, MVT::i32);
   const SDValue Ops[] = { RegClass, V0, SubReg0, V1, SubReg1,
                                     V2, SubReg2, V3, SubReg3 };
-  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops, 9);
+  return CurDAG->getMachineNode(TargetOpcode::REG_SEQUENCE, dl, VT, Ops);
 }
 
 /// GetVLDSTAlign - Get the alignment (in bytes) for the alignment operand
@@ -1562,10 +1665,6 @@ static unsigned getVLDSTRegisterUpdateOpcode(unsigned Opc) {
   case ARM::VLD1q16wb_fixed: return ARM::VLD1q16wb_register;
   case ARM::VLD1q32wb_fixed: return ARM::VLD1q32wb_register;
   case ARM::VLD1q64wb_fixed: return ARM::VLD1q64wb_register;
-  case ARM::VLD1q8PseudoWB_fixed: return ARM::VLD1q8PseudoWB_register;
-  case ARM::VLD1q16PseudoWB_fixed: return ARM::VLD1q16PseudoWB_register;
-  case ARM::VLD1q32PseudoWB_fixed: return ARM::VLD1q32PseudoWB_register;
-  case ARM::VLD1q64PseudoWB_fixed: return ARM::VLD1q64PseudoWB_register;
 
   case ARM::VST1d8wb_fixed: return ARM::VST1d8wb_register;
   case ARM::VST1d16wb_fixed: return ARM::VST1d16wb_register;
@@ -1575,39 +1674,36 @@ static unsigned getVLDSTRegisterUpdateOpcode(unsigned Opc) {
   case ARM::VST1q16wb_fixed: return ARM::VST1q16wb_register;
   case ARM::VST1q32wb_fixed: return ARM::VST1q32wb_register;
   case ARM::VST1q64wb_fixed: return ARM::VST1q64wb_register;
-  case ARM::VST1q8PseudoWB_fixed: return ARM::VST1q8PseudoWB_register;
-  case ARM::VST1q16PseudoWB_fixed: return ARM::VST1q16PseudoWB_register;
-  case ARM::VST1q32PseudoWB_fixed: return ARM::VST1q32PseudoWB_register;
-  case ARM::VST1q64PseudoWB_fixed: return ARM::VST1q64PseudoWB_register;
   case ARM::VST1d64TPseudoWB_fixed: return ARM::VST1d64TPseudoWB_register;
   case ARM::VST1d64QPseudoWB_fixed: return ARM::VST1d64QPseudoWB_register;
 
-  case ARM::VLD2d8PseudoWB_fixed: return ARM::VLD2d8PseudoWB_register;
-  case ARM::VLD2d16PseudoWB_fixed: return ARM::VLD2d16PseudoWB_register;
-  case ARM::VLD2d32PseudoWB_fixed: return ARM::VLD2d32PseudoWB_register;
+  case ARM::VLD2d8wb_fixed: return ARM::VLD2d8wb_register;
+  case ARM::VLD2d16wb_fixed: return ARM::VLD2d16wb_register;
+  case ARM::VLD2d32wb_fixed: return ARM::VLD2d32wb_register;
   case ARM::VLD2q8PseudoWB_fixed: return ARM::VLD2q8PseudoWB_register;
   case ARM::VLD2q16PseudoWB_fixed: return ARM::VLD2q16PseudoWB_register;
   case ARM::VLD2q32PseudoWB_fixed: return ARM::VLD2q32PseudoWB_register;
 
-  case ARM::VST2d8PseudoWB_fixed: return ARM::VST2d8PseudoWB_register;
-  case ARM::VST2d16PseudoWB_fixed: return ARM::VST2d16PseudoWB_register;
-  case ARM::VST2d32PseudoWB_fixed: return ARM::VST2d32PseudoWB_register;
+  case ARM::VST2d8wb_fixed: return ARM::VST2d8wb_register;
+  case ARM::VST2d16wb_fixed: return ARM::VST2d16wb_register;
+  case ARM::VST2d32wb_fixed: return ARM::VST2d32wb_register;
   case ARM::VST2q8PseudoWB_fixed: return ARM::VST2q8PseudoWB_register;
   case ARM::VST2q16PseudoWB_fixed: return ARM::VST2q16PseudoWB_register;
   case ARM::VST2q32PseudoWB_fixed: return ARM::VST2q32PseudoWB_register;
 
-  case ARM::VLD2DUPd8PseudoWB_fixed: return ARM::VLD2DUPd8PseudoWB_register;
-  case ARM::VLD2DUPd16PseudoWB_fixed: return ARM::VLD2DUPd16PseudoWB_register;
-  case ARM::VLD2DUPd32PseudoWB_fixed: return ARM::VLD2DUPd32PseudoWB_register;
+  case ARM::VLD2DUPd8wb_fixed: return ARM::VLD2DUPd8wb_register;
+  case ARM::VLD2DUPd16wb_fixed: return ARM::VLD2DUPd16wb_register;
+  case ARM::VLD2DUPd32wb_fixed: return ARM::VLD2DUPd32wb_register;
   }
   return Opc; // If not one we handle, return it unchanged.
 }
 
 SDNode *ARMDAGToDAGISel::SelectVLD(SDNode *N, bool isUpdating, unsigned NumVecs,
-                                   unsigned *DOpcodes, unsigned *QOpcodes0,
-                                   unsigned *QOpcodes1) {
+                                   const uint16_t *DOpcodes,
+                                   const uint16_t *QOpcodes0,
+                                   const uint16_t *QOpcodes1) {
   assert(NumVecs >= 1 && NumVecs <= 4 && "VLD NumVecs out-of-range");
-  DebugLoc dl = N->getDebugLoc();
+  SDLoc dl(N);
 
   SDValue MemAddr, Align;
   unsigned AddrOpIdx = isUpdating ? 1 : 2;
@@ -1672,14 +1768,14 @@ SDNode *ARMDAGToDAGISel::SelectVLD(SDNode *N, bool isUpdating, unsigned NumVecs,
         Opc = getVLDSTRegisterUpdateOpcode(Opc);
       // We use a VLD1 for v1i64 even if the pseudo says vld2/3/4, so
       // check for that explicitly too. Horribly hacky, but temporary.
-      if ((NumVecs != 1 && NumVecs != 2 && Opc != ARM::VLD1q64PseudoWB_fixed) ||
+      if ((NumVecs != 1 && NumVecs != 2 && Opc != ARM::VLD1q64wb_fixed) ||
           !isa<ConstantSDNode>(Inc.getNode()))
         Ops.push_back(isa<ConstantSDNode>(Inc.getNode()) ? Reg0 : Inc);
     }
     Ops.push_back(Pred);
     Ops.push_back(Reg0);
     Ops.push_back(Chain);
-    VLd = CurDAG->getMachineNode(Opc, dl, ResTys, Ops.data(), Ops.size());
+    VLd = CurDAG->getMachineNode(Opc, dl, ResTys, Ops);
 
   } else {
     // Otherwise, quad registers are loaded with two separate instructions,
@@ -1692,7 +1788,7 @@ SDNode *ARMDAGToDAGISel::SelectVLD(SDNode *N, bool isUpdating, unsigned NumVecs,
       SDValue(CurDAG->getMachineNode(TargetOpcode::IMPLICIT_DEF, dl, ResTy), 0);
     const SDValue OpsA[] = { MemAddr, Align, Reg0, ImplDef, Pred, Reg0, Chain };
     SDNode *VLdA = CurDAG->getMachineNode(QOpcodes0[OpcodeIndex], dl,
-                                          ResTy, AddrTy, MVT::Other, OpsA, 7);
+                                          ResTy, AddrTy, MVT::Other, OpsA);
     Chain = SDValue(VLdA, 2);
 
     // Load the odd subregs.
@@ -1709,8 +1805,7 @@ SDNode *ARMDAGToDAGISel::SelectVLD(SDNode *N, bool isUpdating, unsigned NumVecs,
     Ops.push_back(Pred);
     Ops.push_back(Reg0);
     Ops.push_back(Chain);
-    VLd = CurDAG->getMachineNode(QOpcodes1[OpcodeIndex], dl, ResTys,
-                                 Ops.data(), Ops.size());
+    VLd = CurDAG->getMachineNode(QOpcodes1[OpcodeIndex], dl, ResTys, Ops);
   }
 
   // Transfer memoperands.
@@ -1736,10 +1831,11 @@ SDNode *ARMDAGToDAGISel::SelectVLD(SDNode *N, bool isUpdating, unsigned NumVecs,
 }
 
 SDNode *ARMDAGToDAGISel::SelectVST(SDNode *N, bool isUpdating, unsigned NumVecs,
-                                   unsigned *DOpcodes, unsigned *QOpcodes0,
-                                   unsigned *QOpcodes1) {
+                                   const uint16_t *DOpcodes,
+                                   const uint16_t *QOpcodes0,
+                                   const uint16_t *QOpcodes1) {
   assert(NumVecs >= 1 && NumVecs <= 4 && "VST NumVecs out-of-range");
-  DebugLoc dl = N->getDebugLoc();
+  SDLoc dl(N);
 
   SDValue MemAddr, Align;
   unsigned AddrOpIdx = isUpdating ? 1 : 2;
@@ -1793,7 +1889,7 @@ SDNode *ARMDAGToDAGISel::SelectVST(SDNode *N, bool isUpdating, unsigned NumVecs,
       SDValue V0 = N->getOperand(Vec0Idx + 0);
       SDValue V1 = N->getOperand(Vec0Idx + 1);
       if (NumVecs == 2)
-        SrcReg = SDValue(PairDRegs(MVT::v2i64, V0, V1), 0);
+        SrcReg = SDValue(createDRegPairNode(MVT::v2i64, V0, V1), 0);
       else {
         SDValue V2 = N->getOperand(Vec0Idx + 2);
         // If it's a vst3, form a quad D-register and leave the last part as
@@ -1801,13 +1897,13 @@ SDNode *ARMDAGToDAGISel::SelectVST(SDNode *N, bool isUpdating, unsigned NumVecs,
         SDValue V3 = (NumVecs == 3)
           ? SDValue(CurDAG->getMachineNode(TargetOpcode::IMPLICIT_DEF,dl,VT), 0)
           : N->getOperand(Vec0Idx + 3);
-        SrcReg = SDValue(QuadDRegs(MVT::v4i64, V0, V1, V2, V3), 0);
+        SrcReg = SDValue(createQuadDRegsNode(MVT::v4i64, V0, V1, V2, V3), 0);
       }
     } else {
       // Form a QQ register.
       SDValue Q0 = N->getOperand(Vec0Idx);
       SDValue Q1 = N->getOperand(Vec0Idx + 1);
-      SrcReg = SDValue(PairQRegs(MVT::v4i64, Q0, Q1), 0);
+      SrcReg = SDValue(createQRegPairNode(MVT::v4i64, Q0, Q1), 0);
     }
 
     unsigned Opc = (is64BitVector ? DOpcodes[OpcodeIndex] :
@@ -1822,7 +1918,7 @@ SDNode *ARMDAGToDAGISel::SelectVST(SDNode *N, bool isUpdating, unsigned NumVecs,
         Opc = getVLDSTRegisterUpdateOpcode(Opc);
       // We use a VST1 for v1i64 even if the pseudo says vld2/3/4, so
       // check for that explicitly too. Horribly hacky, but temporary.
-      if ((NumVecs > 2 && Opc != ARM::VST1q64PseudoWB_fixed) ||
+      if ((NumVecs > 2 && Opc != ARM::VST1q64wb_fixed) ||
           !isa<ConstantSDNode>(Inc.getNode()))
         Ops.push_back(isa<ConstantSDNode>(Inc.getNode()) ? Reg0 : Inc);
     }
@@ -1830,8 +1926,7 @@ SDNode *ARMDAGToDAGISel::SelectVST(SDNode *N, bool isUpdating, unsigned NumVecs,
     Ops.push_back(Pred);
     Ops.push_back(Reg0);
     Ops.push_back(Chain);
-    SDNode *VSt =
-      CurDAG->getMachineNode(Opc, dl, ResTys, Ops.data(), Ops.size());
+    SDNode *VSt = CurDAG->getMachineNode(Opc, dl, ResTys, Ops);
 
     // Transfer memoperands.
     cast<MachineSDNode>(VSt)->setMemRefs(MemOp, MemOp + 1);
@@ -1849,14 +1944,14 @@ SDNode *ARMDAGToDAGISel::SelectVST(SDNode *N, bool isUpdating, unsigned NumVecs,
   SDValue V3 = (NumVecs == 3)
     ? SDValue(CurDAG->getMachineNode(TargetOpcode::IMPLICIT_DEF, dl, VT), 0)
     : N->getOperand(Vec0Idx + 3);
-  SDValue RegSeq = SDValue(QuadQRegs(MVT::v8i64, V0, V1, V2, V3), 0);
+  SDValue RegSeq = SDValue(createQuadQRegsNode(MVT::v8i64, V0, V1, V2, V3), 0);
 
   // Store the even D registers.  This is always an updating store, so that it
   // provides the address to the second store for the odd subregs.
   const SDValue OpsA[] = { MemAddr, Align, Reg0, RegSeq, Pred, Reg0, Chain };
   SDNode *VStA = CurDAG->getMachineNode(QOpcodes0[OpcodeIndex], dl,
                                         MemAddr.getValueType(),
-                                        MVT::Other, OpsA, 7);
+                                        MVT::Other, OpsA);
   cast<MachineSDNode>(VStA)->setMemRefs(MemOp, MemOp + 1);
   Chain = SDValue(VStA, 1);
 
@@ -1875,17 +1970,17 @@ SDNode *ARMDAGToDAGISel::SelectVST(SDNode *N, bool isUpdating, unsigned NumVecs,
   Ops.push_back(Reg0);
   Ops.push_back(Chain);
   SDNode *VStB = CurDAG->getMachineNode(QOpcodes1[OpcodeIndex], dl, ResTys,
-                                        Ops.data(), Ops.size());
+                                        Ops);
   cast<MachineSDNode>(VStB)->setMemRefs(MemOp, MemOp + 1);
   return VStB;
 }
 
 SDNode *ARMDAGToDAGISel::SelectVLDSTLane(SDNode *N, bool IsLoad,
                                          bool isUpdating, unsigned NumVecs,
-                                         unsigned *DOpcodes,
-                                         unsigned *QOpcodes) {
+                                         const uint16_t *DOpcodes,
+                                         const uint16_t *QOpcodes) {
   assert(NumVecs >=2 && NumVecs <= 4 && "VLDSTLane NumVecs out-of-range");
-  DebugLoc dl = N->getDebugLoc();
+  SDLoc dl(N);
 
   SDValue MemAddr, Align;
   unsigned AddrOpIdx = isUpdating ? 1 : 2;
@@ -1959,18 +2054,18 @@ SDNode *ARMDAGToDAGISel::SelectVLDSTLane(SDNode *N, bool IsLoad,
   SDValue V1 = N->getOperand(Vec0Idx + 1);
   if (NumVecs == 2) {
     if (is64BitVector)
-      SuperReg = SDValue(PairDRegs(MVT::v2i64, V0, V1), 0);
+      SuperReg = SDValue(createDRegPairNode(MVT::v2i64, V0, V1), 0);
     else
-      SuperReg = SDValue(PairQRegs(MVT::v4i64, V0, V1), 0);
+      SuperReg = SDValue(createQRegPairNode(MVT::v4i64, V0, V1), 0);
   } else {
     SDValue V2 = N->getOperand(Vec0Idx + 2);
     SDValue V3 = (NumVecs == 3)
       ? SDValue(CurDAG->getMachineNode(TargetOpcode::IMPLICIT_DEF, dl, VT), 0)
       : N->getOperand(Vec0Idx + 3);
     if (is64BitVector)
-      SuperReg = SDValue(QuadDRegs(MVT::v4i64, V0, V1, V2, V3), 0);
+      SuperReg = SDValue(createQuadDRegsNode(MVT::v4i64, V0, V1, V2, V3), 0);
     else
-      SuperReg = SDValue(QuadQRegs(MVT::v8i64, V0, V1, V2, V3), 0);
+      SuperReg = SDValue(createQuadQRegsNode(MVT::v8i64, V0, V1, V2, V3), 0);
   }
   Ops.push_back(SuperReg);
   Ops.push_back(getI32Imm(Lane));
@@ -1980,8 +2075,7 @@ SDNode *ARMDAGToDAGISel::SelectVLDSTLane(SDNode *N, bool IsLoad,
 
   unsigned Opc = (is64BitVector ? DOpcodes[OpcodeIndex] :
                                   QOpcodes[OpcodeIndex]);
-  SDNode *VLdLn = CurDAG->getMachineNode(Opc, dl, ResTys,
-                                         Ops.data(), Ops.size());
+  SDNode *VLdLn = CurDAG->getMachineNode(Opc, dl, ResTys, Ops);
   cast<MachineSDNode>(VLdLn)->setMemRefs(MemOp, MemOp + 1);
   if (!IsLoad)
     return VLdLn;
@@ -2001,9 +2095,10 @@ SDNode *ARMDAGToDAGISel::SelectVLDSTLane(SDNode *N, bool IsLoad,
 }
 
 SDNode *ARMDAGToDAGISel::SelectVLDDup(SDNode *N, bool isUpdating,
-                                      unsigned NumVecs, unsigned *Opcodes) {
+                                      unsigned NumVecs,
+                                      const uint16_t *Opcodes) {
   assert(NumVecs >=2 && NumVecs <= 4 && "VLDDup NumVecs out-of-range");
-  DebugLoc dl = N->getDebugLoc();
+  SDLoc dl(N);
 
   SDValue MemAddr, Align;
   if (!SelectAddrMode6(N, N->getOperand(1), MemAddr, Align))
@@ -2066,8 +2161,7 @@ SDNode *ARMDAGToDAGISel::SelectVLDDup(SDNode *N, bool isUpdating,
   if (isUpdating)
     ResTys.push_back(MVT::i32);
   ResTys.push_back(MVT::Other);
-  SDNode *VLdDup =
-    CurDAG->getMachineNode(Opc, dl, ResTys, Ops.data(), Ops.size());
+  SDNode *VLdDup = CurDAG->getMachineNode(Opc, dl, ResTys, Ops);
   cast<MachineSDNode>(VLdDup)->setMemRefs(MemOp, MemOp + 1);
   SuperReg = SDValue(VLdDup, 0);
 
@@ -2086,7 +2180,7 @@ SDNode *ARMDAGToDAGISel::SelectVLDDup(SDNode *N, bool isUpdating,
 SDNode *ARMDAGToDAGISel::SelectVTBL(SDNode *N, bool IsExt, unsigned NumVecs,
                                     unsigned Opc) {
   assert(NumVecs >= 2 && NumVecs <= 4 && "VTBL NumVecs out-of-range");
-  DebugLoc dl = N->getDebugLoc();
+  SDLoc dl(N);
   EVT VT = N->getValueType(0);
   unsigned FirstTblReg = IsExt ? 2 : 1;
 
@@ -2095,7 +2189,7 @@ SDNode *ARMDAGToDAGISel::SelectVTBL(SDNode *N, bool IsExt, unsigned NumVecs,
   SDValue V0 = N->getOperand(FirstTblReg + 0);
   SDValue V1 = N->getOperand(FirstTblReg + 1);
   if (NumVecs == 2)
-    RegSeq = SDValue(PairDRegs(MVT::v16i8, V0, V1), 0);
+    RegSeq = SDValue(createDRegPairNode(MVT::v16i8, V0, V1), 0);
   else {
     SDValue V2 = N->getOperand(FirstTblReg + 2);
     // If it's a vtbl3, form a quad D-register and leave the last part as
@@ -2103,7 +2197,7 @@ SDNode *ARMDAGToDAGISel::SelectVTBL(SDNode *N, bool IsExt, unsigned NumVecs,
     SDValue V3 = (NumVecs == 3)
       ? SDValue(CurDAG->getMachineNode(TargetOpcode::IMPLICIT_DEF, dl, VT), 0)
       : N->getOperand(FirstTblReg + 3);
-    RegSeq = SDValue(QuadDRegs(MVT::v4i64, V0, V1, V2, V3), 0);
+    RegSeq = SDValue(createQuadDRegsNode(MVT::v4i64, V0, V1, V2, V3), 0);
   }
 
   SmallVector<SDValue, 6> Ops;
@@ -2113,7 +2207,7 @@ SDNode *ARMDAGToDAGISel::SelectVTBL(SDNode *N, bool IsExt, unsigned NumVecs,
   Ops.push_back(N->getOperand(FirstTblReg + NumVecs));
   Ops.push_back(getAL(CurDAG)); // predicate
   Ops.push_back(CurDAG->getRegister(0, MVT::i32)); // predicate register
-  return CurDAG->getMachineNode(Opc, dl, VT, Ops.data(), Ops.size());
+  return CurDAG->getMachineNode(Opc, dl, VT, Ops);
 }
 
 SDNode *ARMDAGToDAGISel::SelectV6T2BitfieldExtractOp(SDNode *N,
@@ -2121,9 +2215,9 @@ SDNode *ARMDAGToDAGISel::SelectV6T2BitfieldExtractOp(SDNode *N,
   if (!Subtarget->hasV6T2Ops())
     return NULL;
 
-  unsigned Opc = isSigned ? (Subtarget->isThumb() ? ARM::t2SBFX : ARM::SBFX)
+  unsigned Opc = isSigned
+    ? (Subtarget->isThumb() ? ARM::t2SBFX : ARM::SBFX)
     : (Subtarget->isThumb() ? ARM::t2UBFX : ARM::UBFX);
-
 
   // For unsigned extracts, check for a shift right and mask
   unsigned And_imm = 0;
@@ -2142,7 +2236,29 @@ SDNode *ARMDAGToDAGISel::SelectV6T2BitfieldExtractOp(SDNode *N,
         // Note: The width operand is encoded as width-1.
         unsigned Width = CountTrailingOnes_32(And_imm) - 1;
         unsigned LSB = Srl_imm;
+
         SDValue Reg0 = CurDAG->getRegister(0, MVT::i32);
+
+        if ((LSB + Width + 1) == N->getValueType(0).getSizeInBits()) {
+          // It's cheaper to use a right shift to extract the top bits.
+          if (Subtarget->isThumb()) {
+            Opc = isSigned ? ARM::t2ASRri : ARM::t2LSRri;
+            SDValue Ops[] = { N->getOperand(0).getOperand(0),
+                              CurDAG->getTargetConstant(LSB, MVT::i32),
+                              getAL(CurDAG), Reg0, Reg0 };
+            return CurDAG->SelectNodeTo(N, Opc, MVT::i32, Ops, 5);
+          }
+
+          // ARM models shift instructions as MOVsi with shifter operand.
+          ARM_AM::ShiftOpc ShOpcVal = ARM_AM::getShiftOpcForNode(ISD::SRL);
+          SDValue ShOpc =
+            CurDAG->getTargetConstant(ARM_AM::getSORegOpc(ShOpcVal, LSB),
+                                      MVT::i32);
+          SDValue Ops[] = { N->getOperand(0).getOperand(0), ShOpc,
+                            getAL(CurDAG), Reg0, Reg0 };
+          return CurDAG->SelectNodeTo(N, ARM::MOVsi, MVT::i32, Ops, 5);
+        }
+
         SDValue Ops[] = { N->getOperand(0).getOperand(0),
                           CurDAG->getTargetConstant(LSB, MVT::i32),
                           CurDAG->getTargetConstant(Width, MVT::i32),
@@ -2302,9 +2418,6 @@ SDNode *ARMDAGToDAGISel::SelectCMOVOp(SDNode *N) {
     // Pattern: (ARMcmov:i32 GPR:i32:$false, so_reg:i32:$true, (imm:i32):$cc)
     // Emits: (MOVCCs:i32 GPR:i32:$false, so_reg:i32:$true, (imm:i32):$cc)
     // Pattern complexity = 18  cost = 1  size = 0
-    SDValue CPTmp0;
-    SDValue CPTmp1;
-    SDValue CPTmp2;
     if (Subtarget->isThumb()) {
       SDNode *Res = SelectT2CMOVShiftOp(N, FalseVal, TrueVal,
                                         CCVal, CCR, InFlag);
@@ -2392,14 +2505,10 @@ SDNode *ARMDAGToDAGISel::SelectABSOp(SDNode *N){
   SDValue XORSrc1 = N->getOperand(1);
   EVT VT = N->getValueType(0);
 
-  if (DisableARMIntABS)
-    return NULL;
-
   if (Subtarget->isThumb1Only())
     return NULL;
 
-  if (XORSrc0.getOpcode() != ISD::ADD ||
-    XORSrc1.getOpcode() != ISD::SRA)
+  if (XORSrc0.getOpcode() != ISD::ADD || XORSrc1.getOpcode() != ISD::SRA)
     return NULL;
 
   SDValue ADDSrc0 = XORSrc0.getOperand(0);
@@ -2410,16 +2519,10 @@ SDNode *ARMDAGToDAGISel::SelectABSOp(SDNode *N){
   EVT XType = SRASrc0.getValueType();
   unsigned Size = XType.getSizeInBits() - 1;
 
-  if (ADDSrc1 == XORSrc1  &&
-      ADDSrc0 == SRASrc0 &&
-      XType.isInteger() &&
-      SRAConstant != NULL &&
+  if (ADDSrc1 == XORSrc1 && ADDSrc0 == SRASrc0 &&
+      XType.isInteger() && SRAConstant != NULL &&
       Size == SRAConstant->getZExtValue()) {
-
-    unsigned Opcode = ARM::ABS;
-    if (Subtarget->isThumb2())
-      Opcode = ARM::t2ABS;
-
+    unsigned Opcode = Subtarget->isThumb2() ? ARM::t2ABS : ARM::ABS;
     return CurDAG->SelectNodeTo(N, Opcode, VT, ADDSrc0);
   }
 
@@ -2432,7 +2535,7 @@ SDNode *ARMDAGToDAGISel::SelectConcatVector(SDNode *N) {
   EVT VT = N->getValueType(0);
   if (!VT.is128BitVector() || N->getNumOperands() != 2)
     llvm_unreachable("unexpected CONCAT_VECTORS");
-  return PairDRegs(VT, N->getOperand(0), N->getOperand(1));
+  return createDRegPairNode(VT, N->getOperand(0), N->getOperand(1));
 }
 
 SDNode *ARMDAGToDAGISel::SelectAtomic64(SDNode *Node, unsigned Opc) {
@@ -2447,21 +2550,27 @@ SDNode *ARMDAGToDAGISel::SelectAtomic64(SDNode *Node, unsigned Opc) {
   Ops.push_back(Node->getOperand(0)); // Chain
   MachineSDNode::mmo_iterator MemOp = MF->allocateMemRefsArray(1);
   MemOp[0] = cast<MemSDNode>(Node)->getMemOperand();
-  SDNode *ResNode = CurDAG->getMachineNode(Opc, Node->getDebugLoc(),
+  SDNode *ResNode = CurDAG->getMachineNode(Opc, SDLoc(Node),
                                            MVT::i32, MVT::i32, MVT::Other,
-                                           Ops.data() ,Ops.size());
+                                           Ops);
   cast<MachineSDNode>(ResNode)->setMemRefs(MemOp, MemOp + 1);
   return ResNode;
 }
 
 SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
-  DebugLoc dl = N->getDebugLoc();
+  SDLoc dl(N);
 
   if (N->isMachineOpcode())
     return NULL;   // Already selected.
 
   switch (N->getOpcode()) {
   default: break;
+  case ISD::INLINEASM: {
+    SDNode *ResNode = SelectInlineAsm(N);
+    if (ResNode)
+      return ResNode;
+    break;
+  }
   case ISD::XOR: {
     // Select special operations if XOR node forms integer ABS pattern
     SDNode *ResNode = SelectABSOp(N);
@@ -2492,7 +2601,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
       SDValue CPIdx =
         CurDAG->getTargetConstantPool(ConstantInt::get(
                                   Type::getInt32Ty(*CurDAG->getContext()), Val),
-                                      TLI.getPointerTy());
+                                      getTargetLowering()->getPointerTy());
 
       SDNode *ResNode;
       if (Subtarget->isThumb1Only()) {
@@ -2500,7 +2609,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
         SDValue PredReg = CurDAG->getRegister(0, MVT::i32);
         SDValue Ops[] = { CPIdx, Pred, PredReg, CurDAG->getEntryNode() };
         ResNode = CurDAG->getMachineNode(ARM::tLDRpci, dl, MVT::i32, MVT::Other,
-                                         Ops, 4);
+                                         Ops);
       } else {
         SDValue Ops[] = {
           CPIdx,
@@ -2510,7 +2619,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
           CurDAG->getEntryNode()
         };
         ResNode=CurDAG->getMachineNode(ARM::LDRcp, dl, MVT::i32, MVT::Other,
-                                       Ops, 5);
+                                       Ops);
       }
       ReplaceUses(SDValue(N, 0), SDValue(ResNode, 0));
       return NULL;
@@ -2522,7 +2631,8 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
   case ISD::FrameIndex: {
     // Selects to ADDri FI, 0 which in turn will become ADDri SP, imm.
     int FI = cast<FrameIndexSDNode>(N)->getIndex();
-    SDValue TFI = CurDAG->getTargetFrameIndex(FI, TLI.getPointerTy());
+    SDValue TFI = CurDAG->getTargetFrameIndex(FI,
+                                           getTargetLowering()->getPointerTy());
     if (Subtarget->isThumb1Only()) {
       SDValue Ops[] = { TFI, CurDAG->getTargetConstant(0, MVT::i32),
                         getAL(CurDAG), CurDAG->getRegister(0, MVT::i32) };
@@ -2620,7 +2730,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
                                                   MVT::i32);
         SDValue Ops[] = { N0.getOperand(0), Imm16,
                           getAL(CurDAG), CurDAG->getRegister(0, MVT::i32) };
-        return CurDAG->getMachineNode(Opc, dl, VT, Ops, 4);
+        return CurDAG->getMachineNode(Opc, dl, VT, Ops);
       }
     }
     break;
@@ -2634,16 +2744,15 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
       break;
     if (Subtarget->isThumb()) {
       SDValue Ops[] = { N->getOperand(0), N->getOperand(1),
-                        getAL(CurDAG), CurDAG->getRegister(0, MVT::i32),
-                        CurDAG->getRegister(0, MVT::i32) };
-      return CurDAG->getMachineNode(ARM::t2UMULL, dl, MVT::i32, MVT::i32,Ops,4);
+                        getAL(CurDAG), CurDAG->getRegister(0, MVT::i32) };
+      return CurDAG->getMachineNode(ARM::t2UMULL, dl, MVT::i32, MVT::i32, Ops);
     } else {
       SDValue Ops[] = { N->getOperand(0), N->getOperand(1),
                         getAL(CurDAG), CurDAG->getRegister(0, MVT::i32),
                         CurDAG->getRegister(0, MVT::i32) };
       return CurDAG->getMachineNode(Subtarget->hasV6Ops() ?
                                     ARM::UMULL : ARM::UMULLv5,
-                                    dl, MVT::i32, MVT::i32, Ops, 5);
+                                    dl, MVT::i32, MVT::i32, Ops);
     }
   }
   case ISD::SMUL_LOHI: {
@@ -2652,14 +2761,46 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     if (Subtarget->isThumb()) {
       SDValue Ops[] = { N->getOperand(0), N->getOperand(1),
                         getAL(CurDAG), CurDAG->getRegister(0, MVT::i32) };
-      return CurDAG->getMachineNode(ARM::t2SMULL, dl, MVT::i32, MVT::i32,Ops,4);
+      return CurDAG->getMachineNode(ARM::t2SMULL, dl, MVT::i32, MVT::i32, Ops);
     } else {
       SDValue Ops[] = { N->getOperand(0), N->getOperand(1),
                         getAL(CurDAG), CurDAG->getRegister(0, MVT::i32),
                         CurDAG->getRegister(0, MVT::i32) };
       return CurDAG->getMachineNode(Subtarget->hasV6Ops() ?
                                     ARM::SMULL : ARM::SMULLv5,
-                                    dl, MVT::i32, MVT::i32, Ops, 5);
+                                    dl, MVT::i32, MVT::i32, Ops);
+    }
+  }
+  case ARMISD::UMLAL:{
+    if (Subtarget->isThumb()) {
+      SDValue Ops[] = { N->getOperand(0), N->getOperand(1), N->getOperand(2),
+                        N->getOperand(3), getAL(CurDAG),
+                        CurDAG->getRegister(0, MVT::i32)};
+      return CurDAG->getMachineNode(ARM::t2UMLAL, dl, MVT::i32, MVT::i32, Ops);
+    }else{
+      SDValue Ops[] = { N->getOperand(0), N->getOperand(1), N->getOperand(2),
+                        N->getOperand(3), getAL(CurDAG),
+                        CurDAG->getRegister(0, MVT::i32),
+                        CurDAG->getRegister(0, MVT::i32) };
+      return CurDAG->getMachineNode(Subtarget->hasV6Ops() ?
+                                      ARM::UMLAL : ARM::UMLALv5,
+                                      dl, MVT::i32, MVT::i32, Ops);
+    }
+  }
+  case ARMISD::SMLAL:{
+    if (Subtarget->isThumb()) {
+      SDValue Ops[] = { N->getOperand(0), N->getOperand(1), N->getOperand(2),
+                        N->getOperand(3), getAL(CurDAG),
+                        CurDAG->getRegister(0, MVT::i32)};
+      return CurDAG->getMachineNode(ARM::t2SMLAL, dl, MVT::i32, MVT::i32, Ops);
+    }else{
+      SDValue Ops[] = { N->getOperand(0), N->getOperand(1), N->getOperand(2),
+                        N->getOperand(3), getAL(CurDAG),
+                        CurDAG->getRegister(0, MVT::i32),
+                        CurDAG->getRegister(0, MVT::i32) };
+      return CurDAG->getMachineNode(Subtarget->hasV6Ops() ?
+                                      ARM::SMLAL : ARM::SMLALv5,
+                                      dl, MVT::i32, MVT::i32, Ops);
     }
   }
   case ISD::LOAD: {
@@ -2702,7 +2843,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
                                MVT::i32);
     SDValue Ops[] = { N1, Tmp2, N3, Chain, InFlag };
     SDNode *ResNode = CurDAG->getMachineNode(Opc, dl, MVT::Other,
-                                             MVT::Glue, Ops, 5);
+                                             MVT::Glue, Ops);
     Chain = SDValue(ResNode, 0);
     if (N->getNumValues() == 2) {
       InFlag = SDValue(ResNode, 1);
@@ -2722,7 +2863,8 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     case MVT::v8i8:  Opc = ARM::VZIPd8; break;
     case MVT::v4i16: Opc = ARM::VZIPd16; break;
     case MVT::v2f32:
-    case MVT::v2i32: Opc = ARM::VZIPd32; break;
+    // vzip.32 Dd, Dm is a pseudo-instruction expanded to vtrn.32 Dd, Dm.
+    case MVT::v2i32: Opc = ARM::VTRNd32; break;
     case MVT::v16i8: Opc = ARM::VZIPq8; break;
     case MVT::v8i16: Opc = ARM::VZIPq16; break;
     case MVT::v4f32:
@@ -2731,7 +2873,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     SDValue Pred = getAL(CurDAG);
     SDValue PredReg = CurDAG->getRegister(0, MVT::i32);
     SDValue Ops[] = { N->getOperand(0), N->getOperand(1), Pred, PredReg };
-    return CurDAG->getMachineNode(Opc, dl, VT, VT, Ops, 4);
+    return CurDAG->getMachineNode(Opc, dl, VT, VT, Ops);
   }
   case ARMISD::VUZP: {
     unsigned Opc = 0;
@@ -2741,7 +2883,8 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     case MVT::v8i8:  Opc = ARM::VUZPd8; break;
     case MVT::v4i16: Opc = ARM::VUZPd16; break;
     case MVT::v2f32:
-    case MVT::v2i32: Opc = ARM::VUZPd32; break;
+    // vuzp.32 Dd, Dm is a pseudo-instruction expanded to vtrn.32 Dd, Dm.
+    case MVT::v2i32: Opc = ARM::VTRNd32; break;
     case MVT::v16i8: Opc = ARM::VUZPq8; break;
     case MVT::v8i16: Opc = ARM::VUZPq16; break;
     case MVT::v4f32:
@@ -2750,7 +2893,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     SDValue Pred = getAL(CurDAG);
     SDValue PredReg = CurDAG->getRegister(0, MVT::i32);
     SDValue Ops[] = { N->getOperand(0), N->getOperand(1), Pred, PredReg };
-    return CurDAG->getMachineNode(Opc, dl, VT, VT, Ops, 4);
+    return CurDAG->getMachineNode(Opc, dl, VT, VT, Ops);
   }
   case ARMISD::VTRN: {
     unsigned Opc = 0;
@@ -2769,7 +2912,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     SDValue Pred = getAL(CurDAG);
     SDValue PredReg = CurDAG->getRegister(0, MVT::i32);
     SDValue Ops[] = { N->getOperand(0), N->getOperand(1), Pred, PredReg };
-    return CurDAG->getMachineNode(Opc, dl, VT, VT, Ops, 4);
+    return CurDAG->getMachineNode(Opc, dl, VT, VT, Ops);
   }
   case ARMISD::BUILD_VECTOR: {
     EVT VecVT = N->getValueType(0);
@@ -2777,188 +2920,210 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     unsigned NumElts = VecVT.getVectorNumElements();
     if (EltVT == MVT::f64) {
       assert(NumElts == 2 && "unexpected type for BUILD_VECTOR");
-      return PairDRegs(VecVT, N->getOperand(0), N->getOperand(1));
+      return createDRegPairNode(VecVT, N->getOperand(0), N->getOperand(1));
     }
     assert(EltVT == MVT::f32 && "unexpected type for BUILD_VECTOR");
     if (NumElts == 2)
-      return PairSRegs(VecVT, N->getOperand(0), N->getOperand(1));
+      return createSRegPairNode(VecVT, N->getOperand(0), N->getOperand(1));
     assert(NumElts == 4 && "unexpected type for BUILD_VECTOR");
-    return QuadSRegs(VecVT, N->getOperand(0), N->getOperand(1),
+    return createQuadSRegsNode(VecVT, N->getOperand(0), N->getOperand(1),
                      N->getOperand(2), N->getOperand(3));
   }
 
   case ARMISD::VLD2DUP: {
-    unsigned Opcodes[] = { ARM::VLD2DUPd8Pseudo, ARM::VLD2DUPd16Pseudo,
-                           ARM::VLD2DUPd32Pseudo };
+    static const uint16_t Opcodes[] = { ARM::VLD2DUPd8, ARM::VLD2DUPd16,
+                                        ARM::VLD2DUPd32 };
     return SelectVLDDup(N, false, 2, Opcodes);
   }
 
   case ARMISD::VLD3DUP: {
-    unsigned Opcodes[] = { ARM::VLD3DUPd8Pseudo, ARM::VLD3DUPd16Pseudo,
-                           ARM::VLD3DUPd32Pseudo };
+    static const uint16_t Opcodes[] = { ARM::VLD3DUPd8Pseudo,
+                                        ARM::VLD3DUPd16Pseudo,
+                                        ARM::VLD3DUPd32Pseudo };
     return SelectVLDDup(N, false, 3, Opcodes);
   }
 
   case ARMISD::VLD4DUP: {
-    unsigned Opcodes[] = { ARM::VLD4DUPd8Pseudo, ARM::VLD4DUPd16Pseudo,
-                           ARM::VLD4DUPd32Pseudo };
+    static const uint16_t Opcodes[] = { ARM::VLD4DUPd8Pseudo,
+                                        ARM::VLD4DUPd16Pseudo,
+                                        ARM::VLD4DUPd32Pseudo };
     return SelectVLDDup(N, false, 4, Opcodes);
   }
 
   case ARMISD::VLD2DUP_UPD: {
-    unsigned Opcodes[] = { ARM::VLD2DUPd8PseudoWB_fixed,
-                           ARM::VLD2DUPd16PseudoWB_fixed,
-                           ARM::VLD2DUPd32PseudoWB_fixed };
+    static const uint16_t Opcodes[] = { ARM::VLD2DUPd8wb_fixed,
+                                        ARM::VLD2DUPd16wb_fixed,
+                                        ARM::VLD2DUPd32wb_fixed };
     return SelectVLDDup(N, true, 2, Opcodes);
   }
 
   case ARMISD::VLD3DUP_UPD: {
-    unsigned Opcodes[] = { ARM::VLD3DUPd8Pseudo_UPD, ARM::VLD3DUPd16Pseudo_UPD,
-                           ARM::VLD3DUPd32Pseudo_UPD };
+    static const uint16_t Opcodes[] = { ARM::VLD3DUPd8Pseudo_UPD,
+                                        ARM::VLD3DUPd16Pseudo_UPD,
+                                        ARM::VLD3DUPd32Pseudo_UPD };
     return SelectVLDDup(N, true, 3, Opcodes);
   }
 
   case ARMISD::VLD4DUP_UPD: {
-    unsigned Opcodes[] = { ARM::VLD4DUPd8Pseudo_UPD, ARM::VLD4DUPd16Pseudo_UPD,
-                           ARM::VLD4DUPd32Pseudo_UPD };
+    static const uint16_t Opcodes[] = { ARM::VLD4DUPd8Pseudo_UPD,
+                                        ARM::VLD4DUPd16Pseudo_UPD,
+                                        ARM::VLD4DUPd32Pseudo_UPD };
     return SelectVLDDup(N, true, 4, Opcodes);
   }
 
   case ARMISD::VLD1_UPD: {
-    unsigned DOpcodes[] = { ARM::VLD1d8wb_fixed, ARM::VLD1d16wb_fixed,
-                            ARM::VLD1d32wb_fixed, ARM::VLD1d64wb_fixed };
-    unsigned QOpcodes[] = { ARM::VLD1q8PseudoWB_fixed,
-                            ARM::VLD1q16PseudoWB_fixed,
-                            ARM::VLD1q32PseudoWB_fixed,
-                            ARM::VLD1q64PseudoWB_fixed };
+    static const uint16_t DOpcodes[] = { ARM::VLD1d8wb_fixed,
+                                         ARM::VLD1d16wb_fixed,
+                                         ARM::VLD1d32wb_fixed,
+                                         ARM::VLD1d64wb_fixed };
+    static const uint16_t QOpcodes[] = { ARM::VLD1q8wb_fixed,
+                                         ARM::VLD1q16wb_fixed,
+                                         ARM::VLD1q32wb_fixed,
+                                         ARM::VLD1q64wb_fixed };
     return SelectVLD(N, true, 1, DOpcodes, QOpcodes, 0);
   }
 
   case ARMISD::VLD2_UPD: {
-    unsigned DOpcodes[] = { ARM::VLD2d8PseudoWB_fixed,
-                            ARM::VLD2d16PseudoWB_fixed,
-                            ARM::VLD2d32PseudoWB_fixed,
-                            ARM::VLD1q64PseudoWB_fixed};
-    unsigned QOpcodes[] = { ARM::VLD2q8PseudoWB_fixed,
-                            ARM::VLD2q16PseudoWB_fixed,
-                            ARM::VLD2q32PseudoWB_fixed };
+    static const uint16_t DOpcodes[] = { ARM::VLD2d8wb_fixed,
+                                         ARM::VLD2d16wb_fixed,
+                                         ARM::VLD2d32wb_fixed,
+                                         ARM::VLD1q64wb_fixed};
+    static const uint16_t QOpcodes[] = { ARM::VLD2q8PseudoWB_fixed,
+                                         ARM::VLD2q16PseudoWB_fixed,
+                                         ARM::VLD2q32PseudoWB_fixed };
     return SelectVLD(N, true, 2, DOpcodes, QOpcodes, 0);
   }
 
   case ARMISD::VLD3_UPD: {
-    unsigned DOpcodes[] = { ARM::VLD3d8Pseudo_UPD, ARM::VLD3d16Pseudo_UPD,
-                            ARM::VLD3d32Pseudo_UPD, ARM::VLD1q64PseudoWB_fixed};
-    unsigned QOpcodes0[] = { ARM::VLD3q8Pseudo_UPD,
-                             ARM::VLD3q16Pseudo_UPD,
-                             ARM::VLD3q32Pseudo_UPD };
-    unsigned QOpcodes1[] = { ARM::VLD3q8oddPseudo_UPD,
-                             ARM::VLD3q16oddPseudo_UPD,
-                             ARM::VLD3q32oddPseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VLD3d8Pseudo_UPD,
+                                         ARM::VLD3d16Pseudo_UPD,
+                                         ARM::VLD3d32Pseudo_UPD,
+                                         ARM::VLD1q64wb_fixed};
+    static const uint16_t QOpcodes0[] = { ARM::VLD3q8Pseudo_UPD,
+                                          ARM::VLD3q16Pseudo_UPD,
+                                          ARM::VLD3q32Pseudo_UPD };
+    static const uint16_t QOpcodes1[] = { ARM::VLD3q8oddPseudo_UPD,
+                                          ARM::VLD3q16oddPseudo_UPD,
+                                          ARM::VLD3q32oddPseudo_UPD };
     return SelectVLD(N, true, 3, DOpcodes, QOpcodes0, QOpcodes1);
   }
 
   case ARMISD::VLD4_UPD: {
-    unsigned DOpcodes[] = { ARM::VLD4d8Pseudo_UPD, ARM::VLD4d16Pseudo_UPD,
-                            ARM::VLD4d32Pseudo_UPD, ARM::VLD1q64PseudoWB_fixed};
-    unsigned QOpcodes0[] = { ARM::VLD4q8Pseudo_UPD,
-                             ARM::VLD4q16Pseudo_UPD,
-                             ARM::VLD4q32Pseudo_UPD };
-    unsigned QOpcodes1[] = { ARM::VLD4q8oddPseudo_UPD,
-                             ARM::VLD4q16oddPseudo_UPD,
-                             ARM::VLD4q32oddPseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VLD4d8Pseudo_UPD,
+                                         ARM::VLD4d16Pseudo_UPD,
+                                         ARM::VLD4d32Pseudo_UPD,
+                                         ARM::VLD1q64wb_fixed};
+    static const uint16_t QOpcodes0[] = { ARM::VLD4q8Pseudo_UPD,
+                                          ARM::VLD4q16Pseudo_UPD,
+                                          ARM::VLD4q32Pseudo_UPD };
+    static const uint16_t QOpcodes1[] = { ARM::VLD4q8oddPseudo_UPD,
+                                          ARM::VLD4q16oddPseudo_UPD,
+                                          ARM::VLD4q32oddPseudo_UPD };
     return SelectVLD(N, true, 4, DOpcodes, QOpcodes0, QOpcodes1);
   }
 
   case ARMISD::VLD2LN_UPD: {
-    unsigned DOpcodes[] = { ARM::VLD2LNd8Pseudo_UPD, ARM::VLD2LNd16Pseudo_UPD,
-                            ARM::VLD2LNd32Pseudo_UPD };
-    unsigned QOpcodes[] = { ARM::VLD2LNq16Pseudo_UPD,
-                            ARM::VLD2LNq32Pseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VLD2LNd8Pseudo_UPD,
+                                         ARM::VLD2LNd16Pseudo_UPD,
+                                         ARM::VLD2LNd32Pseudo_UPD };
+    static const uint16_t QOpcodes[] = { ARM::VLD2LNq16Pseudo_UPD,
+                                         ARM::VLD2LNq32Pseudo_UPD };
     return SelectVLDSTLane(N, true, true, 2, DOpcodes, QOpcodes);
   }
 
   case ARMISD::VLD3LN_UPD: {
-    unsigned DOpcodes[] = { ARM::VLD3LNd8Pseudo_UPD, ARM::VLD3LNd16Pseudo_UPD,
-                            ARM::VLD3LNd32Pseudo_UPD };
-    unsigned QOpcodes[] = { ARM::VLD3LNq16Pseudo_UPD,
-                            ARM::VLD3LNq32Pseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VLD3LNd8Pseudo_UPD,
+                                         ARM::VLD3LNd16Pseudo_UPD,
+                                         ARM::VLD3LNd32Pseudo_UPD };
+    static const uint16_t QOpcodes[] = { ARM::VLD3LNq16Pseudo_UPD,
+                                         ARM::VLD3LNq32Pseudo_UPD };
     return SelectVLDSTLane(N, true, true, 3, DOpcodes, QOpcodes);
   }
 
   case ARMISD::VLD4LN_UPD: {
-    unsigned DOpcodes[] = { ARM::VLD4LNd8Pseudo_UPD, ARM::VLD4LNd16Pseudo_UPD,
-                            ARM::VLD4LNd32Pseudo_UPD };
-    unsigned QOpcodes[] = { ARM::VLD4LNq16Pseudo_UPD,
-                            ARM::VLD4LNq32Pseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VLD4LNd8Pseudo_UPD,
+                                         ARM::VLD4LNd16Pseudo_UPD,
+                                         ARM::VLD4LNd32Pseudo_UPD };
+    static const uint16_t QOpcodes[] = { ARM::VLD4LNq16Pseudo_UPD,
+                                         ARM::VLD4LNq32Pseudo_UPD };
     return SelectVLDSTLane(N, true, true, 4, DOpcodes, QOpcodes);
   }
 
   case ARMISD::VST1_UPD: {
-    unsigned DOpcodes[] = { ARM::VST1d8wb_fixed, ARM::VST1d16wb_fixed,
-                            ARM::VST1d32wb_fixed, ARM::VST1d64wb_fixed };
-    unsigned QOpcodes[] = { ARM::VST1q8PseudoWB_fixed,
-                            ARM::VST1q16PseudoWB_fixed,
-                            ARM::VST1q32PseudoWB_fixed,
-                            ARM::VST1q64PseudoWB_fixed };
+    static const uint16_t DOpcodes[] = { ARM::VST1d8wb_fixed,
+                                         ARM::VST1d16wb_fixed,
+                                         ARM::VST1d32wb_fixed,
+                                         ARM::VST1d64wb_fixed };
+    static const uint16_t QOpcodes[] = { ARM::VST1q8wb_fixed,
+                                         ARM::VST1q16wb_fixed,
+                                         ARM::VST1q32wb_fixed,
+                                         ARM::VST1q64wb_fixed };
     return SelectVST(N, true, 1, DOpcodes, QOpcodes, 0);
   }
 
   case ARMISD::VST2_UPD: {
-    unsigned DOpcodes[] = { ARM::VST2d8PseudoWB_fixed,
-                            ARM::VST2d16PseudoWB_fixed,
-                            ARM::VST2d32PseudoWB_fixed,
-                            ARM::VST1q64PseudoWB_fixed};
-    unsigned QOpcodes[] = { ARM::VST2q8PseudoWB_fixed,
-                            ARM::VST2q16PseudoWB_fixed,
-                            ARM::VST2q32PseudoWB_fixed };
+    static const uint16_t DOpcodes[] = { ARM::VST2d8wb_fixed,
+                                         ARM::VST2d16wb_fixed,
+                                         ARM::VST2d32wb_fixed,
+                                         ARM::VST1q64wb_fixed};
+    static const uint16_t QOpcodes[] = { ARM::VST2q8PseudoWB_fixed,
+                                         ARM::VST2q16PseudoWB_fixed,
+                                         ARM::VST2q32PseudoWB_fixed };
     return SelectVST(N, true, 2, DOpcodes, QOpcodes, 0);
   }
 
   case ARMISD::VST3_UPD: {
-    unsigned DOpcodes[] = { ARM::VST3d8Pseudo_UPD, ARM::VST3d16Pseudo_UPD,
-                            ARM::VST3d32Pseudo_UPD,ARM::VST1d64TPseudoWB_fixed};
-    unsigned QOpcodes0[] = { ARM::VST3q8Pseudo_UPD,
-                             ARM::VST3q16Pseudo_UPD,
-                             ARM::VST3q32Pseudo_UPD };
-    unsigned QOpcodes1[] = { ARM::VST3q8oddPseudo_UPD,
-                             ARM::VST3q16oddPseudo_UPD,
-                             ARM::VST3q32oddPseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VST3d8Pseudo_UPD,
+                                         ARM::VST3d16Pseudo_UPD,
+                                         ARM::VST3d32Pseudo_UPD,
+                                         ARM::VST1d64TPseudoWB_fixed};
+    static const uint16_t QOpcodes0[] = { ARM::VST3q8Pseudo_UPD,
+                                          ARM::VST3q16Pseudo_UPD,
+                                          ARM::VST3q32Pseudo_UPD };
+    static const uint16_t QOpcodes1[] = { ARM::VST3q8oddPseudo_UPD,
+                                          ARM::VST3q16oddPseudo_UPD,
+                                          ARM::VST3q32oddPseudo_UPD };
     return SelectVST(N, true, 3, DOpcodes, QOpcodes0, QOpcodes1);
   }
 
   case ARMISD::VST4_UPD: {
-    unsigned DOpcodes[] = { ARM::VST4d8Pseudo_UPD, ARM::VST4d16Pseudo_UPD,
-                            ARM::VST4d32Pseudo_UPD,ARM::VST1d64QPseudoWB_fixed};
-    unsigned QOpcodes0[] = { ARM::VST4q8Pseudo_UPD,
-                             ARM::VST4q16Pseudo_UPD,
-                             ARM::VST4q32Pseudo_UPD };
-    unsigned QOpcodes1[] = { ARM::VST4q8oddPseudo_UPD,
-                             ARM::VST4q16oddPseudo_UPD,
-                             ARM::VST4q32oddPseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VST4d8Pseudo_UPD,
+                                         ARM::VST4d16Pseudo_UPD,
+                                         ARM::VST4d32Pseudo_UPD,
+                                         ARM::VST1d64QPseudoWB_fixed};
+    static const uint16_t QOpcodes0[] = { ARM::VST4q8Pseudo_UPD,
+                                          ARM::VST4q16Pseudo_UPD,
+                                          ARM::VST4q32Pseudo_UPD };
+    static const uint16_t QOpcodes1[] = { ARM::VST4q8oddPseudo_UPD,
+                                          ARM::VST4q16oddPseudo_UPD,
+                                          ARM::VST4q32oddPseudo_UPD };
     return SelectVST(N, true, 4, DOpcodes, QOpcodes0, QOpcodes1);
   }
 
   case ARMISD::VST2LN_UPD: {
-    unsigned DOpcodes[] = { ARM::VST2LNd8Pseudo_UPD, ARM::VST2LNd16Pseudo_UPD,
-                            ARM::VST2LNd32Pseudo_UPD };
-    unsigned QOpcodes[] = { ARM::VST2LNq16Pseudo_UPD,
-                            ARM::VST2LNq32Pseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VST2LNd8Pseudo_UPD,
+                                         ARM::VST2LNd16Pseudo_UPD,
+                                         ARM::VST2LNd32Pseudo_UPD };
+    static const uint16_t QOpcodes[] = { ARM::VST2LNq16Pseudo_UPD,
+                                         ARM::VST2LNq32Pseudo_UPD };
     return SelectVLDSTLane(N, false, true, 2, DOpcodes, QOpcodes);
   }
 
   case ARMISD::VST3LN_UPD: {
-    unsigned DOpcodes[] = { ARM::VST3LNd8Pseudo_UPD, ARM::VST3LNd16Pseudo_UPD,
-                            ARM::VST3LNd32Pseudo_UPD };
-    unsigned QOpcodes[] = { ARM::VST3LNq16Pseudo_UPD,
-                            ARM::VST3LNq32Pseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VST3LNd8Pseudo_UPD,
+                                         ARM::VST3LNd16Pseudo_UPD,
+                                         ARM::VST3LNd32Pseudo_UPD };
+    static const uint16_t QOpcodes[] = { ARM::VST3LNq16Pseudo_UPD,
+                                         ARM::VST3LNq32Pseudo_UPD };
     return SelectVLDSTLane(N, false, true, 3, DOpcodes, QOpcodes);
   }
 
   case ARMISD::VST4LN_UPD: {
-    unsigned DOpcodes[] = { ARM::VST4LNd8Pseudo_UPD, ARM::VST4LNd16Pseudo_UPD,
-                            ARM::VST4LNd32Pseudo_UPD };
-    unsigned QOpcodes[] = { ARM::VST4LNq16Pseudo_UPD,
-                            ARM::VST4LNq32Pseudo_UPD };
+    static const uint16_t DOpcodes[] = { ARM::VST4LNd8Pseudo_UPD,
+                                         ARM::VST4LNd16Pseudo_UPD,
+                                         ARM::VST4LNd32Pseudo_UPD };
+    static const uint16_t QOpcodes[] = { ARM::VST4LNq16Pseudo_UPD,
+                                         ARM::VST4LNq32Pseudo_UPD };
     return SelectVLDSTLane(N, false, true, 4, DOpcodes, QOpcodes);
   }
 
@@ -2971,101 +3136,91 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
 
     case Intrinsic::arm_ldrexd: {
       SDValue MemAddr = N->getOperand(2);
-      DebugLoc dl = N->getDebugLoc();
+      SDLoc dl(N);
       SDValue Chain = N->getOperand(0);
 
-      unsigned NewOpc = ARM::LDREXD;
-      if (Subtarget->isThumb() && Subtarget->hasThumb2())
-        NewOpc = ARM::t2LDREXD;
+      bool isThumb = Subtarget->isThumb() && Subtarget->hasThumb2();
+      unsigned NewOpc = isThumb ? ARM::t2LDREXD :ARM::LDREXD;
 
       // arm_ldrexd returns a i64 value in {i32, i32}
       std::vector<EVT> ResTys;
-      ResTys.push_back(MVT::i32);
-      ResTys.push_back(MVT::i32);
+      if (isThumb) {
+        ResTys.push_back(MVT::i32);
+        ResTys.push_back(MVT::i32);
+      } else
+        ResTys.push_back(MVT::Untyped);
       ResTys.push_back(MVT::Other);
 
-      // place arguments in the right order
+      // Place arguments in the right order.
       SmallVector<SDValue, 7> Ops;
       Ops.push_back(MemAddr);
       Ops.push_back(getAL(CurDAG));
       Ops.push_back(CurDAG->getRegister(0, MVT::i32));
       Ops.push_back(Chain);
-      SDNode *Ld = CurDAG->getMachineNode(NewOpc, dl, ResTys, Ops.data(),
-                                          Ops.size());
+      SDNode *Ld = CurDAG->getMachineNode(NewOpc, dl, ResTys, Ops);
       // Transfer memoperands.
       MachineSDNode::mmo_iterator MemOp = MF->allocateMemRefsArray(1);
       MemOp[0] = cast<MemIntrinsicSDNode>(N)->getMemOperand();
       cast<MachineSDNode>(Ld)->setMemRefs(MemOp, MemOp + 1);
 
-      // Until there's support for specifing explicit register constraints
-      // like the use of even/odd register pair, hardcode ldrexd to always
-      // use the pair [R0, R1] to hold the load result.
-      Chain = CurDAG->getCopyToReg(CurDAG->getEntryNode(), dl, ARM::R0,
-                                   SDValue(Ld, 0), SDValue(0,0));
-      Chain = CurDAG->getCopyToReg(Chain, dl, ARM::R1,
-                                   SDValue(Ld, 1), Chain.getValue(1));
-
       // Remap uses.
-      SDValue Glue = Chain.getValue(1);
+      SDValue OutChain = isThumb ? SDValue(Ld, 2) : SDValue(Ld, 1);
       if (!SDValue(N, 0).use_empty()) {
-        SDValue Result = CurDAG->getCopyFromReg(CurDAG->getEntryNode(), dl,
-                                                ARM::R0, MVT::i32, Glue);
-        Glue = Result.getValue(2);
+        SDValue Result;
+        if (isThumb)
+          Result = SDValue(Ld, 0);
+        else {
+          SDValue SubRegIdx = CurDAG->getTargetConstant(ARM::gsub_0, MVT::i32);
+          SDNode *ResNode = CurDAG->getMachineNode(TargetOpcode::EXTRACT_SUBREG,
+              dl, MVT::i32, SDValue(Ld, 0), SubRegIdx);
+          Result = SDValue(ResNode,0);
+        }
         ReplaceUses(SDValue(N, 0), Result);
       }
       if (!SDValue(N, 1).use_empty()) {
-        SDValue Result = CurDAG->getCopyFromReg(CurDAG->getEntryNode(), dl,
-                                                ARM::R1, MVT::i32, Glue);
-        Glue = Result.getValue(2);
+        SDValue Result;
+        if (isThumb)
+          Result = SDValue(Ld, 1);
+        else {
+          SDValue SubRegIdx = CurDAG->getTargetConstant(ARM::gsub_1, MVT::i32);
+          SDNode *ResNode = CurDAG->getMachineNode(TargetOpcode::EXTRACT_SUBREG,
+              dl, MVT::i32, SDValue(Ld, 0), SubRegIdx);
+          Result = SDValue(ResNode,0);
+        }
         ReplaceUses(SDValue(N, 1), Result);
       }
-
-      ReplaceUses(SDValue(N, 2), SDValue(Ld, 2));
+      ReplaceUses(SDValue(N, 2), OutChain);
       return NULL;
     }
 
     case Intrinsic::arm_strexd: {
-      DebugLoc dl = N->getDebugLoc();
+      SDLoc dl(N);
       SDValue Chain = N->getOperand(0);
       SDValue Val0 = N->getOperand(2);
       SDValue Val1 = N->getOperand(3);
       SDValue MemAddr = N->getOperand(4);
 
-      // Until there's support for specifing explicit register constraints
-      // like the use of even/odd register pair, hardcode strexd to always
-      // use the pair [R2, R3] to hold the i64 (i32, i32) value to be stored.
-      Chain = CurDAG->getCopyToReg(CurDAG->getEntryNode(), dl, ARM::R2, Val0,
-                                   SDValue(0, 0));
-      Chain = CurDAG->getCopyToReg(Chain, dl, ARM::R3, Val1, Chain.getValue(1));
-
-      SDValue Glue = Chain.getValue(1);
-      Val0 = CurDAG->getCopyFromReg(CurDAG->getEntryNode(), dl,
-                                    ARM::R2, MVT::i32, Glue);
-      Glue = Val0.getValue(1);
-      Val1 = CurDAG->getCopyFromReg(CurDAG->getEntryNode(), dl,
-                                    ARM::R3, MVT::i32, Glue);
-
       // Store exclusive double return a i32 value which is the return status
       // of the issued store.
-      std::vector<EVT> ResTys;
-      ResTys.push_back(MVT::i32);
-      ResTys.push_back(MVT::Other);
+      EVT ResTys[] = { MVT::i32, MVT::Other };
 
-      // place arguments in the right order
+      bool isThumb = Subtarget->isThumb() && Subtarget->hasThumb2();
+      // Place arguments in the right order.
       SmallVector<SDValue, 7> Ops;
-      Ops.push_back(Val0);
-      Ops.push_back(Val1);
+      if (isThumb) {
+        Ops.push_back(Val0);
+        Ops.push_back(Val1);
+      } else
+        // arm_strexd uses GPRPair.
+        Ops.push_back(SDValue(createGPRPairNode(MVT::Untyped, Val0, Val1), 0));
       Ops.push_back(MemAddr);
       Ops.push_back(getAL(CurDAG));
       Ops.push_back(CurDAG->getRegister(0, MVT::i32));
       Ops.push_back(Chain);
 
-      unsigned NewOpc = ARM::STREXD;
-      if (Subtarget->isThumb() && Subtarget->hasThumb2())
-        NewOpc = ARM::t2STREXD;
+      unsigned NewOpc = isThumb ? ARM::t2STREXD : ARM::STREXD;
 
-      SDNode *St = CurDAG->getMachineNode(NewOpc, dl, ResTys, Ops.data(),
-                                          Ops.size());
+      SDNode *St = CurDAG->getMachineNode(NewOpc, dl, ResTys, Ops);
       // Transfer memoperands.
       MachineSDNode::mmo_iterator MemOp = MF->allocateMemRefsArray(1);
       MemOp[0] = cast<MemIntrinsicSDNode>(N)->getMemOperand();
@@ -3075,124 +3230,144 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     }
 
     case Intrinsic::arm_neon_vld1: {
-      unsigned DOpcodes[] = { ARM::VLD1d8, ARM::VLD1d16,
-                              ARM::VLD1d32, ARM::VLD1d64 };
-      unsigned QOpcodes[] = { ARM::VLD1q8Pseudo, ARM::VLD1q16Pseudo,
-                              ARM::VLD1q32Pseudo, ARM::VLD1q64Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VLD1d8, ARM::VLD1d16,
+                                           ARM::VLD1d32, ARM::VLD1d64 };
+      static const uint16_t QOpcodes[] = { ARM::VLD1q8, ARM::VLD1q16,
+                                           ARM::VLD1q32, ARM::VLD1q64};
       return SelectVLD(N, false, 1, DOpcodes, QOpcodes, 0);
     }
 
     case Intrinsic::arm_neon_vld2: {
-      unsigned DOpcodes[] = { ARM::VLD2d8Pseudo, ARM::VLD2d16Pseudo,
-                              ARM::VLD2d32Pseudo, ARM::VLD1q64Pseudo };
-      unsigned QOpcodes[] = { ARM::VLD2q8Pseudo, ARM::VLD2q16Pseudo,
-                              ARM::VLD2q32Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VLD2d8, ARM::VLD2d16,
+                                           ARM::VLD2d32, ARM::VLD1q64 };
+      static const uint16_t QOpcodes[] = { ARM::VLD2q8Pseudo, ARM::VLD2q16Pseudo,
+                                           ARM::VLD2q32Pseudo };
       return SelectVLD(N, false, 2, DOpcodes, QOpcodes, 0);
     }
 
     case Intrinsic::arm_neon_vld3: {
-      unsigned DOpcodes[] = { ARM::VLD3d8Pseudo, ARM::VLD3d16Pseudo,
-                              ARM::VLD3d32Pseudo, ARM::VLD1d64TPseudo };
-      unsigned QOpcodes0[] = { ARM::VLD3q8Pseudo_UPD,
-                               ARM::VLD3q16Pseudo_UPD,
-                               ARM::VLD3q32Pseudo_UPD };
-      unsigned QOpcodes1[] = { ARM::VLD3q8oddPseudo,
-                               ARM::VLD3q16oddPseudo,
-                               ARM::VLD3q32oddPseudo };
+      static const uint16_t DOpcodes[] = { ARM::VLD3d8Pseudo,
+                                           ARM::VLD3d16Pseudo,
+                                           ARM::VLD3d32Pseudo,
+                                           ARM::VLD1d64TPseudo };
+      static const uint16_t QOpcodes0[] = { ARM::VLD3q8Pseudo_UPD,
+                                            ARM::VLD3q16Pseudo_UPD,
+                                            ARM::VLD3q32Pseudo_UPD };
+      static const uint16_t QOpcodes1[] = { ARM::VLD3q8oddPseudo,
+                                            ARM::VLD3q16oddPseudo,
+                                            ARM::VLD3q32oddPseudo };
       return SelectVLD(N, false, 3, DOpcodes, QOpcodes0, QOpcodes1);
     }
 
     case Intrinsic::arm_neon_vld4: {
-      unsigned DOpcodes[] = { ARM::VLD4d8Pseudo, ARM::VLD4d16Pseudo,
-                              ARM::VLD4d32Pseudo, ARM::VLD1d64QPseudo };
-      unsigned QOpcodes0[] = { ARM::VLD4q8Pseudo_UPD,
-                               ARM::VLD4q16Pseudo_UPD,
-                               ARM::VLD4q32Pseudo_UPD };
-      unsigned QOpcodes1[] = { ARM::VLD4q8oddPseudo,
-                               ARM::VLD4q16oddPseudo,
-                               ARM::VLD4q32oddPseudo };
+      static const uint16_t DOpcodes[] = { ARM::VLD4d8Pseudo,
+                                           ARM::VLD4d16Pseudo,
+                                           ARM::VLD4d32Pseudo,
+                                           ARM::VLD1d64QPseudo };
+      static const uint16_t QOpcodes0[] = { ARM::VLD4q8Pseudo_UPD,
+                                            ARM::VLD4q16Pseudo_UPD,
+                                            ARM::VLD4q32Pseudo_UPD };
+      static const uint16_t QOpcodes1[] = { ARM::VLD4q8oddPseudo,
+                                            ARM::VLD4q16oddPseudo,
+                                            ARM::VLD4q32oddPseudo };
       return SelectVLD(N, false, 4, DOpcodes, QOpcodes0, QOpcodes1);
     }
 
     case Intrinsic::arm_neon_vld2lane: {
-      unsigned DOpcodes[] = { ARM::VLD2LNd8Pseudo, ARM::VLD2LNd16Pseudo,
-                              ARM::VLD2LNd32Pseudo };
-      unsigned QOpcodes[] = { ARM::VLD2LNq16Pseudo, ARM::VLD2LNq32Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VLD2LNd8Pseudo,
+                                           ARM::VLD2LNd16Pseudo,
+                                           ARM::VLD2LNd32Pseudo };
+      static const uint16_t QOpcodes[] = { ARM::VLD2LNq16Pseudo,
+                                           ARM::VLD2LNq32Pseudo };
       return SelectVLDSTLane(N, true, false, 2, DOpcodes, QOpcodes);
     }
 
     case Intrinsic::arm_neon_vld3lane: {
-      unsigned DOpcodes[] = { ARM::VLD3LNd8Pseudo, ARM::VLD3LNd16Pseudo,
-                              ARM::VLD3LNd32Pseudo };
-      unsigned QOpcodes[] = { ARM::VLD3LNq16Pseudo, ARM::VLD3LNq32Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VLD3LNd8Pseudo,
+                                           ARM::VLD3LNd16Pseudo,
+                                           ARM::VLD3LNd32Pseudo };
+      static const uint16_t QOpcodes[] = { ARM::VLD3LNq16Pseudo,
+                                           ARM::VLD3LNq32Pseudo };
       return SelectVLDSTLane(N, true, false, 3, DOpcodes, QOpcodes);
     }
 
     case Intrinsic::arm_neon_vld4lane: {
-      unsigned DOpcodes[] = { ARM::VLD4LNd8Pseudo, ARM::VLD4LNd16Pseudo,
-                              ARM::VLD4LNd32Pseudo };
-      unsigned QOpcodes[] = { ARM::VLD4LNq16Pseudo, ARM::VLD4LNq32Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VLD4LNd8Pseudo,
+                                           ARM::VLD4LNd16Pseudo,
+                                           ARM::VLD4LNd32Pseudo };
+      static const uint16_t QOpcodes[] = { ARM::VLD4LNq16Pseudo,
+                                           ARM::VLD4LNq32Pseudo };
       return SelectVLDSTLane(N, true, false, 4, DOpcodes, QOpcodes);
     }
 
     case Intrinsic::arm_neon_vst1: {
-      unsigned DOpcodes[] = { ARM::VST1d8, ARM::VST1d16,
-                              ARM::VST1d32, ARM::VST1d64 };
-      unsigned QOpcodes[] = { ARM::VST1q8Pseudo, ARM::VST1q16Pseudo,
-                              ARM::VST1q32Pseudo, ARM::VST1q64Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VST1d8, ARM::VST1d16,
+                                           ARM::VST1d32, ARM::VST1d64 };
+      static const uint16_t QOpcodes[] = { ARM::VST1q8, ARM::VST1q16,
+                                           ARM::VST1q32, ARM::VST1q64 };
       return SelectVST(N, false, 1, DOpcodes, QOpcodes, 0);
     }
 
     case Intrinsic::arm_neon_vst2: {
-      unsigned DOpcodes[] = { ARM::VST2d8Pseudo, ARM::VST2d16Pseudo,
-                              ARM::VST2d32Pseudo, ARM::VST1q64Pseudo };
-      unsigned QOpcodes[] = { ARM::VST2q8Pseudo, ARM::VST2q16Pseudo,
-                              ARM::VST2q32Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VST2d8, ARM::VST2d16,
+                                           ARM::VST2d32, ARM::VST1q64 };
+      static uint16_t QOpcodes[] = { ARM::VST2q8Pseudo, ARM::VST2q16Pseudo,
+                                     ARM::VST2q32Pseudo };
       return SelectVST(N, false, 2, DOpcodes, QOpcodes, 0);
     }
 
     case Intrinsic::arm_neon_vst3: {
-      unsigned DOpcodes[] = { ARM::VST3d8Pseudo, ARM::VST3d16Pseudo,
-                              ARM::VST3d32Pseudo, ARM::VST1d64TPseudo };
-      unsigned QOpcodes0[] = { ARM::VST3q8Pseudo_UPD,
-                               ARM::VST3q16Pseudo_UPD,
-                               ARM::VST3q32Pseudo_UPD };
-      unsigned QOpcodes1[] = { ARM::VST3q8oddPseudo,
-                               ARM::VST3q16oddPseudo,
-                               ARM::VST3q32oddPseudo };
+      static const uint16_t DOpcodes[] = { ARM::VST3d8Pseudo,
+                                           ARM::VST3d16Pseudo,
+                                           ARM::VST3d32Pseudo,
+                                           ARM::VST1d64TPseudo };
+      static const uint16_t QOpcodes0[] = { ARM::VST3q8Pseudo_UPD,
+                                            ARM::VST3q16Pseudo_UPD,
+                                            ARM::VST3q32Pseudo_UPD };
+      static const uint16_t QOpcodes1[] = { ARM::VST3q8oddPseudo,
+                                            ARM::VST3q16oddPseudo,
+                                            ARM::VST3q32oddPseudo };
       return SelectVST(N, false, 3, DOpcodes, QOpcodes0, QOpcodes1);
     }
 
     case Intrinsic::arm_neon_vst4: {
-      unsigned DOpcodes[] = { ARM::VST4d8Pseudo, ARM::VST4d16Pseudo,
-                              ARM::VST4d32Pseudo, ARM::VST1d64QPseudo };
-      unsigned QOpcodes0[] = { ARM::VST4q8Pseudo_UPD,
-                               ARM::VST4q16Pseudo_UPD,
-                               ARM::VST4q32Pseudo_UPD };
-      unsigned QOpcodes1[] = { ARM::VST4q8oddPseudo,
-                               ARM::VST4q16oddPseudo,
-                               ARM::VST4q32oddPseudo };
+      static const uint16_t DOpcodes[] = { ARM::VST4d8Pseudo,
+                                           ARM::VST4d16Pseudo,
+                                           ARM::VST4d32Pseudo,
+                                           ARM::VST1d64QPseudo };
+      static const uint16_t QOpcodes0[] = { ARM::VST4q8Pseudo_UPD,
+                                            ARM::VST4q16Pseudo_UPD,
+                                            ARM::VST4q32Pseudo_UPD };
+      static const uint16_t QOpcodes1[] = { ARM::VST4q8oddPseudo,
+                                            ARM::VST4q16oddPseudo,
+                                            ARM::VST4q32oddPseudo };
       return SelectVST(N, false, 4, DOpcodes, QOpcodes0, QOpcodes1);
     }
 
     case Intrinsic::arm_neon_vst2lane: {
-      unsigned DOpcodes[] = { ARM::VST2LNd8Pseudo, ARM::VST2LNd16Pseudo,
-                              ARM::VST2LNd32Pseudo };
-      unsigned QOpcodes[] = { ARM::VST2LNq16Pseudo, ARM::VST2LNq32Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VST2LNd8Pseudo,
+                                           ARM::VST2LNd16Pseudo,
+                                           ARM::VST2LNd32Pseudo };
+      static const uint16_t QOpcodes[] = { ARM::VST2LNq16Pseudo,
+                                           ARM::VST2LNq32Pseudo };
       return SelectVLDSTLane(N, false, false, 2, DOpcodes, QOpcodes);
     }
 
     case Intrinsic::arm_neon_vst3lane: {
-      unsigned DOpcodes[] = { ARM::VST3LNd8Pseudo, ARM::VST3LNd16Pseudo,
-                              ARM::VST3LNd32Pseudo };
-      unsigned QOpcodes[] = { ARM::VST3LNq16Pseudo, ARM::VST3LNq32Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VST3LNd8Pseudo,
+                                           ARM::VST3LNd16Pseudo,
+                                           ARM::VST3LNd32Pseudo };
+      static const uint16_t QOpcodes[] = { ARM::VST3LNq16Pseudo,
+                                           ARM::VST3LNq32Pseudo };
       return SelectVLDSTLane(N, false, false, 3, DOpcodes, QOpcodes);
     }
 
     case Intrinsic::arm_neon_vst4lane: {
-      unsigned DOpcodes[] = { ARM::VST4LNd8Pseudo, ARM::VST4LNd16Pseudo,
-                              ARM::VST4LNd32Pseudo };
-      unsigned QOpcodes[] = { ARM::VST4LNq16Pseudo, ARM::VST4LNq32Pseudo };
+      static const uint16_t DOpcodes[] = { ARM::VST4LNd8Pseudo,
+                                           ARM::VST4LNd16Pseudo,
+                                           ARM::VST4LNd32Pseudo };
+      static const uint16_t QOpcodes[] = { ARM::VST4LNq16Pseudo,
+                                           ARM::VST4LNq32Pseudo };
       return SelectVLDSTLane(N, false, false, 4, DOpcodes, QOpcodes);
     }
     }
@@ -3206,14 +3381,14 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
       break;
 
     case Intrinsic::arm_neon_vtbl2:
-      return SelectVTBL(N, false, 2, ARM::VTBL2Pseudo);
+      return SelectVTBL(N, false, 2, ARM::VTBL2);
     case Intrinsic::arm_neon_vtbl3:
       return SelectVTBL(N, false, 3, ARM::VTBL3Pseudo);
     case Intrinsic::arm_neon_vtbl4:
       return SelectVTBL(N, false, 4, ARM::VTBL4Pseudo);
 
     case Intrinsic::arm_neon_vtbx2:
-      return SelectVTBL(N, true, 2, ARM::VTBX2Pseudo);
+      return SelectVTBL(N, true, 2, ARM::VTBX2);
     case Intrinsic::arm_neon_vtbx3:
       return SelectVTBL(N, true, 3, ARM::VTBX3Pseudo);
     case Intrinsic::arm_neon_vtbx4:
@@ -3223,7 +3398,7 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
   }
 
   case ARMISD::VTBL1: {
-    DebugLoc dl = N->getDebugLoc();
+    SDLoc dl(N);
     EVT VT = N->getValueType(0);
     SmallVector<SDValue, 6> Ops;
 
@@ -3231,24 +3406,23 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     Ops.push_back(N->getOperand(1));
     Ops.push_back(getAL(CurDAG));                    // Predicate
     Ops.push_back(CurDAG->getRegister(0, MVT::i32)); // Predicate Register
-    return CurDAG->getMachineNode(ARM::VTBL1, dl, VT, Ops.data(), Ops.size());
+    return CurDAG->getMachineNode(ARM::VTBL1, dl, VT, Ops);
   }
   case ARMISD::VTBL2: {
-    DebugLoc dl = N->getDebugLoc();
+    SDLoc dl(N);
     EVT VT = N->getValueType(0);
 
     // Form a REG_SEQUENCE to force register allocation.
     SDValue V0 = N->getOperand(0);
     SDValue V1 = N->getOperand(1);
-    SDValue RegSeq = SDValue(PairDRegs(MVT::v16i8, V0, V1), 0);
+    SDValue RegSeq = SDValue(createDRegPairNode(MVT::v16i8, V0, V1), 0);
 
     SmallVector<SDValue, 6> Ops;
     Ops.push_back(RegSeq);
     Ops.push_back(N->getOperand(2));
     Ops.push_back(getAL(CurDAG));                    // Predicate
     Ops.push_back(CurDAG->getRegister(0, MVT::i32)); // Predicate Register
-    return CurDAG->getMachineNode(ARM::VTBL2Pseudo, dl, VT,
-                                  Ops.data(), Ops.size());
+    return CurDAG->getMachineNode(ARM::VTBL2, dl, VT, Ops);
   }
 
   case ISD::CONCAT_VECTORS:
@@ -3270,10 +3444,166 @@ SDNode *ARMDAGToDAGISel::Select(SDNode *N) {
     return SelectAtomic64(N, ARM::ATOMSWAP6432);
   case ARMISD::ATOMCMPXCHG64_DAG:
     return SelectAtomic64(N, ARM::ATOMCMPXCHG6432);
+
+  case ARMISD::ATOMMIN64_DAG:
+    return SelectAtomic64(N, ARM::ATOMMIN6432);
+  case ARMISD::ATOMUMIN64_DAG:
+    return SelectAtomic64(N, ARM::ATOMUMIN6432);
+  case ARMISD::ATOMMAX64_DAG:
+    return SelectAtomic64(N, ARM::ATOMMAX6432);
+  case ARMISD::ATOMUMAX64_DAG:
+    return SelectAtomic64(N, ARM::ATOMUMAX6432);
   }
 
   return SelectCode(N);
 }
+
+SDNode *ARMDAGToDAGISel::SelectInlineAsm(SDNode *N){
+  std::vector<SDValue> AsmNodeOperands;
+  unsigned Flag, Kind;
+  bool Changed = false;
+  unsigned NumOps = N->getNumOperands();
+
+  // Normally, i64 data is bounded to two arbitrary GRPs for "%r" constraint.
+  // However, some instrstions (e.g. ldrexd/strexd in ARM mode) require
+  // (even/even+1) GPRs and use %n and %Hn to refer to the individual regs
+  // respectively. Since there is no constraint to explicitly specify a
+  // reg pair, we use GPRPair reg class for "%r" for 64-bit data. For Thumb,
+  // the 64-bit data may be referred by H, Q, R modifiers, so we still pack
+  // them into a GPRPair.
+
+  SDLoc dl(N);
+  SDValue Glue = N->getGluedNode() ? N->getOperand(NumOps-1) : SDValue(0,0);
+
+  SmallVector<bool, 8> OpChanged;
+  // Glue node will be appended late.
+  for(unsigned i = 0, e = N->getGluedNode() ? NumOps - 1 : NumOps; i < e; ++i) {
+    SDValue op = N->getOperand(i);
+    AsmNodeOperands.push_back(op);
+
+    if (i < InlineAsm::Op_FirstOperand)
+      continue;
+
+    if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(N->getOperand(i))) {
+      Flag = C->getZExtValue();
+      Kind = InlineAsm::getKind(Flag);
+    }
+    else
+      continue;
+
+    if (Kind == InlineAsm::Kind_Imm) {
+      SDValue op = N->getOperand(++i);
+      AsmNodeOperands.push_back(op);
+      continue;
+    }
+
+    unsigned NumRegs = InlineAsm::getNumOperandRegisters(Flag);
+    if (NumRegs)
+      OpChanged.push_back(false);
+
+    unsigned DefIdx = 0;
+    bool IsTiedToChangedOp = false;
+    // If it's a use that is tied with a previous def, it has no
+    // reg class constraint.
+    if (Changed && InlineAsm::isUseOperandTiedToDef(Flag, DefIdx))
+      IsTiedToChangedOp = OpChanged[DefIdx];
+
+    if (Kind != InlineAsm::Kind_RegUse && Kind != InlineAsm::Kind_RegDef
+        && Kind != InlineAsm::Kind_RegDefEarlyClobber)
+      continue;
+
+    unsigned RC;
+    bool HasRC = InlineAsm::hasRegClassConstraint(Flag, RC);
+    if ((!IsTiedToChangedOp && (!HasRC || RC != ARM::GPRRegClassID))
+        || NumRegs != 2)
+      continue;
+
+    assert((i+2 < NumOps) && "Invalid number of operands in inline asm");
+    SDValue V0 = N->getOperand(i+1);
+    SDValue V1 = N->getOperand(i+2);
+    unsigned Reg0 = cast<RegisterSDNode>(V0)->getReg();
+    unsigned Reg1 = cast<RegisterSDNode>(V1)->getReg();
+    SDValue PairedReg;
+    MachineRegisterInfo &MRI = MF->getRegInfo();
+
+    if (Kind == InlineAsm::Kind_RegDef ||
+        Kind == InlineAsm::Kind_RegDefEarlyClobber) {
+      // Replace the two GPRs with 1 GPRPair and copy values from GPRPair to
+      // the original GPRs.
+
+      unsigned GPVR = MRI.createVirtualRegister(&ARM::GPRPairRegClass);
+      PairedReg = CurDAG->getRegister(GPVR, MVT::Untyped);
+      SDValue Chain = SDValue(N,0);
+
+      SDNode *GU = N->getGluedUser();
+      SDValue RegCopy = CurDAG->getCopyFromReg(Chain, dl, GPVR, MVT::Untyped,
+                                               Chain.getValue(1));
+
+      // Extract values from a GPRPair reg and copy to the original GPR reg.
+      SDValue Sub0 = CurDAG->getTargetExtractSubreg(ARM::gsub_0, dl, MVT::i32,
+                                                    RegCopy);
+      SDValue Sub1 = CurDAG->getTargetExtractSubreg(ARM::gsub_1, dl, MVT::i32,
+                                                    RegCopy);
+      SDValue T0 = CurDAG->getCopyToReg(Sub0, dl, Reg0, Sub0,
+                                        RegCopy.getValue(1));
+      SDValue T1 = CurDAG->getCopyToReg(Sub1, dl, Reg1, Sub1, T0.getValue(1));
+
+      // Update the original glue user.
+      std::vector<SDValue> Ops(GU->op_begin(), GU->op_end()-1);
+      Ops.push_back(T1.getValue(1));
+      CurDAG->UpdateNodeOperands(GU, &Ops[0], Ops.size());
+      GU = T1.getNode();
+    }
+    else {
+      // For Kind  == InlineAsm::Kind_RegUse, we first copy two GPRs into a
+      // GPRPair and then pass the GPRPair to the inline asm.
+      SDValue Chain = AsmNodeOperands[InlineAsm::Op_InputChain];
+
+      // As REG_SEQ doesn't take RegisterSDNode, we copy them first.
+      SDValue T0 = CurDAG->getCopyFromReg(Chain, dl, Reg0, MVT::i32,
+                                          Chain.getValue(1));
+      SDValue T1 = CurDAG->getCopyFromReg(Chain, dl, Reg1, MVT::i32,
+                                          T0.getValue(1));
+      SDValue Pair = SDValue(createGPRPairNode(MVT::Untyped, T0, T1), 0);
+
+      // Copy REG_SEQ into a GPRPair-typed VR and replace the original two
+      // i32 VRs of inline asm with it.
+      unsigned GPVR = MRI.createVirtualRegister(&ARM::GPRPairRegClass);
+      PairedReg = CurDAG->getRegister(GPVR, MVT::Untyped);
+      Chain = CurDAG->getCopyToReg(T1, dl, GPVR, Pair, T1.getValue(1));
+
+      AsmNodeOperands[InlineAsm::Op_InputChain] = Chain;
+      Glue = Chain.getValue(1);
+    }
+
+    Changed = true;
+
+    if(PairedReg.getNode()) {
+      OpChanged[OpChanged.size() -1 ] = true;
+      Flag = InlineAsm::getFlagWord(Kind, 1 /* RegNum*/);
+      Flag = InlineAsm::getFlagWordForRegClass(Flag, ARM::GPRPairRegClassID);
+      // Replace the current flag.
+      AsmNodeOperands[AsmNodeOperands.size() -1] = CurDAG->getTargetConstant(
+          Flag, MVT::i32);
+      // Add the new register node and skip the original two GPRs.
+      AsmNodeOperands.push_back(PairedReg);
+      // Skip the next two GPRs.
+      i += 2;
+    }
+  }
+
+  if (Glue.getNode())
+    AsmNodeOperands.push_back(Glue);
+  if (!Changed)
+    return NULL;
+
+  SDValue New = CurDAG->getNode(ISD::INLINEASM, SDLoc(N),
+      CurDAG->getVTList(MVT::Other, MVT::Glue), &AsmNodeOperands[0],
+                        AsmNodeOperands.size());
+  New->setNodeId(-1);
+  return New.getNode();
+}
+
 
 bool ARMDAGToDAGISel::
 SelectInlineAsmMemoryOperand(const SDValue &Op, char ConstraintCode,

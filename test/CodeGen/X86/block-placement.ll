@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=i686-linux -enable-block-placement < %s | FileCheck %s
+; RUN: llc -mtriple=i686-linux -pre-RA-sched=source < %s | FileCheck %s
 
 declare void @error(i32 %i, i32 %a, i32 %b)
 
@@ -7,10 +7,15 @@ define i32 @test_ifchains(i32 %i, i32* %a, i32 %b) {
 ; that is not expected to run.
 ; CHECK: test_ifchains:
 ; CHECK: %entry
+; CHECK-NOT: .align
 ; CHECK: %else1
+; CHECK-NOT: .align
 ; CHECK: %else2
+; CHECK-NOT: .align
 ; CHECK: %else3
+; CHECK-NOT: .align
 ; CHECK: %else4
+; CHECK-NOT: .align
 ; CHECK: %exit
 ; CHECK: %then1
 ; CHECK: %then2
@@ -76,11 +81,14 @@ define i32 @test_loop_cold_blocks(i32 %i, i32* %a) {
 ; Check that we sink cold loop blocks after the hot loop body.
 ; CHECK: test_loop_cold_blocks:
 ; CHECK: %entry
+; CHECK-NOT: .align
+; CHECK: %unlikely1
+; CHECK-NOT: .align
+; CHECK: %unlikely2
+; CHECK: .align
 ; CHECK: %body1
 ; CHECK: %body2
 ; CHECK: %body3
-; CHECK: %unlikely1
-; CHECK: %unlikely2
 ; CHECK: %exit
 
 entry:
@@ -122,14 +130,14 @@ define i32 @test_loop_early_exits(i32 %i, i32* %a) {
 ; Check that we sink early exit blocks out of loop bodies.
 ; CHECK: test_loop_early_exits:
 ; CHECK: %entry
+; CHECK: %body1
 ; CHECK: %body2
 ; CHECK: %body3
 ; CHECK: %body4
-; CHECK: %body1
+; CHECK: %exit
 ; CHECK: %bail1
 ; CHECK: %bail2
 ; CHECK: %bail3
-; CHECK: %exit
 
 entry:
   br label %body1
@@ -194,6 +202,36 @@ body1:
   %sum = add nsw i32 %0, %base
   %bailcond1 = icmp eq i32 %sum, 42
   br label %body0
+
+exit:
+  ret i32 %base
+}
+
+define i32 @test_no_loop_rotate(i32 %i, i32* %a) {
+; Check that we don't try to rotate a loop which is already laid out with
+; fallthrough opportunities into the top and out of the bottom.
+; CHECK: test_no_loop_rotate:
+; CHECK: %entry
+; CHECK: %body0
+; CHECK: %body1
+; CHECK: %exit
+
+entry:
+  br label %body0
+
+body0:
+  %iv = phi i32 [ 0, %entry ], [ %next, %body1 ]
+  %base = phi i32 [ 0, %entry ], [ %sum, %body1 ]
+  %arrayidx = getelementptr inbounds i32* %a, i32 %iv
+  %0 = load i32* %arrayidx
+  %sum = add nsw i32 %0, %base
+  %bailcond1 = icmp eq i32 %sum, 42
+  br i1 %bailcond1, label %exit, label %body1
+
+body1:
+  %next = add i32 %iv, 1
+  %exitcond = icmp eq i32 %next, %i
+  br i1 %exitcond, label %exit, label %body0
 
 exit:
   ret i32 %base
@@ -348,7 +386,6 @@ define void @unnatural_cfg2() {
 ; CHECK: %entry
 ; CHECK: %loop.body1
 ; CHECK: %loop.body2
-; CHECK: %loop.header
 ; CHECK: %loop.body3
 ; CHECK: %loop.inner1.begin
 ; The end block is folded with %loop.body3...
@@ -356,6 +393,7 @@ define void @unnatural_cfg2() {
 ; CHECK: %loop.body4
 ; CHECK: %loop.inner2.begin
 ; The loop.inner2.end block is folded
+; CHECK: %loop.header
 ; CHECK: %bail
 
 entry:
@@ -486,7 +524,7 @@ entry:
   br i1 %cond, label %entry.if.then_crit_edge, label %lor.lhs.false, !prof !1
 
 entry.if.then_crit_edge:
-  %.pre14 = load i8* undef, align 1, !tbaa !0
+  %.pre14 = load i8* undef, align 1
   br label %if.then
 
 lor.lhs.false:
@@ -499,7 +537,7 @@ exit:
 if.then:
   %0 = phi i8 [ %.pre14, %entry.if.then_crit_edge ], [ undef, %exit ]
   %1 = and i8 %0, 1
-  store i8 %1, i8* undef, align 4, !tbaa !0
+  store i8 %1, i8* undef, align 4
   br label %if.end
 
 if.end:
@@ -604,7 +642,7 @@ define void @test_unnatural_cfg_backwards_inner_loop() {
 ;
 ; CHECK: test_unnatural_cfg_backwards_inner_loop
 ; CHECK: %entry
-; CHECK: %body
+; CHECK: [[BODY:# BB#[0-9]+]]:
 ; CHECK: %loop2b
 ; CHECK: %loop1
 ; CHECK: %loop2a
@@ -927,4 +965,159 @@ entry:
   br label %exit
 exit:
   ret void
+}
+
+define void @benchmark_heapsort(i32 %n, double* nocapture %ra) {
+; This test case comes from the heapsort benchmark, and exemplifies several
+; important aspects to block placement in the presence of loops:
+; 1) Loop rotation needs to *ensure* that the desired exiting edge can be
+;    a fallthrough.
+; 2) The exiting edge from the loop which is rotated to be laid out at the
+;    bottom of the loop needs to be exiting into the nearest enclosing loop (to
+;    which there is an exit). Otherwise, we force that enclosing loop into
+;    strange layouts that are siginificantly less efficient, often times maing
+;    it discontiguous.
+;
+; CHECK: @benchmark_heapsort
+; CHECK: %entry
+; First rotated loop top.
+; CHECK: .align
+; CHECK: %while.end
+; CHECK: %for.cond
+; CHECK: %if.then
+; CHECK: %if.else
+; CHECK: %if.end10
+; Second rotated loop top
+; CHECK: .align
+; CHECK: %if.then24
+; CHECK: %while.cond.outer
+; Third rotated loop top
+; CHECK: .align
+; CHECK: %while.cond
+; CHECK: %while.body
+; CHECK: %land.lhs.true
+; CHECK: %if.then19
+; CHECK: %if.end20
+; CHECK: %if.then8
+; CHECK: ret
+
+entry:
+  %shr = ashr i32 %n, 1
+  %add = add nsw i32 %shr, 1
+  %arrayidx3 = getelementptr inbounds double* %ra, i64 1
+  br label %for.cond
+
+for.cond:
+  %ir.0 = phi i32 [ %n, %entry ], [ %ir.1, %while.end ]
+  %l.0 = phi i32 [ %add, %entry ], [ %l.1, %while.end ]
+  %cmp = icmp sgt i32 %l.0, 1
+  br i1 %cmp, label %if.then, label %if.else
+
+if.then:
+  %dec = add nsw i32 %l.0, -1
+  %idxprom = sext i32 %dec to i64
+  %arrayidx = getelementptr inbounds double* %ra, i64 %idxprom
+  %0 = load double* %arrayidx, align 8
+  br label %if.end10
+
+if.else:
+  %idxprom1 = sext i32 %ir.0 to i64
+  %arrayidx2 = getelementptr inbounds double* %ra, i64 %idxprom1
+  %1 = load double* %arrayidx2, align 8
+  %2 = load double* %arrayidx3, align 8
+  store double %2, double* %arrayidx2, align 8
+  %dec6 = add nsw i32 %ir.0, -1
+  %cmp7 = icmp eq i32 %dec6, 1
+  br i1 %cmp7, label %if.then8, label %if.end10
+
+if.then8:
+  store double %1, double* %arrayidx3, align 8
+  ret void
+
+if.end10:
+  %ir.1 = phi i32 [ %ir.0, %if.then ], [ %dec6, %if.else ]
+  %l.1 = phi i32 [ %dec, %if.then ], [ %l.0, %if.else ]
+  %rra.0 = phi double [ %0, %if.then ], [ %1, %if.else ]
+  %add31 = add nsw i32 %ir.1, 1
+  br label %while.cond.outer
+
+while.cond.outer:
+  %j.0.ph.in = phi i32 [ %l.1, %if.end10 ], [ %j.1, %if.then24 ]
+  %j.0.ph = shl i32 %j.0.ph.in, 1
+  br label %while.cond
+
+while.cond:
+  %j.0 = phi i32 [ %add31, %if.end20 ], [ %j.0.ph, %while.cond.outer ]
+  %cmp11 = icmp sgt i32 %j.0, %ir.1
+  br i1 %cmp11, label %while.end, label %while.body
+
+while.body:
+  %cmp12 = icmp slt i32 %j.0, %ir.1
+  br i1 %cmp12, label %land.lhs.true, label %if.end20
+
+land.lhs.true:
+  %idxprom13 = sext i32 %j.0 to i64
+  %arrayidx14 = getelementptr inbounds double* %ra, i64 %idxprom13
+  %3 = load double* %arrayidx14, align 8
+  %add15 = add nsw i32 %j.0, 1
+  %idxprom16 = sext i32 %add15 to i64
+  %arrayidx17 = getelementptr inbounds double* %ra, i64 %idxprom16
+  %4 = load double* %arrayidx17, align 8
+  %cmp18 = fcmp olt double %3, %4
+  br i1 %cmp18, label %if.then19, label %if.end20
+
+if.then19:
+  br label %if.end20
+
+if.end20:
+  %j.1 = phi i32 [ %add15, %if.then19 ], [ %j.0, %land.lhs.true ], [ %j.0, %while.body ]
+  %idxprom21 = sext i32 %j.1 to i64
+  %arrayidx22 = getelementptr inbounds double* %ra, i64 %idxprom21
+  %5 = load double* %arrayidx22, align 8
+  %cmp23 = fcmp olt double %rra.0, %5
+  br i1 %cmp23, label %if.then24, label %while.cond
+
+if.then24:
+  %idxprom27 = sext i32 %j.0.ph.in to i64
+  %arrayidx28 = getelementptr inbounds double* %ra, i64 %idxprom27
+  store double %5, double* %arrayidx28, align 8
+  br label %while.cond.outer
+
+while.end:
+  %idxprom33 = sext i32 %j.0.ph.in to i64
+  %arrayidx34 = getelementptr inbounds double* %ra, i64 %idxprom33
+  store double %rra.0, double* %arrayidx34, align 8
+  br label %for.cond
+}
+
+declare void @cold_function() cold
+
+define i32 @test_cold_calls(i32* %a) {
+; Test that edges to blocks post-dominated by cold calls are
+; marked as not expected to be taken.  They should be laid out
+; at the bottom.
+; CHECK: test_cold_calls:
+; CHECK: %entry
+; CHECK: %else
+; CHECK: %exit
+; CHECK: %then
+
+entry:
+  %gep1 = getelementptr i32* %a, i32 1
+  %val1 = load i32* %gep1
+  %cond1 = icmp ugt i32 %val1, 1
+  br i1 %cond1, label %then, label %else
+
+then:
+  call void @cold_function()
+  br label %exit
+
+else:
+  %gep2 = getelementptr i32* %a, i32 2
+  %val2 = load i32* %gep2
+  br label %exit
+
+exit:
+  %ret = phi i32 [ %val1, %then ], [ %val2, %else ]
+  ret i32 %ret
 }

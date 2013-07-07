@@ -15,7 +15,6 @@
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
-class MCAsmInfo;
 class MCAsmLayout;
 class MCAssembler;
 class MCContext;
@@ -42,8 +41,8 @@ public:
 private:
   ExprKind Kind;
 
-  MCExpr(const MCExpr&); // DO NOT IMPLEMENT
-  void operator=(const MCExpr&); // DO NOT IMPLEMENT
+  MCExpr(const MCExpr&) LLVM_DELETED_FUNCTION;
+  void operator=(const MCExpr&) LLVM_DELETED_FUNCTION;
 
   bool EvaluateAsAbsolute(int64_t &Res, const MCAssembler *Asm,
                           const MCAsmLayout *Layout,
@@ -79,11 +78,11 @@ public:
   /// values. If not given, then only non-symbolic expressions will be
   /// evaluated.
   /// @result - True on success.
+  bool EvaluateAsAbsolute(int64_t &Res, const MCAsmLayout &Layout,
+                          const SectionAddrMap &Addrs) const;
   bool EvaluateAsAbsolute(int64_t &Res) const;
   bool EvaluateAsAbsolute(int64_t &Res, const MCAssembler &Asm) const;
   bool EvaluateAsAbsolute(int64_t &Res, const MCAsmLayout &Layout) const;
-  bool EvaluateAsAbsolute(int64_t &Res, const MCAsmLayout &Layout,
-                          const SectionAddrMap &Addrs) const;
 
   /// EvaluateAsRelocatable - Try to evaluate the expression to a relocatable
   /// value, i.e. an expression of the fixed form (a - b + constant).
@@ -100,8 +99,6 @@ public:
   const MCSection *FindAssociatedSection() const;
 
   /// @}
-
-  static bool classof(const MCExpr *) { return true; }
 };
 
 inline raw_ostream &operator<<(raw_ostream &OS, const MCExpr &E) {
@@ -133,7 +130,6 @@ public:
   static bool classof(const MCExpr *E) {
     return E->getKind() == MCExpr::Constant;
   }
-  static bool classof(const MCConstantExpr *) { return true; }
 };
 
 /// MCSymbolRefExpr - Represent a reference to a symbol from inside an
@@ -164,6 +160,7 @@ public:
     VK_TLVP,      // Mach-O thread local variable relocation
     VK_SECREL,
     // FIXME: We'd really like to use the generic Kinds listed above for these.
+    VK_ARM_NONE,
     VK_ARM_PLT,   // ARM-style PLT references. i.e., (PLT) instead of @PLT
     VK_ARM_TLSGD, //   ditto for TLSGD, GOT, GOTOFF, TPOFF and GOTTPOFF
     VK_ARM_GOT,
@@ -171,12 +168,58 @@ public:
     VK_ARM_TPOFF,
     VK_ARM_GOTTPOFF,
     VK_ARM_TARGET1,
+    VK_ARM_TARGET2,
+    VK_ARM_PREL31,
 
-    VK_PPC_TOC,
-    VK_PPC_DARWIN_HA16,  // ha16(symbol)
-    VK_PPC_DARWIN_LO16,  // lo16(symbol)
-    VK_PPC_GAS_HA16,     // symbol@ha
-    VK_PPC_GAS_LO16,      // symbol@l
+    VK_PPC_LO,             // symbol@l
+    VK_PPC_HI,             // symbol@h
+    VK_PPC_HA,             // symbol@ha
+    VK_PPC_HIGHER,         // symbol@higher
+    VK_PPC_HIGHERA,        // symbol@highera
+    VK_PPC_HIGHEST,        // symbol@highest
+    VK_PPC_HIGHESTA,       // symbol@highesta
+    VK_PPC_GOT_LO,         // symbol@got@l
+    VK_PPC_GOT_HI,         // symbol@got@h
+    VK_PPC_GOT_HA,         // symbol@got@ha
+    VK_PPC_TOCBASE,        // symbol@tocbase
+    VK_PPC_TOC,            // symbol@toc
+    VK_PPC_TOC_LO,         // symbol@toc@l
+    VK_PPC_TOC_HI,         // symbol@toc@h
+    VK_PPC_TOC_HA,         // symbol@toc@ha
+    VK_PPC_DTPMOD,         // symbol@dtpmod
+    VK_PPC_TPREL,          // symbol@tprel
+    VK_PPC_TPREL_LO,       // symbol@tprel@l
+    VK_PPC_TPREL_HI,       // symbol@tprel@h
+    VK_PPC_TPREL_HA,       // symbol@tprel@ha
+    VK_PPC_TPREL_HIGHER,   // symbol@tprel@higher
+    VK_PPC_TPREL_HIGHERA,  // symbol@tprel@highera
+    VK_PPC_TPREL_HIGHEST,  // symbol@tprel@highest
+    VK_PPC_TPREL_HIGHESTA, // symbol@tprel@highesta
+    VK_PPC_DTPREL,         // symbol@dtprel
+    VK_PPC_DTPREL_LO,      // symbol@dtprel@l
+    VK_PPC_DTPREL_HI,      // symbol@dtprel@h
+    VK_PPC_DTPREL_HA,      // symbol@dtprel@ha
+    VK_PPC_DTPREL_HIGHER,  // symbol@dtprel@higher
+    VK_PPC_DTPREL_HIGHERA, // symbol@dtprel@highera
+    VK_PPC_DTPREL_HIGHEST, // symbol@dtprel@highest
+    VK_PPC_DTPREL_HIGHESTA,// symbol@dtprel@highesta
+    VK_PPC_GOT_TPREL,      // symbol@got@tprel
+    VK_PPC_GOT_TPREL_LO,   // symbol@got@tprel@l
+    VK_PPC_GOT_TPREL_HI,   // symbol@got@tprel@h
+    VK_PPC_GOT_TPREL_HA,   // symbol@got@tprel@ha
+    VK_PPC_GOT_DTPREL,     // symbol@got@dtprel
+    VK_PPC_GOT_DTPREL_LO,  // symbol@got@dtprel@l
+    VK_PPC_GOT_DTPREL_HI,  // symbol@got@dtprel@h
+    VK_PPC_GOT_DTPREL_HA,  // symbol@got@dtprel@ha
+    VK_PPC_TLS,            // symbol@tls
+    VK_PPC_GOT_TLSGD,      // symbol@got@tlsgd
+    VK_PPC_GOT_TLSGD_LO,   // symbol@got@tlsgd@l
+    VK_PPC_GOT_TLSGD_HI,   // symbol@got@tlsgd@h
+    VK_PPC_GOT_TLSGD_HA,   // symbol@got@tlsgd@ha
+    VK_PPC_GOT_TLSLD,      // symbol@got@tlsld
+    VK_PPC_GOT_TLSLD_LO,   // symbol@got@tlsld@l
+    VK_PPC_GOT_TLSLD_HI,   // symbol@got@tlsld@h
+    VK_PPC_GOT_TLSLD_HA,   // symbol@got@tlsld@ha
 
     VK_Mips_GPREL,
     VK_Mips_GOT_CALL,
@@ -195,7 +238,15 @@ public:
     VK_Mips_GPOFF_LO,
     VK_Mips_GOT_DISP,
     VK_Mips_GOT_PAGE,
-    VK_Mips_GOT_OFST 
+    VK_Mips_GOT_OFST,
+    VK_Mips_HIGHER,
+    VK_Mips_HIGHEST,
+    VK_Mips_GOT_HI16,
+    VK_Mips_GOT_LO16,
+    VK_Mips_CALL_HI16,
+    VK_Mips_CALL_LO16,
+
+    VK_COFF_IMGREL32 // symbol@imgrel (image-relative)
   };
 
 private:
@@ -244,7 +295,6 @@ public:
   static bool classof(const MCExpr *E) {
     return E->getKind() == MCExpr::SymbolRef;
   }
-  static bool classof(const MCSymbolRefExpr *) { return true; }
 };
 
 /// MCUnaryExpr - Unary assembler expressions.
@@ -298,7 +348,6 @@ public:
   static bool classof(const MCExpr *E) {
     return E->getKind() == MCExpr::Unary;
   }
-  static bool classof(const MCUnaryExpr *) { return true; }
 };
 
 /// MCBinaryExpr - Binary assembler expressions.
@@ -433,7 +482,6 @@ public:
   static bool classof(const MCExpr *E) {
     return E->getKind() == MCExpr::Binary;
   }
-  static bool classof(const MCBinaryExpr *) { return true; }
 };
 
 /// MCTargetExpr - This is an extension point for target-specific MCExpr
@@ -442,7 +490,7 @@ public:
 /// NOTE: All subclasses are required to have trivial destructors because
 /// MCExprs are bump pointer allocated and not destructed.
 class MCTargetExpr : public MCExpr {
-  virtual void Anchor();
+  virtual void anchor();
 protected:
   MCTargetExpr() : MCExpr(Target) {}
   virtual ~MCTargetExpr() {}
@@ -454,10 +502,11 @@ public:
   virtual void AddValueSymbols(MCAssembler *) const = 0;
   virtual const MCSection *FindAssociatedSection() const = 0;
 
+  virtual void fixELFSymbolsInTLSFixups(MCAssembler &) const = 0;
+
   static bool classof(const MCExpr *E) {
     return E->getKind() == MCExpr::Target;
   }
-  static bool classof(const MCTargetExpr *) { return true; }
 };
 
 } // end namespace llvm

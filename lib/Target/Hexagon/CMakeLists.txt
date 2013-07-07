@@ -6,9 +6,10 @@ tablegen(LLVM HexagonGenAsmWriter.inc -gen-asm-writer)
 tablegen(LLVM HexagonGenDAGISel.inc -gen-dag-isel)
 tablegen(LLVM HexagonGenCallingConv.inc -gen-callingconv)
 tablegen(LLVM HexagonGenSubtargetInfo.inc -gen-subtarget)
-tablegen(LLVM HexagonGenIntrinsics.inc -gen-tgt-intrinsic)
 tablegen(LLVM HexagonGenDFAPacketizer.inc -gen-dfa-packetizer)
 add_public_tablegen_target(HexagonCommonTableGen)
+
+set(LLVM_COMMON_DEPENDS intrinsics_gen)
 
 add_llvm_target(HexagonCodeGen
   HexagonAsmPrinter.cpp
@@ -17,6 +18,9 @@ add_llvm_target(HexagonCodeGen
   HexagonExpandPredSpillCode.cpp
   HexagonFrameLowering.cpp
   HexagonHardwareLoops.cpp
+  HexagonFixupHwLoops.cpp
+  HexagonMachineScheduler.cpp
+  HexagonMCInstLower.cpp
   HexagonInstrInfo.cpp
   HexagonISelDAGToDAG.cpp
   HexagonISelLowering.cpp
@@ -24,12 +28,17 @@ add_llvm_target(HexagonCodeGen
   HexagonRegisterInfo.cpp
   HexagonRemoveSZExtArgs.cpp
   HexagonSelectionDAGInfo.cpp
+  HexagonSplitConst32AndConst64.cpp
   HexagonSplitTFRCondSets.cpp
   HexagonSubtarget.cpp
   HexagonTargetMachine.cpp
   HexagonTargetObjectFile.cpp
-  )
+  HexagonVLIWPacketizer.cpp
+  HexagonNewValueJump.cpp
+  HexagonCopyToCombine.cpp
+)
 
 add_subdirectory(TargetInfo)
+add_subdirectory(InstPrinter)
 add_subdirectory(MCTargetDesc)
 

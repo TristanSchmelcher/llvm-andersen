@@ -14,19 +14,19 @@
 #ifndef XCORETARGETMACHINE_H
 #define XCORETARGETMACHINE_H
 
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetData.h"
 #include "XCoreFrameLowering.h"
-#include "XCoreSubtarget.h"
-#include "XCoreInstrInfo.h"
 #include "XCoreISelLowering.h"
+#include "XCoreInstrInfo.h"
 #include "XCoreSelectionDAGInfo.h"
+#include "XCoreSubtarget.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
 
 class XCoreTargetMachine : public LLVMTargetMachine {
   XCoreSubtarget Subtarget;
-  const TargetData DataLayout;       // Calculates type size & alignment
+  const DataLayout DL;       // Calculates type size & alignment
   XCoreInstrInfo InstrInfo;
   XCoreFrameLowering FrameLowering;
   XCoreTargetLowering TLInfo;
@@ -53,7 +53,7 @@ public:
   virtual const TargetRegisterInfo *getRegisterInfo() const {
     return &InstrInfo.getRegisterInfo();
   }
-  virtual const TargetData       *getTargetData() const { return &DataLayout; }
+  virtual const DataLayout       *getDataLayout() const { return &DL; }
 
   // Pass Pipeline Configuration
   virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);

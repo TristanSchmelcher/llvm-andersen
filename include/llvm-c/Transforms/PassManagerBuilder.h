@@ -11,8 +11,8 @@
 |*                                                                            *|
 \*===----------------------------------------------------------------------===*/
 
-#ifndef LLVM_C_PASSMANAGERBUILDER
-#define LLVM_C_PASSMANAGERBUILDER
+#ifndef LLVM_C_TRANSFORMS_PASSMANAGERBUILDER_H
+#define LLVM_C_TRANSFORMS_PASSMANAGERBUILDER_H
 
 #include "llvm-c/Core.h"
 
@@ -22,6 +22,13 @@ typedef struct LLVMOpaquePassManagerBuilder *LLVMPassManagerBuilderRef;
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 extern "C" {
 #endif
+
+/**
+ * @defgroup LLVMCTransformsPassManagerBuilder Pass manager builder
+ * @ingroup LLVMCTransforms
+ *
+ * @{
+ */
 
 /** See llvm::PassManagerBuilder. */
 LLVMPassManagerBuilderRef LLVMPassManagerBuilderCreate(void);
@@ -70,20 +77,14 @@ LLVMPassManagerBuilderPopulateModulePassManager(LLVMPassManagerBuilderRef PMB,
 /** See llvm::PassManagerBuilder::populateLTOPassManager. */
 void LLVMPassManagerBuilderPopulateLTOPassManager(LLVMPassManagerBuilderRef PMB,
                                                   LLVMPassManagerRef PM,
-                                                  bool Internalize,
-                                                  bool RunInliner);
+                                                  LLVMBool Internalize,
+                                                  LLVMBool RunInliner);
+
+/**
+ * @}
+ */
 
 #ifdef __cplusplus
-}
-
-namespace llvm {
-  inline PassManagerBuilder *unwrap(LLVMPassManagerBuilderRef P) {
-    return reinterpret_cast<PassManagerBuilder*>(P);
-  }
-
-  inline LLVMPassManagerBuilderRef wrap(PassManagerBuilder *P) {
-    return reinterpret_cast<LLVMPassManagerBuilderRef>(P);
-  }
 }
 #endif
 

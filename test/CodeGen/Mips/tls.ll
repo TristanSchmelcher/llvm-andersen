@@ -1,7 +1,10 @@
-; RUN: llc -march=mipsel < %s | FileCheck %s -check-prefix=PIC
-; RUN: llc -march=mipsel -relocation-model=static < %s \
-; RUN:                             | FileCheck %s -check-prefix=STATIC
-
+; RUN: llc -march=mipsel -disable-mips-delay-filler < %s | \
+; RUN:     FileCheck %s -check-prefix=PIC
+; RUN: llc -march=mipsel -relocation-model=static -disable-mips-delay-filler < \
+; RUN:     %s | FileCheck %s -check-prefix=STATIC
+; RUN: llc -march=mipsel -relocation-model=static -disable-mips-delay-filler \
+; RUN:     -mips-fix-global-base-reg=false < %s  | \
+; RUN:     FileCheck %s -check-prefix=STATICGP
 
 @t1 = thread_local global i32 0, align 4
 
@@ -12,14 +15,15 @@ entry:
 
 ; CHECK: f1:
 
-; PIC:   lw      $25, %call16(__tls_get_addr)($gp)
-; PIC:   addiu   $4, $gp, %tlsgd(t1)
+; PIC:   addu    $[[R0:[a-z0-9]+]], $2, $25
+; PIC:   lw      $25, %call16(__tls_get_addr)($[[R0]])
+; PIC:   addiu   $4, $[[R0]], %tlsgd(t1)
 ; PIC:   jalr    $25
 ; PIC:   lw      $2, 0($2)
 
-; STATIC:   rdhwr   $3, $29
 ; STATIC:   lui     $[[R0:[0-9]+]], %tprel_hi(t1)
 ; STATIC:   addiu   $[[R1:[0-9]+]], $[[R0]], %tprel_lo(t1)
+; STATIC:   rdhwr   $3, $29
 ; STATIC:   addu    $[[R2:[0-9]+]], $3, $[[R1]]
 ; STATIC:   lw      $2, 0($[[R2]])
 }
@@ -34,13 +38,19 @@ entry:
 
 ; CHECK: f2:
 
-; PIC:   lw      $25, %call16(__tls_get_addr)($gp)
-; PIC:   addiu   $4, $gp, %tlsgd(t2)
+; PIC:   addu    $[[R0:[a-z0-9]+]], $2, $25
+; PIC:   lw      $25, %call16(__tls_get_addr)($[[R0]])
+; PIC:   addiu   $4, $[[R0]], %tlsgd(t2)
 ; PIC:   jalr    $25
 ; PIC:   lw      $2, 0($2)
 
+; STATICGP: lui     $[[R0:[0-9]+]], %hi(__gnu_local_gp)
+; STATICGP: addiu   $[[GP:[0-9]+]], $[[R0]], %lo(__gnu_local_gp)
+; STATICGP: lw      ${{[0-9]+}}, %gottprel(t2)($[[GP]])
+; STATIC:   lui     $[[R0:[0-9]+]], %hi(__gnu_local_gp)
+; STATIC:   addiu   $[[GP:[0-9]+]], $[[R0]], %lo(__gnu_local_gp)
 ; STATIC:   rdhwr   $3, $29
-; STATIC:   lw      $[[R0:[0-9]+]], %gottprel(t2)($gp)
+; STATIC:   lw      $[[R0:[0-9]+]], %gottprel(t2)($[[GP]])
 ; STATIC:   addu    $[[R1:[0-9]+]], $3, $[[R0]]
 ; STATIC:   lw      $2, 0($[[R1]])
 }
@@ -51,7 +61,7 @@ define i32 @f3() nounwind {
 entry:
 ; CHECK: f3:
 
-; PIC:   addiu   $4, $gp, %tlsldm(f3.i)
+; PIC:   addiu   $4, ${{[a-z0-9]+}}, %tlsldm(f3.i)
 ; PIC:   jalr    $25
 ; PIC:   lui     $[[R0:[0-9]+]], %dtprel_hi(f3.i)
 ; PIC:   addu    $[[R1:[0-9]+]], $[[R0]], $2

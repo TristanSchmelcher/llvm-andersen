@@ -59,12 +59,16 @@ _func:
         add sp, sp, #4
         add r2, sp, #8
         add r2, sp, #1020
+	add sp, sp, #-8
+	add sp, #-8
 
 @ CHECK: add	sp, #4                  @ encoding: [0x01,0xb0]
 @ CHECK: add	sp, #508                @ encoding: [0x7f,0xb0]
 @ CHECK: add	sp, #4                  @ encoding: [0x01,0xb0]
 @ CHECK: add	r2, sp, #8              @ encoding: [0x02,0xaa]
 @ CHECK: add	r2, sp, #1020           @ encoding: [0xff,0xaa]
+@ CHECK: sub	sp, #8                  @ encoding: [0x82,0xb0]
+@ CHECK: sub	sp, #8                  @ encoding: [0x82,0xb0]
 
 
 @------------------------------------------------------------------------------
@@ -81,11 +85,15 @@ _func:
 @ ADR
 @------------------------------------------------------------------------------
         adr r2, _baz
-        adr	r2, #3
+        adr r5, #0
+        adr r2, #4
+        adr r3, #1020
 
 @ CHECK: adr	r2, _baz                @ encoding: [A,0xa2]
             @   fixup A - offset: 0, value: _baz, kind: fixup_thumb_adr_pcrel_10
-@ CHECK: adr	r2, #3                  @ encoding: [0x03,0xa2]
+@ CHECK: adr	r5, #0                  @ encoding: [0x00,0xa5]
+@ CHECK: adr	r2, #4                  @ encoding: [0x01,0xa2]
+@ CHECK: adr	r3, #1020               @ encoding: [0xff,0xa3]
 
 @------------------------------------------------------------------------------
 @ ASR (immediate)
@@ -93,10 +101,16 @@ _func:
         asrs r2, r3, #32
         asrs r2, r3, #5
         asrs r2, r3, #1
+        asrs r5, #21
+        asrs r5, r5, #21
+        asrs r3, r5, #21
 
 @ CHECK: asrs	r2, r3, #32             @ encoding: [0x1a,0x10]
 @ CHECK: asrs	r2, r3, #5              @ encoding: [0x5a,0x11]
 @ CHECK: asrs	r2, r3, #1              @ encoding: [0x5a,0x10]
+@ CHECK: asrs	r5, r5, #21             @ encoding: [0x6d,0x15]
+@ CHECK: asrs	r5, r5, #21             @ encoding: [0x6d,0x15]
+@ CHECK: asrs	r3, r5, #21             @ encoding: [0x6b,0x15]
 
 
 @------------------------------------------------------------------------------
@@ -159,9 +173,9 @@ _func:
         bl _bar
         blx _baz
 
-@ CHECK: bl	_bar                    @ encoding: [A,0xf0'A',A,0xf8'A']
+@ CHECK: bl	_bar                    @ encoding: [A,0xf0'A',A,0xd0'A']
              @   fixup A - offset: 0, value: _bar, kind: fixup_arm_thumb_bl
-@ CHECK: blx	_baz                    @ encoding: [A,0xf0'A',A,0xe8'A']
+@ CHECK: blx	_baz                    @ encoding: [A,0xf0'A',A,0xc0'A']
              @   fixup A - offset: 0, value: _baz, kind: fixup_arm_thumb_blx
 
 
@@ -249,8 +263,8 @@ _func:
 
 @ CHECK: ldr	r1, _foo                @ encoding: [A,0x49]
              @   fixup A - offset: 0, value: _foo, kind: fixup_arm_thumb_cp
-@ CHECK: ldr     r3, #604                @ encoding: [0x97,0x4b]
-@ CHECK: ldr     r3, #368                @ encoding: [0x5c,0x4b]
+@ CHECK: ldr     r3, [pc, #604]         @ encoding: [0x97,0x4b]
+@ CHECK: ldr     r3, [pc, #368]         @ encoding: [0x5c,0x4b]
 
 @------------------------------------------------------------------------------
 @ LDR (register)
@@ -315,9 +329,15 @@ _func:
 @------------------------------------------------------------------------------
         lsls r4, r5, #0
         lsls r4, r5, #4
+        lsls r3, #12
+        lsls r3, r3, #12
+        lsls r1, r3, #12
 
 @ CHECK: lsls	r4, r5, #0              @ encoding: [0x2c,0x00]
 @ CHECK: lsls	r4, r5, #4              @ encoding: [0x2c,0x01]
+@ CHECK: lsls	r3, r3, #12             @ encoding: [0x1b,0x03]
+@ CHECK: lsls	r3, r3, #12             @ encoding: [0x1b,0x03]
+@ CHECK: lsls	r1, r3, #12             @ encoding: [0x19,0x03]
 
 
 @------------------------------------------------------------------------------
@@ -333,9 +353,15 @@ _func:
 @------------------------------------------------------------------------------
         lsrs r1, r3, #1
         lsrs r1, r3, #32
+        lsrs r4, #20
+        lsrs r4, r4, #20
+        lsrs r2, r4, #20
 
 @ CHECK: lsrs	r1, r3, #1              @ encoding: [0x59,0x08]
 @ CHECK: lsrs	r1, r3, #32             @ encoding: [0x19,0x08]
+@ CHECK: lsrs	r4, r4, #20             @ encoding: [0x24,0x0d]
+@ CHECK: lsrs	r4, r4, #20             @ encoding: [0x24,0x0d]
+@ CHECK: lsrs	r2, r4, #20             @ encoding: [0x22,0x0d]
 
 
 @------------------------------------------------------------------------------
@@ -613,13 +639,3 @@ _func:
 @ CHECK: uxth	r1, r4                  @ encoding: [0xa1,0xb2]
 
 
-@------------------------------------------------------------------------------
-@ WFE/WFI/YIELD
-@------------------------------------------------------------------------------
-        wfe
-        wfi
-        yield
-
-@ CHECK: wfe                             @ encoding: [0x20,0xbf]
-@ CHECK: wfi                             @ encoding: [0x30,0xbf]
-@ CHECK: yield                           @ encoding: [0x10,0xbf]

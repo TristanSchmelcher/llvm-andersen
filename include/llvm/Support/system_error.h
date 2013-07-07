@@ -14,8 +14,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_SYSTEM_SYSTEM_ERROR_H
-#define LLVM_SYSTEM_SYSTEM_ERROR_H
+#ifndef LLVM_SUPPORT_SYSTEM_ERROR_H
+#define LLVM_SUPPORT_SYSTEM_ERROR_H
+
+#include "llvm/Support/Compiler.h"
 
 /*
     system_error synopsis
@@ -470,17 +472,6 @@ template <> struct hash<std::error_code>;
 
 namespace llvm {
 
-template <class T, T v>
-struct integral_constant {
-  typedef T value_type;
-  static const value_type value = v;
-  typedef integral_constant<T,v> type;
-  operator value_type() { return value; }
-};
-
-typedef integral_constant<bool, true> true_type;
-typedef integral_constant<bool, false> false_type;
-
 // is_error_code_enum
 
 template <class Tp> struct is_error_code_enum : public false_type {};
@@ -640,8 +631,8 @@ public:
 
 private:
   error_category();
-  error_category(const error_category&);// = delete;
-  error_category& operator=(const error_category&);// = delete;
+  error_category(const error_category&) LLVM_DELETED_FUNCTION;
+  error_category& operator=(const error_category&) LLVM_DELETED_FUNCTION;
 
 public:
   virtual const char* name() const = 0;
@@ -662,7 +653,7 @@ public:
 class _do_message : public error_category
 {
 public:
-  virtual std::string message(int ev) const;
+  virtual std::string message(int ev) const LLVM_OVERRIDE;
 };
 
 const error_category& generic_category();

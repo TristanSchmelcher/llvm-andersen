@@ -11,21 +11,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Function.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/MC/MCContext.h"
-#include "llvm/Support/ELF.h"
-#include "llvm/Support/CommandLine.h"
-#include "HexagonSubtarget.h"
 #include "HexagonTargetObjectFile.h"
+#include "HexagonSubtarget.h"
 #include "HexagonTargetMachine.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/ELF.h"
 
 using namespace llvm;
 
 static cl::opt<int> SmallDataThreshold("hexagon-small-data-threshold",
-                                cl::init(8), cl::Hidden);
+                                cl::init(8), cl::Hidden,
+                cl::desc("The maximum size of an object in the sdata section"));
 
 void HexagonTargetObjectFile::Initialize(MCContext &Ctx,
                                          const TargetMachine &TM) {
@@ -46,6 +47,11 @@ void HexagonTargetObjectFile::Initialize(MCContext &Ctx,
 static bool IsInSmallSection(uint64_t Size) {
   return Size > 0 && Size <= (uint64_t)SmallDataThreshold;
 }
+
+bool HexagonTargetObjectFile::IsSmallDataEnabled () const {
+  return SmallDataThreshold > 0;
+}
+
 /// IsGlobalInSmallSection - Return true if this global value should be
 /// placed into small data/bss section.
 bool HexagonTargetObjectFile::IsGlobalInSmallSection(const GlobalValue *GV,
@@ -73,7 +79,7 @@ IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
 
   if (Kind.isBSS() || Kind.isDataNoRel() || Kind.isCommon()) {
     Type *Ty = GV->getType()->getElementType();
-    return IsInSmallSection(TM.getTargetData()->getTypeAllocSize(Ty));
+    return IsInSmallSection(TM.getDataLayout()->getTypeAllocSize(Ty));
   }
 
   return false;

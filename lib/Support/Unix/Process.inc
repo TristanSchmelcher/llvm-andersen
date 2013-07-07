@@ -12,15 +12,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "Unix.h"
+#include "llvm/ADT/Hashing.h"
+#include "llvm/Support/TimeValue.h"
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
-// DragonFly BSD has deprecated <malloc.h> for <stdlib.h> instead,
-//  Unix.h includes this for us already.
-#if defined(HAVE_MALLOC_H) && !defined(__DragonFly__)
+// DragonFlyBSD, OpenBSD, and Bitrig have deprecated <malloc.h> for
+// <stdlib.h> instead. Unix.h includes this for us already.
+#if defined(HAVE_MALLOC_H) && !defined(__DragonFly__) && \
+    !defined(__OpenBSD__) && !defined(__Bitrig__)
 #include <malloc.h>
 #endif
 #ifdef HAVE_MALLOC_MALLOC_H
@@ -41,9 +44,49 @@
 using namespace llvm;
 using namespace sys;
 
-unsigned
-Process::GetPageSize()
-{
+
+process::id_type self_process::get_id() {
+  return getpid();
+}
+
+static std::pair<TimeValue, TimeValue> getRUsageTimes() {
+#if defined(HAVE_GETRUSAGE)
+  struct rusage RU;
+  ::getrusage(RUSAGE_SELF, &RU);
+  return std::make_pair(
+      TimeValue(
+          static_cast<TimeValue::SecondsType>(RU.ru_utime.tv_sec),
+          static_cast<TimeValue::NanoSecondsType>(
+              RU.ru_utime.tv_usec * TimeValue::NANOSECONDS_PER_MICROSECOND)),
+      TimeValue(
+          static_cast<TimeValue::SecondsType>(RU.ru_stime.tv_sec),
+          static_cast<TimeValue::NanoSecondsType>(
+              RU.ru_stime.tv_usec * TimeValue::NANOSECONDS_PER_MICROSECOND)));
+#else
+#warning Cannot get usage times on this platform
+  return std::make_pair(TimeValue(), TimeValue());
+#endif
+}
+
+TimeValue self_process::get_user_time() const {
+#if _POSIX_TIMERS > 0 && _POSIX_CPUTIME > 0
+  // Try to get a high resolution CPU timer.
+  struct timespec TS;
+  if (::clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &TS) == 0)
+    return TimeValue(static_cast<TimeValue::SecondsType>(TS.tv_sec),
+                     static_cast<TimeValue::NanoSecondsType>(TS.tv_nsec));
+#endif
+
+  // Otherwise fall back to rusage based timing.
+  return getRUsageTimes().first;
+}
+
+TimeValue self_process::get_system_time() const {
+  // We can only collect system time by inspecting the results of getrusage.
+  return getRUsageTimes().second;
+}
+
+static unsigned getPageSize() {
 #if defined(__CYGWIN__)
   // On Cygwin, getpagesize() returns 64k but the page size for the purposes of
   // memory protection and mmap() is 4k.
@@ -58,6 +101,12 @@ Process::GetPageSize()
 #endif
   return static_cast<unsigned>(page_size);
 }
+
+// This constructor guaranteed to be run exactly once on a single thread, and
+// sets up various process invariants that can be queried cheaply from then on.
+self_process::self_process() : PageSize(getPageSize()) {
+}
+
 
 size_t Process::GetMallocUsage() {
 #if defined(HAVE_MALLINFO)
@@ -83,49 +132,10 @@ size_t Process::GetMallocUsage() {
 #endif
 }
 
-size_t
-Process::GetTotalMemoryUsage()
-{
-#if defined(HAVE_MALLINFO)
-  struct mallinfo mi = ::mallinfo();
-  return mi.uordblks + mi.hblkhd;
-#elif defined(HAVE_MALLOC_ZONE_STATISTICS) && defined(HAVE_MALLOC_MALLOC_H)
-  malloc_statistics_t Stats;
-  malloc_zone_statistics(malloc_default_zone(), &Stats);
-  return Stats.size_allocated;   // darwin
-#elif defined(HAVE_GETRUSAGE) && !defined(__HAIKU__)
-  struct rusage usage;
-  ::getrusage(RUSAGE_SELF, &usage);
-  return usage.ru_maxrss;
-#else
-#warning Cannot get total memory size on this platform
-  return 0;
-#endif
-}
-
-void
-Process::GetTimeUsage(TimeValue& elapsed, TimeValue& user_time,
-                      TimeValue& sys_time)
-{
+void Process::GetTimeUsage(TimeValue &elapsed, TimeValue &user_time,
+                           TimeValue &sys_time) {
   elapsed = TimeValue::now();
-#if defined(HAVE_GETRUSAGE)
-  struct rusage usage;
-  ::getrusage(RUSAGE_SELF, &usage);
-  user_time = TimeValue(
-    static_cast<TimeValue::SecondsType>( usage.ru_utime.tv_sec ),
-    static_cast<TimeValue::NanoSecondsType>( usage.ru_utime.tv_usec *
-      TimeValue::NANOSECONDS_PER_MICROSECOND ) );
-  sys_time = TimeValue(
-    static_cast<TimeValue::SecondsType>( usage.ru_stime.tv_sec ),
-    static_cast<TimeValue::NanoSecondsType>( usage.ru_stime.tv_usec *
-      TimeValue::NANOSECONDS_PER_MICROSECOND ) );
-#else
-#warning Cannot get usage times on this platform
-  user_time.seconds(0);
-  user_time.microseconds(0);
-  sys_time.seconds(0);
-  sys_time.microseconds(0);
-#endif
+  llvm::tie(user_time, sys_time) = getRUsageTimes();
 }
 
 int Process::GetCurrentUserId() {
@@ -136,7 +146,7 @@ int Process::GetCurrentGroupId() {
   return getgid();
 }
 
-#ifdef HAVE_MACH_MACH_H
+#if defined(HAVE_MACH_MACH_H) && !defined(__GNU__)
 #include <mach/mach.h>
 #endif
 
@@ -150,7 +160,7 @@ void Process::PreventCoreFiles() {
   setrlimit(RLIMIT_CORE, &rlim);
 #endif
 
-#ifdef HAVE_MACH_MACH_H
+#if defined(HAVE_MACH_MACH_H) && !defined(__GNU__)
   // Disable crash reporting on Mac OS X 10.0-10.4
 
   // get information about the original set of exception ports for the task
@@ -247,16 +257,18 @@ static bool terminalHasColors() {
   return false;
 }
 
+bool Process::FileDescriptorHasColors(int fd) {
+  // A file descriptor has colors if it is displayed and the terminal has
+  // colors.
+  return FileDescriptorIsDisplayed(fd) && terminalHasColors();
+}
+
 bool Process::StandardOutHasColors() {
-  if (!StandardOutIsDisplayed())
-    return false;
-  return terminalHasColors();
+  return FileDescriptorHasColors(STDOUT_FILENO);
 }
 
 bool Process::StandardErrHasColors() {
-  if (!StandardErrIsDisplayed())
-    return false;
-  return terminalHasColors();
+  return FileDescriptorHasColors(STDERR_FILENO);
 }
 
 bool Process::ColorNeedsFlush() {
@@ -290,6 +302,40 @@ const char *Process::OutputBold(bool bg) {
   return "\033[1m";
 }
 
+const char *Process::OutputReverse() {
+  return "\033[7m";
+}
+
 const char *Process::ResetColor() {
   return "\033[0m";
+}
+
+#if !defined(HAVE_ARC4RANDOM)
+static unsigned GetRandomNumberSeed() {
+  // Attempt to get the initial seed from /dev/urandom, if possible.
+  if (FILE *RandomSource = ::fopen("/dev/urandom", "r")) {
+    unsigned seed;
+    int count = ::fread((void *)&seed, sizeof(seed), 1, RandomSource);
+    ::fclose(RandomSource);
+
+    // Return the seed if the read was successful.
+    if (count == 1)
+      return seed;
+  }
+
+  // Otherwise, swizzle the current time and the process ID to form a reasonable
+  // seed.
+  TimeValue Now = TimeValue::now();
+  return hash_combine(Now.seconds(), Now.nanoseconds(), ::getpid());
+}
+#endif
+
+unsigned llvm::sys::Process::GetRandomNumber() {
+#if defined(HAVE_ARC4RANDOM)
+  return arc4random();
+#else
+  static int x = (::srand(GetRandomNumberSeed()), 0);
+  (void)x;
+  return ::rand();
+#endif
 }

@@ -12,13 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Hexagon.h"
 #include "HexagonRegisterInfo.h"
+#include "Hexagon.h"
 #include "HexagonSubtarget.h"
 #include "HexagonTargetMachine.h"
 #include "HexagonMachineFunctionInfo.h"
-#include "llvm/Function.h"
-#include "llvm/Type.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -26,7 +24,10 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Type.h"
 #include "llvm/MC/MachineLocation.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
@@ -37,20 +38,18 @@
 using namespace llvm;
 
 
-HexagonRegisterInfo::HexagonRegisterInfo(HexagonSubtarget &st,
-                                     const HexagonInstrInfo &tii)
+HexagonRegisterInfo::HexagonRegisterInfo(HexagonSubtarget &st)
   : HexagonGenRegisterInfo(Hexagon::R31),
-    Subtarget(st),
-   TII(tii) {
+    Subtarget(st) {
 }
 
-const unsigned* HexagonRegisterInfo::getCalleeSavedRegs(const MachineFunction
+const uint16_t* HexagonRegisterInfo::getCalleeSavedRegs(const MachineFunction
                                                         *MF)
   const {
-  static const unsigned CalleeSavedRegsV2[] = {
-  Hexagon::R24,   Hexagon::R25,   Hexagon::R26,   Hexagon::R27, 0
+  static const uint16_t CalleeSavedRegsV2[] = {
+    Hexagon::R24,   Hexagon::R25,   Hexagon::R26,   Hexagon::R27, 0
   };
-  static const unsigned CalleeSavedRegsV3[] = {
+  static const uint16_t CalleeSavedRegsV3[] = {
     Hexagon::R16,   Hexagon::R17,   Hexagon::R18,   Hexagon::R19,
     Hexagon::R20,   Hexagon::R21,   Hexagon::R22,   Hexagon::R23,
     Hexagon::R24,   Hexagon::R25,   Hexagon::R26,   Hexagon::R27, 0
@@ -63,6 +62,7 @@ const unsigned* HexagonRegisterInfo::getCalleeSavedRegs(const MachineFunction
     return CalleeSavedRegsV2;
   case HexagonSubtarget::V3:
   case HexagonSubtarget::V4:
+  case HexagonSubtarget::V5:
     return CalleeSavedRegsV3;
   }
   llvm_unreachable("Callee saved registers requested for unknown architecture "
@@ -109,46 +109,27 @@ HexagonRegisterInfo::getCalleeSavedRegClasses(const MachineFunction *MF) const {
     return CalleeSavedRegClassesV2;
   case HexagonSubtarget::V3:
   case HexagonSubtarget::V4:
+  case HexagonSubtarget::V5:
     return CalleeSavedRegClassesV3;
   }
   llvm_unreachable("Callee saved register classes requested for unknown "
                    "architecture version");
 }
 
-void HexagonRegisterInfo::
-eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
-                              MachineBasicBlock::iterator I) const {
-  MachineInstr &MI = *I;
-
-  if (MI.getOpcode() == Hexagon::ADJCALLSTACKDOWN) {
-    // Hexagon_TODO: add code
-  } else if (MI.getOpcode() == Hexagon::ADJCALLSTACKUP) {
-    // Hexagon_TODO: add code
-  } else {
-    llvm_unreachable("Cannot handle this call frame pseudo instruction");
-  }
-  MBB.erase(I);
-}
-
 void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
-                                            int SPAdj, RegScavenger *RS) const {
-
+                                              int SPAdj, unsigned FIOperandNum,
+                                              RegScavenger *RS) const {
   //
   // Hexagon_TODO: Do we need to enforce this for Hexagon?
   assert(SPAdj == 0 && "Unexpected");
 
-
-  unsigned i = 0;
   MachineInstr &MI = *II;
-  while (!MI.getOperand(i).isFI()) {
-    ++i;
-    assert(i < MI.getNumOperands() && "Instr doesn't have FrameIndex operand!");
-  }
-
-  int FrameIndex = MI.getOperand(i).getIndex();
+  int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
 
   // Addressable stack objects are accessed using neg. offsets from %fp.
   MachineFunction &MF = *MI.getParent()->getParent();
+  const HexagonInstrInfo &TII =
+    *static_cast<const HexagonInstrInfo*>(MF.getTarget().getInstrInfo());
   int Offset = MF.getFrameInfo()->getObjectOffset(FrameIndex);
   MachineFrameInfo &MFI = *MF.getFrameInfo();
 
@@ -165,8 +146,9 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
       TII.isValidOffset(MI.getOpcode(), (FrameSize+Offset)) &&
       !TII.isSpillPredRegOp(&MI)) {
     // Replace frame index with a stack pointer reference.
-    MI.getOperand(i).ChangeToRegister(getStackRegister(), false, false, true);
-    MI.getOperand(i+1).ChangeToImmediate(FrameSize+Offset);
+    MI.getOperand(FIOperandNum).ChangeToRegister(getStackRegister(), false,
+                                                 false, true);
+    MI.getOperand(FIOperandNum + 1).ChangeToImmediate(FrameSize+Offset);
   } else {
     // Replace frame index with a frame pointer reference.
     if (!TII.isValidOffset(MI.getOpcode(), Offset)) {
@@ -179,13 +161,15 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
       // r0 = add(r30, #10000)
       // r0 = memw(r0)
       if ( (MI.getOpcode() == Hexagon::LDriw)  ||
-           (MI.getOpcode() == Hexagon::LDrid) ||
-           (MI.getOpcode() == Hexagon::LDrih) ||
-           (MI.getOpcode() == Hexagon::LDriuh) ||
-           (MI.getOpcode() == Hexagon::LDrib) ||
-           (MI.getOpcode() == Hexagon::LDriub) ) {
+           (MI.getOpcode() == Hexagon::LDrid)   ||
+           (MI.getOpcode() == Hexagon::LDrih)   ||
+           (MI.getOpcode() == Hexagon::LDriuh)  ||
+           (MI.getOpcode() == Hexagon::LDrib)   ||
+           (MI.getOpcode() == Hexagon::LDriub)  ||
+           (MI.getOpcode() == Hexagon::LDriw_f) ||
+           (MI.getOpcode() == Hexagon::LDrid_f)) {
         unsigned dstReg = (MI.getOpcode() == Hexagon::LDrid) ?
-          *getSubRegisters(MI.getOperand(0).getReg()) :
+          getSubReg(MI.getOperand(0).getReg(), Hexagon::subreg_loreg) :
           MI.getOperand(0).getReg();
 
         // Check if offset can fit in addi.
@@ -201,13 +185,15 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                   dstReg).addReg(FrameReg).addImm(Offset);
         }
 
-        MI.getOperand(i).ChangeToRegister(dstReg, false, false, true);
-        MI.getOperand(i+1).ChangeToImmediate(0);
-      } else if ((MI.getOpcode() == Hexagon::STriw) ||
+        MI.getOperand(FIOperandNum).ChangeToRegister(dstReg, false, false,true);
+        MI.getOperand(FIOperandNum+1).ChangeToImmediate(0);
+      } else if ((MI.getOpcode() == Hexagon::STriw_indexed) ||
+                 (MI.getOpcode() == Hexagon::STriw) ||
                  (MI.getOpcode() == Hexagon::STrid) ||
                  (MI.getOpcode() == Hexagon::STrih) ||
                  (MI.getOpcode() == Hexagon::STrib) ||
-                 (MI.getOpcode() == Hexagon::STriwt)) {
+                 (MI.getOpcode() == Hexagon::STrid_f) ||
+                 (MI.getOpcode() == Hexagon::STriw_f)) {
         // For stores, we need a reserved register. Change
         // memw(r30 + #10000) = r0 to:
         //
@@ -227,29 +213,44 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                   TII.get(Hexagon::ADD_ri),
                   resReg).addReg(FrameReg).addImm(Offset);
         }
-        MI.getOperand(i).ChangeToRegister(resReg, false, false, true);
-        MI.getOperand(i+1).ChangeToImmediate(0);
+        MI.getOperand(FIOperandNum).ChangeToRegister(resReg, false, false,true);
+        MI.getOperand(FIOperandNum+1).ChangeToImmediate(0);
       } else if (TII.isMemOp(&MI)) {
-        unsigned resReg = HEXAGON_RESERVED_REG_1;
-        if (!MFI.hasVarSizedObjects() &&
-            TII.isValidOffset(MI.getOpcode(), (FrameSize+Offset))) {
-          MI.getOperand(i).ChangeToRegister(getStackRegister(), false, false,
-                                            true);
-          MI.getOperand(i+1).ChangeToImmediate(FrameSize+Offset);
-        } else if (!TII.isValidOffset(Hexagon::ADD_ri, Offset)) {
-          BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
-                  TII.get(Hexagon::CONST32_Int_Real), resReg).addImm(Offset);
-          BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
-                  TII.get(Hexagon::ADD_rr),
-                  resReg).addReg(FrameReg).addReg(resReg);
-          MI.getOperand(i).ChangeToRegister(resReg, false, false, true);
-          MI.getOperand(i+1).ChangeToImmediate(0);
+        // use the constant extender if the instruction provides it
+        // and we are V4TOps.
+        if (Subtarget.hasV4TOps()) {
+          if (TII.isConstExtended(&MI)) {
+            MI.getOperand(FIOperandNum).ChangeToRegister(FrameReg, false);
+            MI.getOperand(FIOperandNum+1).ChangeToImmediate(Offset);
+            TII.immediateExtend(&MI);
+          } else {
+            llvm_unreachable("Need to implement for memops");
+          }
         } else {
-          BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
-                  TII.get(Hexagon::ADD_ri),
-                  resReg).addReg(FrameReg).addImm(Offset);
-          MI.getOperand(i).ChangeToRegister(resReg, false, false, true);
-          MI.getOperand(i+1).ChangeToImmediate(0);
+          // Only V3 and older instructions here.
+          unsigned ResReg = HEXAGON_RESERVED_REG_1;
+          if (!MFI.hasVarSizedObjects() &&
+              TII.isValidOffset(MI.getOpcode(), (FrameSize+Offset))) {
+            MI.getOperand(FIOperandNum).ChangeToRegister(getStackRegister(),
+                                                         false, false, false);
+            MI.getOperand(FIOperandNum+1).ChangeToImmediate(FrameSize+Offset);
+          } else if (!TII.isValidOffset(Hexagon::ADD_ri, Offset)) {
+            BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
+                    TII.get(Hexagon::CONST32_Int_Real), ResReg).addImm(Offset);
+            BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
+                    TII.get(Hexagon::ADD_rr), ResReg).addReg(FrameReg).
+              addReg(ResReg);
+            MI.getOperand(FIOperandNum).ChangeToRegister(ResReg, false, false,
+                                                         true);
+            MI.getOperand(FIOperandNum+1).ChangeToImmediate(0);
+          } else {
+            BuildMI(*MI.getParent(), II, MI.getDebugLoc(),
+                    TII.get(Hexagon::ADD_ri), ResReg).addReg(FrameReg).
+              addImm(Offset);
+            MI.getOperand(FIOperandNum).ChangeToRegister(ResReg, false, false,
+                                                         true);
+            MI.getOperand(FIOperandNum+1).ChangeToImmediate(0);
+          }
         }
       } else {
         unsigned dstReg = MI.getOperand(0).getReg();
@@ -259,14 +260,14 @@ void HexagonRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                 TII.get(Hexagon::ADD_rr),
                 dstReg).addReg(FrameReg).addReg(dstReg);
         // Can we delete MI??? r2 = add (r2, #0).
-        MI.getOperand(i).ChangeToRegister(dstReg, false, false, true);
-        MI.getOperand(i+1).ChangeToImmediate(0);
+        MI.getOperand(FIOperandNum).ChangeToRegister(dstReg, false, false,true);
+        MI.getOperand(FIOperandNum+1).ChangeToImmediate(0);
       }
     } else {
       // If the offset is small enough to fit in the immediate field, directly
       // encode it.
-      MI.getOperand(i).ChangeToRegister(FrameReg, false);
-      MI.getOperand(i+1).ChangeToImmediate(Offset);
+      MI.getOperand(FIOperandNum).ChangeToRegister(FrameReg, false);
+      MI.getOperand(FIOperandNum+1).ChangeToImmediate(Offset);
     }
   }
 
@@ -292,16 +293,6 @@ unsigned HexagonRegisterInfo::getFrameRegister() const {
 
 unsigned HexagonRegisterInfo::getStackRegister() const {
   return Hexagon::R29;
-}
-
-void HexagonRegisterInfo::getInitialFrameState(std::vector<MachineMove>
-                                               &Moves)  const
-{
-  // VirtualFP = (R30 + #0).
-  unsigned FPReg = getFrameRegister();
-  MachineLocation Dst(MachineLocation::VirtualFP);
-  MachineLocation Src(FPReg, 0);
-  Moves.push_back(MachineMove(0, Dst, Src));
 }
 
 unsigned HexagonRegisterInfo::getEHExceptionRegister() const {

@@ -13,9 +13,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
-#include "llvm/Type.h"
+#define DEBUG_TYPE "lli"
+#include "llvm/IR/LLVMContext.h"
+#include "RecordingMemoryManager.h"
+#include "RemoteTarget.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/CodeGen/LinkAllCodegenComponents.h"
@@ -25,16 +26,26 @@
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/JITMemoryManager.h"
 #include "llvm/ExecutionEngine/MCJIT.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/IRReader.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/DynamicLibrary.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/MathExtras.h"
+#include "llvm/Support/Memory.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PluginLoader.h"
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Instrumentation.h"
 #include <cerrno>
 
 #ifdef __CYGWIN__
@@ -59,6 +70,17 @@ namespace {
 
   cl::opt<bool> UseMCJIT(
     "use-mcjit", cl::desc("Enable use of the MC-based JIT (if available)"),
+    cl::init(false));
+
+  cl::opt<bool> DebugIR(
+    "debug-ir", cl::desc("Generate debug information to allow debugging IR."),
+    cl::init(false));
+
+  // The MCJIT supports building for a target address space separate from
+  // the JIT compilation process. Use a forked process and a copying
+  // memory manager with IPC to execute using this functionality.
+  cl::opt<bool> RemoteMCJIT("remote-mcjit",
+    cl::desc("Execute MCJIT'ed code in a separate process."),
     cl::init(false));
 
   // Determine optimization level.
@@ -141,6 +163,40 @@ namespace {
                                 "Large code model"),
                      clEnumValEnd));
 
+  cl::opt<bool>
+  GenerateSoftFloatCalls("soft-float",
+    cl::desc("Generate software floating point library calls"),
+    cl::init(false));
+
+  cl::opt<llvm::FloatABI::ABIType>
+  FloatABIForCalls("float-abi",
+                   cl::desc("Choose float ABI type"),
+                   cl::init(FloatABI::Default),
+                   cl::values(
+                     clEnumValN(FloatABI::Default, "default",
+                                "Target default float ABI type"),
+                     clEnumValN(FloatABI::Soft, "soft",
+                                "Soft float ABI (implied by -soft-float)"),
+                     clEnumValN(FloatABI::Hard, "hard",
+                                "Hard float ABI (uses FP registers)"),
+                     clEnumValEnd));
+  cl::opt<bool>
+// In debug builds, make this default to true.
+#ifdef NDEBUG
+#define EMIT_DEBUG false
+#else
+#define EMIT_DEBUG true
+#endif
+  EmitJitDebugInfo("jit-emit-debug",
+    cl::desc("Emit debug information to debugger"),
+    cl::init(EMIT_DEBUG));
+#undef EMIT_DEBUG
+
+  static cl::opt<bool>
+  EmitJitDebugInfoToDisk("jit-emit-debug-to-disk",
+    cl::Hidden,
+    cl::desc("Emit debug info objfiles to disk"),
+    cl::init(false));
 }
 
 static ExecutionEngine *EE = 0;
@@ -151,6 +207,82 @@ static void do_shutdown() {
   delete EE;
   llvm_shutdown();
 #endif
+}
+
+void layoutRemoteTargetMemory(RemoteTarget *T, RecordingMemoryManager *JMM) {
+  // Lay out our sections in order, with all the code sections first, then
+  // all the data sections.
+  uint64_t CurOffset = 0;
+  unsigned MaxAlign = T->getPageAlignment();
+  SmallVector<std::pair<const void*, uint64_t>, 16> Offsets;
+  SmallVector<unsigned, 16> Sizes;
+  for (RecordingMemoryManager::const_code_iterator I = JMM->code_begin(),
+                                                   E = JMM->code_end();
+       I != E; ++I) {
+    DEBUG(dbgs() << "code region: size " << I->first.size()
+                 << ", alignment " << I->second << "\n");
+    // Align the current offset up to whatever is needed for the next
+    // section.
+    unsigned Align = I->second;
+    CurOffset = (CurOffset + Align - 1) / Align * Align;
+    // Save off the address of the new section and allocate its space.
+    Offsets.push_back(std::pair<const void*,uint64_t>(I->first.base(), CurOffset));
+    Sizes.push_back(I->first.size());
+    CurOffset += I->first.size();
+  }
+  // Adjust to keep code and data aligned on seperate pages.
+  CurOffset = (CurOffset + MaxAlign - 1) / MaxAlign * MaxAlign;
+  unsigned FirstDataIndex = Offsets.size();
+  for (RecordingMemoryManager::const_data_iterator I = JMM->data_begin(),
+                                                   E = JMM->data_end();
+       I != E; ++I) {
+    DEBUG(dbgs() << "data region: size " << I->first.size()
+                 << ", alignment " << I->second << "\n");
+    // Align the current offset up to whatever is needed for the next
+    // section.
+    unsigned Align = I->second;
+    CurOffset = (CurOffset + Align - 1) / Align * Align;
+    // Save off the address of the new section and allocate its space.
+    Offsets.push_back(std::pair<const void*,uint64_t>(I->first.base(), CurOffset));
+    Sizes.push_back(I->first.size());
+    CurOffset += I->first.size();
+  }
+
+  // Allocate space in the remote target.
+  uint64_t RemoteAddr;
+  if (T->allocateSpace(CurOffset, MaxAlign, RemoteAddr))
+    report_fatal_error(T->getErrorMsg());
+  // Map the section addresses so relocations will get updated in the local
+  // copies of the sections.
+  for (unsigned i = 0, e = Offsets.size(); i != e; ++i) {
+    uint64_t Addr = RemoteAddr + Offsets[i].second;
+    EE->mapSectionAddress(const_cast<void*>(Offsets[i].first), Addr);
+
+    DEBUG(dbgs() << "  Mapping local: " << Offsets[i].first
+                 << " to remote: 0x" << format("%llx", Addr) << "\n");
+
+  }
+
+  // Trigger application of relocations
+  EE->finalizeObject();
+
+  // Now load it all to the target.
+  for (unsigned i = 0, e = Offsets.size(); i != e; ++i) {
+    uint64_t Addr = RemoteAddr + Offsets[i].second;
+
+    if (i < FirstDataIndex) {
+      T->loadCode(Addr, Offsets[i].first, Sizes[i]);
+
+      DEBUG(dbgs() << "  loading code: " << Offsets[i].first
+            << " to remote: 0x" << format("%llx", Addr) << "\n");
+    } else {
+      T->loadData(Addr, Offsets[i].first, Sizes[i]);
+
+      DEBUG(dbgs() << "  loading data: " << Offsets[i].first
+            << " to remote: 0x" << format("%llx", Addr) << "\n");
+    }
+
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -167,6 +299,7 @@ int main(int argc, char **argv, char * const *envp) {
   // usable by the JIT.
   InitializeNativeTarget();
   InitializeNativeTargetAsmPrinter();
+  InitializeNativeTargetAsmParser();
 
   cl::ParseCommandLineOptions(argc, argv,
                               "llvm interpreter & dynamic compiler\n");
@@ -193,6 +326,17 @@ int main(int argc, char **argv, char * const *envp) {
     }
   }
 
+  if (DebugIR) {
+    if (!UseMCJIT) {
+      errs() << "warning: -debug-ir used without -use-mcjit. Only partial debug"
+        << " information will be emitted by the non-MC JIT engine. To see full"
+        << " source debug information, enable the flag '-use-mcjit'.\n";
+
+    }
+    ModulePass *DebugIRPass = createDebugIRPass();
+    DebugIRPass->runOnModule(*Mod);
+  }
+
   EngineBuilder builder(Mod);
   builder.setMArch(MArch);
   builder.setMCPU(MCPU);
@@ -200,8 +344,6 @@ int main(int argc, char **argv, char * const *envp) {
   builder.setRelocationModel(RelocModel);
   builder.setCodeModel(CMModel);
   builder.setErrorStr(&ErrorMsg);
-  builder.setJITMemoryManager(ForceInterpreter ? 0 :
-                              JITMemoryManager::CreateDefaultMemManager());
   builder.setEngineKind(ForceInterpreter
                         ? EngineKind::Interpreter
                         : EngineKind::JIT);
@@ -211,9 +353,21 @@ int main(int argc, char **argv, char * const *envp) {
     Mod->setTargetTriple(Triple::normalize(TargetTriple));
 
   // Enable MCJIT if desired.
+  RTDyldMemoryManager *RTDyldMM = 0;
   if (UseMCJIT && !ForceInterpreter) {
     builder.setUseMCJIT(true);
-    builder.setJITMemoryManager(JITMemoryManager::CreateDefaultMemManager());
+    if (RemoteMCJIT)
+      RTDyldMM = new RecordingMemoryManager();
+    else
+      RTDyldMM = new SectionMemoryManager();
+    builder.setMCJITMemoryManager(RTDyldMM);
+  } else {
+    if (RemoteMCJIT) {
+      errs() << "error: Remote process execution requires -use-mcjit\n";
+      exit(1);
+    }
+    builder.setJITMemoryManager(ForceInterpreter ? 0 :
+                                JITMemoryManager::CreateDefaultMemManager());
   }
 
   CodeGenOpt::Level OLvl = CodeGenOpt::Default;
@@ -229,6 +383,21 @@ int main(int argc, char **argv, char * const *envp) {
   }
   builder.setOptLevel(OLvl);
 
+  TargetOptions Options;
+  Options.UseSoftFloat = GenerateSoftFloatCalls;
+  if (FloatABIForCalls != FloatABI::Default)
+    Options.FloatABIType = FloatABIForCalls;
+  if (GenerateSoftFloatCalls)
+    FloatABIForCalls = FloatABI::Soft;
+
+  // Remote target execution doesn't handle EH or debug registration.
+  if (!RemoteMCJIT) {
+    Options.JITEmitDebugInfo = EmitJitDebugInfo;
+    Options.JITEmitDebugInfoToDisk = EmitJitDebugInfoToDisk;
+  }
+
+  builder.setTargetOptions(Options);
+
   EE = builder.create();
   if (!EE) {
     if (!ErrorMsg.empty())
@@ -238,8 +407,17 @@ int main(int argc, char **argv, char * const *envp) {
     exit(1);
   }
 
-  EE->RegisterJITEventListener(createOProfileJITEventListener());
+  // The following functions have no effect if their respective profiling
+  // support wasn't enabled in the build configuration.
+  EE->RegisterJITEventListener(
+                JITEventListener::createOProfileJITEventListener());
+  EE->RegisterJITEventListener(
+                JITEventListener::createIntelJITEventListener());
 
+  if (!NoLazyCompilation && RemoteMCJIT) {
+    errs() << "warning: remote mcjit does not support lazy compilation\n";
+    NoLazyCompilation = true;
+  }
   EE->DisableLazyCompilation(NoLazyCompilation);
 
   // If the user specifically requested an argv[0] to pass into the program,
@@ -276,8 +454,18 @@ int main(int argc, char **argv, char * const *envp) {
   // Reset errno to zero on entry to main.
   errno = 0;
 
+  // Remote target MCJIT doesn't (yet) support static constructors. No reason
+  // it couldn't. This is a limitation of the LLI implemantation, not the
+  // MCJIT itself. FIXME.
+  //
   // Run static constructors.
-  EE->runStaticConstructorsDestructors(false);
+  if (!RemoteMCJIT) {
+      if (UseMCJIT && !ForceInterpreter) {
+        // Give MCJIT a chance to apply relocations and set page permissions.
+        EE->finalizeObject();
+      }
+      EE->runStaticConstructorsDestructors(false);
+  }
 
   if (NoLazyCompilation) {
     for (Module::iterator I = Mod->begin(), E = Mod->end(); I != E; ++I) {
@@ -287,24 +475,69 @@ int main(int argc, char **argv, char * const *envp) {
     }
   }
 
-  // Run main.
-  int Result = EE->runFunctionAsMain(EntryFn, InputArgv, envp);
+  int Result;
+  if (RemoteMCJIT) {
+    RecordingMemoryManager *MM = static_cast<RecordingMemoryManager*>(RTDyldMM);
+    // Everything is prepared now, so lay out our program for the target
+    // address space, assign the section addresses to resolve any relocations,
+    // and send it to the target.
+    RemoteTarget Target;
+    Target.create();
 
-  // Run static destructors.
-  EE->runStaticConstructorsDestructors(true);
+    // Ask for a pointer to the entry function. This triggers the actual
+    // compilation.
+    (void)EE->getPointerToFunction(EntryFn);
 
-  // If the program didn't call exit explicitly, we should call it now.
-  // This ensures that any atexit handlers get called correctly.
-  if (Function *ExitF = dyn_cast<Function>(Exit)) {
-    std::vector<GenericValue> Args;
-    GenericValue ResultGV;
-    ResultGV.IntVal = APInt(32, Result);
-    Args.push_back(ResultGV);
-    EE->runFunction(ExitF, Args);
-    errs() << "ERROR: exit(" << Result << ") returned!\n";
-    abort();
+    // Enough has been compiled to execute the entry function now, so
+    // layout the target memory.
+    layoutRemoteTargetMemory(&Target, MM);
+
+    // Since we're executing in a (at least simulated) remote address space,
+    // we can't use the ExecutionEngine::runFunctionAsMain(). We have to
+    // grab the function address directly here and tell the remote target
+    // to execute the function.
+    // FIXME: argv and envp handling.
+    uint64_t Entry = (uint64_t)EE->getPointerToFunction(EntryFn);
+
+    DEBUG(dbgs() << "Executing '" << EntryFn->getName() << "' at 0x"
+                 << format("%llx", Entry) << "\n");
+
+    if (Target.executeCode(Entry, Result))
+      errs() << "ERROR: " << Target.getErrorMsg() << "\n";
+
+    Target.stop();
   } else {
-    errs() << "ERROR: exit defined with wrong prototype!\n";
-    abort();
+    // Trigger compilation separately so code regions that need to be 
+    // invalidated will be known.
+    (void)EE->getPointerToFunction(EntryFn);
+    // Clear instruction cache before code will be executed.
+    if (RTDyldMM)
+      static_cast<SectionMemoryManager*>(RTDyldMM)->invalidateInstructionCache();
+
+    // Run main.
+    Result = EE->runFunctionAsMain(EntryFn, InputArgv, envp);
   }
+
+  // Like static constructors, the remote target MCJIT support doesn't handle
+  // this yet. It could. FIXME.
+  if (!RemoteMCJIT) {
+    // Run static destructors.
+    EE->runStaticConstructorsDestructors(true);
+
+    // If the program didn't call exit explicitly, we should call it now.
+    // This ensures that any atexit handlers get called correctly.
+    if (Function *ExitF = dyn_cast<Function>(Exit)) {
+      std::vector<GenericValue> Args;
+      GenericValue ResultGV;
+      ResultGV.IntVal = APInt(32, Result);
+      Args.push_back(ResultGV);
+      EE->runFunction(ExitF, Args);
+      errs() << "ERROR: exit(" << Result << ") returned!\n";
+      abort();
+    } else {
+      errs() << "ERROR: exit defined with wrong prototype!\n";
+      abort();
+    }
+  }
+  return Result;
 }

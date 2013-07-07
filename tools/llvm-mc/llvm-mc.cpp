@@ -12,35 +12,32 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/MC/MCParser/AsmLexer.h"
-#include "llvm/MC/MCParser/MCAsmLexer.h"
+#include "Disassembler.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/MC/MCAsmBackend.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
-#include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCObjectFileInfo.h"
+#include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCTargetAsmParser.h"
-#include "llvm/MC/SubtargetFeature.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/system_error.h"
-#include "Disassembler.h"
+#include "llvm/Support/ToolOutputFile.h"
 using namespace llvm;
 
 static cl::opt<std::string>
@@ -66,6 +63,9 @@ OutputAsmVariant("output-asm-variant",
 
 static cl::opt<bool>
 RelaxAll("mc-relax-all", cl::desc("Relax all fixups"));
+
+static cl::opt<bool>
+DisableCFI("disable-cfi", cl::desc("Do not use .cfi_* directives"));
 
 static cl::opt<bool>
 NoExecStack("mc-no-exec-stack", cl::desc("File doesn't need an exec stack"));
@@ -153,11 +153,20 @@ static cl::opt<bool>
 GenDwarfForAssembly("g", cl::desc("Generate dwarf debugging info for assembly "
                                   "source files"));
 
+static cl::opt<std::string>
+DebugCompilationDir("fdebug-compilation-dir",
+                    cl::desc("Specifies the debug info's compilation dir"));
+
+static cl::opt<std::string>
+MainFileName("main-file-name",
+             cl::desc("Specifies the name we should consider the input file"));
+
 enum ActionType {
   AC_AsLex,
   AC_Assemble,
   AC_Disassemble,
-  AC_EDisassemble
+  AC_MDisassemble,
+  AC_HDisassemble
 };
 
 static cl::opt<ActionType>
@@ -169,8 +178,11 @@ Action(cl::desc("Action to perform:"),
                              "Assemble a .s file (default)"),
                   clEnumValN(AC_Disassemble, "disassemble",
                              "Disassemble strings of hex bytes"),
-                  clEnumValN(AC_EDisassemble, "edis",
-                             "Enhanced disassembly of strings of hex bytes"),
+                  clEnumValN(AC_MDisassemble, "mdis",
+                             "Marked up disassembly of strings of hex bytes"),
+                  clEnumValN(AC_HDisassemble, "hdis",
+                             "Disassemble strings of hex bytes printing "
+                             "immediates as hex"),
                   clEnumValEnd));
 
 static const Target *GetTarget(const char *ProgName) {
@@ -179,38 +191,16 @@ static const Target *GetTarget(const char *ProgName) {
     TripleName = sys::getDefaultTargetTriple();
   Triple TheTriple(Triple::normalize(TripleName));
 
-  const Target *TheTarget = 0;
-  if (!ArchName.empty()) {
-    for (TargetRegistry::iterator it = TargetRegistry::begin(),
-           ie = TargetRegistry::end(); it != ie; ++it) {
-      if (ArchName == it->getName()) {
-        TheTarget = &*it;
-        break;
-      }
-    }
-
-    if (!TheTarget) {
-      errs() << ProgName << ": error: invalid target '" << ArchName << "'.\n";
-      return 0;
-    }
-
-    // Adjust the triple to match (if known), otherwise stick with the
-    // module/host triple.
-    Triple::ArchType Type = Triple::getArchTypeForLLVMName(ArchName);
-    if (Type != Triple::UnknownArch)
-      TheTriple.setArch(Type);
-  } else {
-    // Get the target specific parser.
-    std::string Error;
-    TheTarget = TargetRegistry::lookupTarget(TheTriple.getTriple(), Error);
-    if (TheTarget == 0) {
-      errs() << ProgName << ": error: unable to get target for '"
-             << TheTriple.getTriple()
-             << "', see --version and --triple.\n";
-      return 0;
-    }
+  // Get the target specific parser.
+  std::string Error;
+  const Target *TheTarget = TargetRegistry::lookupTarget(ArchName, TheTriple,
+                                                         Error);
+  if (!TheTarget) {
+    errs() << ProgName << ": " << Error;
+    return 0;
   }
 
+  // Update the triple name and return the found target.
   TripleName = TheTriple.getTriple();
   return TheTarget;
 }
@@ -242,36 +232,17 @@ static void setDwarfDebugFlags(int argc, char **argv) {
   }
 }
 
-static int AsLexInput(const char *ProgName) {
-  OwningPtr<MemoryBuffer> BufferPtr;
-  if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputFilename, BufferPtr)) {
-    errs() << ProgName << ": " << ec.message() << '\n';
-    return 1;
-  }
-  MemoryBuffer *Buffer = BufferPtr.take();
+static std::string DwarfDebugProducer;
+static void setDwarfDebugProducer(void) {
+  if(!getenv("DEBUG_PRODUCER"))
+    return;
+  DwarfDebugProducer += getenv("DEBUG_PRODUCER");
+}
 
-  SourceMgr SrcMgr;
+static int AsLexInput(SourceMgr &SrcMgr, MCAsmInfo &MAI, tool_output_file *Out) {
 
-  // Tell SrcMgr about this buffer, which is what TGParser will pick up.
-  SrcMgr.AddNewSourceBuffer(Buffer, SMLoc());
-
-  // Record the location of the include directories so that the lexer can find
-  // it later.
-  SrcMgr.setIncludeDirs(IncludeDirs);
-
-  const Target *TheTarget = GetTarget(ProgName);
-  if (!TheTarget)
-    return 1;
-
-  llvm::OwningPtr<MCAsmInfo> MAI(TheTarget->createMCAsmInfo(TripleName));
-  assert(MAI && "Unable to create target asm info!");
-
-  AsmLexer Lexer(*MAI);
+  AsmLexer Lexer(MAI);
   Lexer.setBuffer(SrcMgr.getMemoryBuffer(0));
-
-  OwningPtr<tool_output_file> Out(GetOutputStream());
-  if (!Out)
-    return 1;
 
   bool Error = false;
   while (Lexer.Lex().isNot(AsmToken::Eof)) {
@@ -294,9 +265,6 @@ static int AsLexInput(const char *ProgName) {
       break;
     case AsmToken::Real:
       Out->os() << "real: " << Lexer.getTok().getString();
-      break;
-    case AsmToken::Register:
-      Out->os() << "register: " << Lexer.getTok().getRegVal();
       break;
     case AsmToken::String:
       Out->os() << "string: " << Lexer.getTok().getString();
@@ -346,13 +314,51 @@ static int AsLexInput(const char *ProgName) {
     Out->os() << "\")\n";
   }
 
-  // Keep output if no errors.
-  if (Error == 0) Out->keep();
-
   return Error;
 }
 
-static int AssembleInput(const char *ProgName) {
+static int AssembleInput(const char *ProgName, const Target *TheTarget, 
+                         SourceMgr &SrcMgr, MCContext &Ctx, MCStreamer &Str,
+                         MCAsmInfo &MAI, MCSubtargetInfo &STI) {
+  OwningPtr<MCAsmParser> Parser(createMCAsmParser(SrcMgr, Ctx,
+                                                  Str, MAI));
+  OwningPtr<MCTargetAsmParser> TAP(TheTarget->createMCAsmParser(STI, *Parser));
+  if (!TAP) {
+    errs() << ProgName
+           << ": error: this target does not support assembly parsing.\n";
+    return 1;
+  }
+
+  Parser->setShowParsedOperands(ShowInstOperands);
+  Parser->setTargetParser(*TAP.get());
+
+  int Res = Parser->Run(NoInitialTextSection);
+
+  return Res;
+}
+
+int main(int argc, char **argv) {
+  // Print a stack trace if we signal out.
+  sys::PrintStackTraceOnErrorSignal();
+  PrettyStackTraceProgram X(argc, argv);
+  llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
+
+  // Initialize targets and assembly printers/parsers.
+  llvm::InitializeAllTargetInfos();
+  llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmParsers();
+  llvm::InitializeAllDisassemblers();
+
+  // Register the target printer for --version.
+  cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
+
+  cl::ParseCommandLineOptions(argc, argv, "llvm machine code playground\n");
+  TripleName = Triple::normalize(TripleName);
+  setDwarfDebugFlags(argc, argv);
+
+  setDwarfDebugProducer();
+
+  const char *ProgName = argv[0];
   const Target *TheTarget = GetTarget(ProgName);
   if (!TheTarget)
     return 1;
@@ -373,25 +379,30 @@ static int AssembleInput(const char *ProgName) {
   // it later.
   SrcMgr.setIncludeDirs(IncludeDirs);
 
-
-  llvm::OwningPtr<MCAsmInfo> MAI(TheTarget->createMCAsmInfo(TripleName));
-  assert(MAI && "Unable to create target asm info!");
-
   llvm::OwningPtr<MCRegisterInfo> MRI(TheTarget->createMCRegInfo(TripleName));
   assert(MRI && "Unable to create target register info!");
+
+  llvm::OwningPtr<MCAsmInfo> MAI(TheTarget->createMCAsmInfo(*MRI, TripleName));
+  assert(MAI && "Unable to create target asm info!");
 
   // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
   // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
   OwningPtr<MCObjectFileInfo> MOFI(new MCObjectFileInfo());
-  MCContext Ctx(*MAI, *MRI, MOFI.get(), &SrcMgr);
+  MCContext Ctx(MAI.get(), MRI.get(), MOFI.get(), &SrcMgr);
   MOFI->InitMCObjectFileInfo(TripleName, RelocModel, CMModel, Ctx);
 
   if (SaveTempLabels)
     Ctx.setAllowTemporaryLabels(false);
 
   Ctx.setGenDwarfForAssembly(GenDwarfForAssembly);
-  if (!DwarfDebugFlags.empty()) 
+  if (!DwarfDebugFlags.empty())
     Ctx.setDwarfDebugFlags(StringRef(DwarfDebugFlags));
+  if (!DwarfDebugProducer.empty())
+    Ctx.setDwarfDebugProducer(StringRef(DwarfDebugProducer));
+  if (!DebugCompilationDir.empty())
+    Ctx.setCompilationDir(DebugCompilationDir);
+  if (!MainFileName.empty())
+    Ctx.setMainFileName(MainFileName);
 
   // Package up features to be passed to target/subtarget
   std::string FeaturesStr;
@@ -413,19 +424,20 @@ static int AssembleInput(const char *ProgName) {
   OwningPtr<MCSubtargetInfo>
     STI(TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
 
-  // FIXME: There is a bit of code duplication with addPassesToEmitFile.
+  MCInstPrinter *IP = NULL;
   if (FileType == OFT_AssemblyFile) {
-    MCInstPrinter *IP =
-      TheTarget->createMCInstPrinter(OutputAsmVariant, *MAI, *STI);
+    IP =
+      TheTarget->createMCInstPrinter(OutputAsmVariant, *MAI, *MCII, *MRI, *STI);
     MCCodeEmitter *CE = 0;
     MCAsmBackend *MAB = 0;
     if (ShowEncoding) {
-      CE = TheTarget->createMCCodeEmitter(*MCII, *STI, Ctx);
-      MAB = TheTarget->createMCAsmBackend(TripleName);
+      CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, *STI, Ctx);
+      MAB = TheTarget->createMCAsmBackend(TripleName, MCPU);
     }
+    bool UseCFI = !DisableCFI;
     Str.reset(TheTarget->createAsmStreamer(Ctx, FOS, /*asmverbose*/true,
                                            /*useLoc*/ true,
-                                           /*useCFI*/ true,
+                                           UseCFI,
                                            /*useDwarfDirectory*/ true,
                                            IP, CE, MAB, ShowInst));
 
@@ -433,97 +445,41 @@ static int AssembleInput(const char *ProgName) {
     Str.reset(createNullStreamer(Ctx));
   } else {
     assert(FileType == OFT_ObjectFile && "Invalid file type!");
-    MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, *STI, Ctx);
-    MCAsmBackend *MAB = TheTarget->createMCAsmBackend(TripleName);
+    MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, *STI, Ctx);
+    MCAsmBackend *MAB = TheTarget->createMCAsmBackend(TripleName, MCPU);
     Str.reset(TheTarget->createMCObjectStreamer(TripleName, Ctx, *MAB,
                                                 FOS, CE, RelaxAll,
                                                 NoExecStack));
   }
 
-  OwningPtr<MCAsmParser> Parser(createMCAsmParser(SrcMgr, Ctx,
-                                                  *Str.get(), *MAI));
-  OwningPtr<MCTargetAsmParser> TAP(TheTarget->createMCAsmParser(*STI, *Parser));
-  if (!TAP) {
-    errs() << ProgName
-           << ": error: this target does not support assembly parsing.\n";
-    return 1;
-  }
-
-  Parser->setShowParsedOperands(ShowInstOperands);
-  Parser->setTargetParser(*TAP.get());
-
-  int Res = Parser->Run(NoInitialTextSection);
-
-  // Keep output if no errors.
-  if (Res == 0) Out->keep();
-
-  return Res;
-}
-
-static int DisassembleInput(const char *ProgName, bool Enhanced) {
-  const Target *TheTarget = GetTarget(ProgName);
-  if (!TheTarget)
-    return 0;
-
-  OwningPtr<MemoryBuffer> Buffer;
-  if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputFilename, Buffer)) {
-    errs() << ProgName << ": " << ec.message() << '\n';
-    return 1;
-  }
-
-  OwningPtr<tool_output_file> Out(GetOutputStream());
-  if (!Out)
-    return 1;
-
-  int Res;
-  if (Enhanced) {
-    Res =
-      Disassembler::disassembleEnhanced(TripleName, *Buffer.take(), Out->os());
-  } else {
-    // Package up features to be passed to target/subtarget
-    std::string FeaturesStr;
-    if (MAttrs.size()) {
-      SubtargetFeatures Features;
-      for (unsigned i = 0; i != MAttrs.size(); ++i)
-        Features.AddFeature(MAttrs[i]);
-      FeaturesStr = Features.getString();
-    }
-
-    Res = Disassembler::disassemble(*TheTarget, TripleName, MCPU, FeaturesStr,
-                                    *Buffer.take(), Out->os());
-  }
-
-  // Keep output if no errors.
-  if (Res == 0) Out->keep();
-
-  return Res;
-}
-
-
-int main(int argc, char **argv) {
-  // Print a stack trace if we signal out.
-  sys::PrintStackTraceOnErrorSignal();
-  PrettyStackTraceProgram X(argc, argv);
-  llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
-
-  // Initialize targets and assembly printers/parsers.
-  llvm::InitializeAllTargetInfos();
-  llvm::InitializeAllTargetMCs();
-  llvm::InitializeAllAsmParsers();
-  llvm::InitializeAllDisassemblers();
-
-  cl::ParseCommandLineOptions(argc, argv, "llvm machine code playground\n");
-  TripleName = Triple::normalize(TripleName);
-  setDwarfDebugFlags(argc, argv);
-
+  int Res = 1;
+  bool disassemble = false;
   switch (Action) {
   case AC_AsLex:
-    return AsLexInput(argv[0]);
+    Res = AsLexInput(SrcMgr, *MAI, Out.get());
+    break;
   case AC_Assemble:
-    return AssembleInput(argv[0]);
+    Res = AssembleInput(ProgName, TheTarget, SrcMgr, Ctx, *Str, *MAI, *STI);
+    break;
+  case AC_MDisassemble:
+    assert(IP && "Expected assembly output");
+    IP->setUseMarkup(1);
+    disassemble = true;
+    break;
+  case AC_HDisassemble:
+    assert(IP && "Expected assembly output");
+    IP->setPrintImmHex(1);
+    disassemble = true;
+    break;
   case AC_Disassemble:
-    return DisassembleInput(argv[0], false);
-  case AC_EDisassemble:
-    return DisassembleInput(argv[0], true);
+    disassemble = true;
+    break;
   }
+  if (disassemble)
+    Res = Disassembler::disassemble(*TheTarget, TripleName, *STI, *Str,
+                                    *Buffer, SrcMgr, Out->os());
+
+  // Keep output if no errors.
+  if (Res == 0) Out->keep();
+  return Res;
 }

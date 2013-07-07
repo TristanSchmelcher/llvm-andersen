@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "Thumb1FrameLowering.h"
-#include "ARMBaseInstrInfo.h"
 #include "ARMMachineFunctionInfo.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -44,6 +43,41 @@ emitSPUpdate(MachineBasicBlock &MBB,
                             MRI, MIFlags);
 }
 
+
+void Thumb1FrameLowering::
+eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator I) const {
+  const Thumb1InstrInfo &TII =
+    *static_cast<const Thumb1InstrInfo*>(MF.getTarget().getInstrInfo());
+  const Thumb1RegisterInfo *RegInfo =
+    static_cast<const Thumb1RegisterInfo*>(MF.getTarget().getRegisterInfo());
+  if (!hasReservedCallFrame(MF)) {
+    // If we have alloca, convert as follows:
+    // ADJCALLSTACKDOWN -> sub, sp, sp, amount
+    // ADJCALLSTACKUP   -> add, sp, sp, amount
+    MachineInstr *Old = I;
+    DebugLoc dl = Old->getDebugLoc();
+    unsigned Amount = Old->getOperand(0).getImm();
+    if (Amount != 0) {
+      // We need to keep the stack aligned properly.  To do this, we round the
+      // amount of space needed for the outgoing arguments up to the next
+      // alignment boundary.
+      unsigned Align = getStackAlignment();
+      Amount = (Amount+Align-1)/Align*Align;
+
+      // Replace the pseudo instruction with a new instruction...
+      unsigned Opc = Old->getOpcode();
+      if (Opc == ARM::ADJCALLSTACKDOWN || Opc == ARM::tADJCALLSTACKDOWN) {
+        emitSPUpdate(MBB, I, TII, dl, *RegInfo, -Amount);
+      } else {
+        assert(Opc == ARM::ADJCALLSTACKUP || Opc == ARM::tADJCALLSTACKUP);
+        emitSPUpdate(MBB, I, TII, dl, *RegInfo, Amount);
+      }
+    }
+  }
+  MBB.erase(I);
+}
+
 void Thumb1FrameLowering::emitPrologue(MachineFunction &MF) const {
   MachineBasicBlock &MBB = MF.front();
   MachineBasicBlock::iterator MBBI = MBB.begin();
@@ -54,7 +88,8 @@ void Thumb1FrameLowering::emitPrologue(MachineFunction &MF) const {
   const Thumb1InstrInfo &TII =
     *static_cast<const Thumb1InstrInfo*>(MF.getTarget().getInstrInfo());
 
-  unsigned VARegSaveSize = AFI->getVarArgsRegSaveSize();
+  unsigned Align = MF.getTarget().getFrameLowering()->getStackAlignment();
+  unsigned ArgRegsSaveSize = AFI->getArgRegsSaveSize(Align);
   unsigned NumBytes = MFI->getStackSize();
   const std::vector<CalleeSavedInfo> &CSI = MFI->getCalleeSavedInfo();
   DebugLoc dl = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
@@ -70,8 +105,8 @@ void Thumb1FrameLowering::emitPrologue(MachineFunction &MF) const {
   unsigned GPRCS1Size = 0, GPRCS2Size = 0, DPRCSSize = 0;
   int FramePtrSpillFI = 0;
 
-  if (VARegSaveSize)
-    emitSPUpdate(MBB, MBBI, TII, dl, *RegInfo, -VARegSaveSize,
+  if (ArgRegsSaveSize)
+    emitSPUpdate(MBB, MBBI, TII, dl, *RegInfo, -ArgRegsSaveSize,
                  MachineInstr::FrameSetup);
 
   if (!AFI->hasStackFrame()) {
@@ -125,14 +160,17 @@ void Thumb1FrameLowering::emitPrologue(MachineFunction &MF) const {
   unsigned DPRCSOffset  = NumBytes - (GPRCS1Size + GPRCS2Size + DPRCSSize);
   unsigned GPRCS2Offset = DPRCSOffset + DPRCSSize;
   unsigned GPRCS1Offset = GPRCS2Offset + GPRCS2Size;
-  AFI->setFramePtrSpillOffset(MFI->getObjectOffset(FramePtrSpillFI) + NumBytes);
+  bool HasFP = hasFP(MF);
+  if (HasFP)
+    AFI->setFramePtrSpillOffset(MFI->getObjectOffset(FramePtrSpillFI) +
+                                NumBytes);
   AFI->setGPRCalleeSavedArea1Offset(GPRCS1Offset);
   AFI->setGPRCalleeSavedArea2Offset(GPRCS2Offset);
   AFI->setDPRCalleeSavedAreaOffset(DPRCSOffset);
   NumBytes = DPRCSOffset;
 
   // Adjust FP so it point to the stack slot that contains the previous FP.
-  if (hasFP(MF)) {
+  if (HasFP) {
     AddDefaultPred(BuildMI(MBB, MBBI, dl, TII.get(ARM::tADDrSPi), FramePtr)
       .addFrameIndex(FramePtrSpillFI).addImm(0)
       .setMIFlags(MachineInstr::FrameSetup));
@@ -147,7 +185,7 @@ void Thumb1FrameLowering::emitPrologue(MachineFunction &MF) const {
     emitSPUpdate(MBB, MBBI, TII, dl, *RegInfo, -NumBytes,
                  MachineInstr::FrameSetup);
 
-  if (STI.isTargetELF() && hasFP(MF))
+  if (STI.isTargetELF() && HasFP)
     MFI->setOffsetAdjustment(MFI->getOffsetAdjustment() -
                              AFI->getFramePtrSpillOffset());
 
@@ -175,14 +213,14 @@ void Thumb1FrameLowering::emitPrologue(MachineFunction &MF) const {
     AFI->setShouldRestoreSPFromFP(true);
 }
 
-static bool isCalleeSavedRegister(unsigned Reg, const unsigned *CSRegs) {
+static bool isCalleeSavedRegister(unsigned Reg, const uint16_t *CSRegs) {
   for (unsigned i = 0; CSRegs[i]; ++i)
     if (Reg == CSRegs[i])
       return true;
   return false;
 }
 
-static bool isCSRestore(MachineInstr *MI, const unsigned *CSRegs) {
+static bool isCSRestore(MachineInstr *MI, const uint16_t *CSRegs) {
   if (MI->getOpcode() == ARM::tLDRspi &&
       MI->getOperand(1).isFI() &&
       isCalleeSavedRegister(MI->getOperand(0).getReg(), CSRegs))
@@ -212,9 +250,10 @@ void Thumb1FrameLowering::emitEpilogue(MachineFunction &MF,
   const Thumb1InstrInfo &TII =
     *static_cast<const Thumb1InstrInfo*>(MF.getTarget().getInstrInfo());
 
-  unsigned VARegSaveSize = AFI->getVarArgsRegSaveSize();
+  unsigned Align = MF.getTarget().getFrameLowering()->getStackAlignment();
+  unsigned ArgRegsSaveSize = AFI->getArgRegsSaveSize(Align);
   int NumBytes = (int)MFI->getStackSize();
-  const unsigned *CSRegs = RegInfo->getCalleeSavedRegs();
+  const uint16_t *CSRegs = RegInfo->getCalleeSavedRegs();
   unsigned FramePtr = RegInfo->getFrameRegister(MF);
 
   if (!AFI->hasStackFrame()) {
@@ -263,7 +302,7 @@ void Thumb1FrameLowering::emitEpilogue(MachineFunction &MF,
     }
   }
 
-  if (VARegSaveSize) {
+  if (ArgRegsSaveSize) {
     // Unlike T2 and ARM mode, the T1 pop instruction cannot restore
     // to LR, and we can't pop the value directly to the PC since
     // we need to update the SP after popping the value. Therefore, we
@@ -276,13 +315,13 @@ void Thumb1FrameLowering::emitEpilogue(MachineFunction &MF,
     AddDefaultPred(BuildMI(MBB, MBBI, dl, TII.get(ARM::tPOP)))
       .addReg(ARM::R3, RegState::Define);
 
-    emitSPUpdate(MBB, MBBI, TII, dl, *RegInfo, VARegSaveSize);
+    emitSPUpdate(MBB, MBBI, TII, dl, *RegInfo, ArgRegsSaveSize);
 
     MachineInstrBuilder MIB =
       BuildMI(MBB, MBBI, dl, TII.get(ARM::tBX_RET_vararg))
       .addReg(ARM::R3, RegState::Kill);
     AddDefaultPred(MIB);
-    MIB->copyImplicitOps(&*MBBI);
+    MIB.copyImplicitOps(&*MBBI);
     // erase the old tBX_RET instruction
     MBB.erase(MBBI);
   }
@@ -339,7 +378,7 @@ restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
   const TargetInstrInfo &TII = *MF.getTarget().getInstrInfo();
 
-  bool isVarArg = AFI->getVarArgsRegSaveSize() > 0;
+  bool isVarArg = AFI->getArgRegsSaveSize() > 0;
   DebugLoc DL = MI->getDebugLoc();
   MachineInstrBuilder MIB = BuildMI(MF, DL, TII.get(ARM::tPOP));
   AddDefaultPred(MIB);
@@ -353,7 +392,7 @@ restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
         continue;
       Reg = ARM::PC;
       (*MIB).setDesc(TII.get(ARM::tPOP_RET));
-      MIB->copyImplicitOps(&*MI);
+      MIB.copyImplicitOps(&*MI);
       MI = MBB.erase(MI);
     }
     MIB.addReg(Reg, getDefRegState(true));

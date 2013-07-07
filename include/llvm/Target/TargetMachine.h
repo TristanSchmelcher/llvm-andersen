@@ -14,9 +14,10 @@
 #ifndef LLVM_TARGET_TARGETMACHINE_H
 #define LLVM_TARGET_TARGETMACHINE_H
 
-#include "llvm/Target/TargetOptions.h"
-#include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Target/TargetOptions.h"
 #include <cassert>
 #include <string>
 
@@ -24,15 +25,14 @@ namespace llvm {
 
 class InstrItineraryData;
 class JITCodeEmitter;
+class GlobalValue;
 class MCAsmInfo;
 class MCCodeGenInfo;
 class MCContext;
-class Pass;
-class PassManager;
 class PassManagerBase;
 class Target;
-class TargetData;
-class TargetELFWriterInfo;
+class DataLayout;
+class TargetLibraryInfo;
 class TargetFrameLowering;
 class TargetInstrInfo;
 class TargetIntrinsicInfo;
@@ -42,6 +42,8 @@ class TargetPassConfig;
 class TargetRegisterInfo;
 class TargetSelectionDAGInfo;
 class TargetSubtargetInfo;
+class ScalarTargetTransformInfo;
+class VectorTargetTransformInfo;
 class formatted_raw_ostream;
 class raw_ostream;
 
@@ -52,15 +54,11 @@ class raw_ostream;
 /// through this interface.
 ///
 class TargetMachine {
-  TargetMachine(const TargetMachine &);   // DO NOT IMPLEMENT
-  void operator=(const TargetMachine &);  // DO NOT IMPLEMENT
+  TargetMachine(const TargetMachine &) LLVM_DELETED_FUNCTION;
+  void operator=(const TargetMachine &) LLVM_DELETED_FUNCTION;
 protected: // Can only create subclasses.
   TargetMachine(const Target &T, StringRef TargetTriple,
                 StringRef CPU, StringRef FS, const TargetOptions &Options);
-
-  /// getSubtargetImpl - virtual method implemented by subclasses that returns
-  /// a reference to that target's TargetSubtargetInfo-derived member variable.
-  virtual const TargetSubtargetInfo *getSubtargetImpl() const { return 0; }
 
   /// TheTarget - The Target that this machine was created for.
   const Target &TheTarget;
@@ -94,19 +92,29 @@ public:
   const StringRef getTargetCPU() const { return TargetCPU; }
   const StringRef getTargetFeatureString() const { return TargetFS; }
 
-  TargetOptions Options;
+  /// getSubtargetImpl - virtual method implemented by subclasses that returns
+  /// a reference to that target's TargetSubtargetInfo-derived member variable.
+  virtual const TargetSubtargetInfo *getSubtargetImpl() const { return 0; }
+
+  mutable TargetOptions Options;
+
+  /// \brief Reset the target options based on the function's attributes.
+  void resetTargetOptions(const MachineFunction *MF) const;
 
   // Interfaces to the major aspects of target machine information:
+  // 
   // -- Instruction opcode and operand information
   // -- Pipelines and scheduling information
   // -- Stack frame information
   // -- Selection DAG lowering information
   //
+  // N.B. These objects may change during compilation. It's not safe to cache
+  // them between functions.
   virtual const TargetInstrInfo         *getInstrInfo() const { return 0; }
   virtual const TargetFrameLowering *getFrameLowering() const { return 0; }
   virtual const TargetLowering    *getTargetLowering() const { return 0; }
   virtual const TargetSelectionDAGInfo *getSelectionDAGInfo() const{ return 0; }
-  virtual const TargetData             *getTargetData() const { return 0; }
+  virtual const DataLayout             *getDataLayout() const { return 0; }
 
   /// getMCAsmInfo - Return target specific asm information.
   ///
@@ -141,11 +149,6 @@ public:
   virtual const InstrItineraryData *getInstrItineraryData() const {
     return 0;
   }
-
-  /// getELFWriterInfo - If this target supports an ELF writer, return
-  /// information for it, otherwise return null.
-  ///
-  virtual const TargetELFWriterInfo *getELFWriterInfo() const { return 0; }
 
   /// hasMCRelaxAll - Check whether all machine code instructions should be
   /// relaxed.
@@ -197,6 +200,10 @@ public:
   /// medium, large, and target default.
   CodeModel::Model getCodeModel() const;
 
+  /// getTLSModel - Returns the TLS model which should be used for the given
+  /// global variable.
+  TLSModel::Model getTLSModel(const GlobalValue *GV) const;
+
   /// getOptLevel - Returns the optimization level: None, Less,
   /// Default, or Aggressive.
   CodeGenOpt::Level getOptLevel() const;
@@ -228,6 +235,9 @@ public:
   /// sections.
   static void setFunctionSections(bool);
 
+  /// \brief Register analysis passes for this target with a pass manager.
+  virtual void addAnalysisPasses(PassManagerBase &) {}
+
   /// CodeGenFileType - These enums are meant to be passed into
   /// addPassesToEmitFile to indicate what type of file to emit, and returned by
   /// it to indicate what type of file could actually be made.
@@ -244,7 +254,9 @@ public:
   virtual bool addPassesToEmitFile(PassManagerBase &,
                                    formatted_raw_ostream &,
                                    CodeGenFileType,
-                                   bool /*DisableVerify*/ = true) {
+                                   bool /*DisableVerify*/ = true,
+                                   AnalysisID /*StartAfter*/ = 0,
+                                   AnalysisID /*StopAfter*/ = 0) {
     return true;
   }
 
@@ -283,7 +295,13 @@ protected: // Can only create subclasses.
                     Reloc::Model RM, CodeModel::Model CM,
                     CodeGenOpt::Level OL);
 
+  void initAsmInfo();
 public:
+  /// \brief Register analysis passes for this target with a pass manager.
+  ///
+  /// This registers target independent analysis passes.
+  virtual void addAnalysisPasses(PassManagerBase &PM);
+
   /// createPassConfig - Create a pass configuration object to be used by
   /// addPassToEmitX methods for generating a pipeline of CodeGen passes.
   virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);
@@ -294,7 +312,9 @@ public:
   virtual bool addPassesToEmitFile(PassManagerBase &PM,
                                    formatted_raw_ostream &Out,
                                    CodeGenFileType FileType,
-                                   bool DisableVerify = true);
+                                   bool DisableVerify = true,
+                                   AnalysisID StartAfter = 0,
+                                   AnalysisID StopAfter = 0);
 
   /// addPassesToEmitMachineCode - Add passes to the specified pass manager to
   /// get machine code emitted.  This uses a JITCodeEmitter object to handle

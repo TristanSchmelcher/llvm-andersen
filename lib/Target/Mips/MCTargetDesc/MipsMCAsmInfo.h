@@ -14,16 +14,15 @@
 #ifndef MIPSTARGETASMINFO_H
 #define MIPSTARGETASMINFO_H
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCAsmInfo.h"
 
 namespace llvm {
-  class Target;
+  class StringRef;
 
   class MipsMCAsmInfo : public MCAsmInfo {
     virtual void anchor();
   public:
-    explicit MipsMCAsmInfo(const Target &T, StringRef TT);
+    explicit MipsMCAsmInfo(StringRef TT);
   };
 
 } // namespace llvm

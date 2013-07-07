@@ -14,10 +14,10 @@
 #ifndef X86INSTRUCTIONINFO_H
 #define X86INSTRUCTIONINFO_H
 
-#include "llvm/Target/TargetInstrInfo.h"
 #include "X86.h"
 #include "X86RegisterInfo.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Target/TargetInstrInfo.h"
 
 #define GET_INSTRINFO_HEADER
 #include "X86GenInstrInfo.inc"
@@ -60,6 +60,9 @@ namespace X86 {
 
   // Turn condition code into conditional branch opcode.
   unsigned GetCondBranchFromCond(CondCode CC);
+
+  // Turn CMov opcode into condition code.
+  CondCode getCondFromCMovOpc(unsigned Opc);
 
   /// GetOppositeBranchCondition - Return the inverse of the specified cond,
   /// e.g. turning COND_E to COND_NE.
@@ -128,8 +131,8 @@ class X86InstrInfo : public X86GenInstrInfo {
   X86TargetMachine &TM;
   const X86RegisterInfo RI;
 
-  /// RegOp2MemOpTable2Addr, RegOp2MemOpTable0, RegOp2MemOpTable1,
-  /// RegOp2MemOpTable2 - Load / store folding opcode maps.
+  /// RegOp2MemOpTable3Addr, RegOp2MemOpTable0, RegOp2MemOpTable1,
+  /// RegOp2MemOpTable2, RegOp2MemOpTable3 - Load / store folding opcode maps.
   ///
   typedef DenseMap<unsigned,
                    std::pair<unsigned, unsigned> > RegOp2MemOpTableType;
@@ -137,6 +140,7 @@ class X86InstrInfo : public X86GenInstrInfo {
   RegOp2MemOpTableType RegOp2MemOpTable0;
   RegOp2MemOpTableType RegOp2MemOpTable1;
   RegOp2MemOpTableType RegOp2MemOpTable2;
+  RegOp2MemOpTableType RegOp2MemOpTable3;
 
   /// MemOp2RegOpTable - Load / store unfolding opcode map.
   ///
@@ -144,9 +148,9 @@ class X86InstrInfo : public X86GenInstrInfo {
                    std::pair<unsigned, unsigned> > MemOp2RegOpTableType;
   MemOp2RegOpTableType MemOp2RegOpTable;
 
-  void AddTableEntry(RegOp2MemOpTableType &R2MTable,
-                     MemOp2RegOpTableType &M2RTable,
-                     unsigned RegOp, unsigned MemOp, unsigned Flags);
+  static void AddTableEntry(RegOp2MemOpTableType &R2MTable,
+                            MemOp2RegOpTableType &M2RTable,
+                            unsigned RegOp, unsigned MemOp, unsigned Flags);
 
 public:
   explicit X86InstrInfo(X86TargetMachine &tm);
@@ -188,6 +192,19 @@ public:
                      const MachineInstr *Orig,
                      const TargetRegisterInfo &TRI) const;
 
+  /// Given an operand within a MachineInstr, insert preceding code to put it
+  /// into the right format for a particular kind of LEA instruction. This may
+  /// involve using an appropriate super-register instead (with an implicit use
+  /// of the original) or creating a new virtual register and inserting COPY
+  /// instructions to get the data into the right class.
+  ///
+  /// Reference parameters are set to indicate how caller should add this
+  /// operand to the LEA instruction.
+  bool classifyLEAReg(MachineInstr *MI, const MachineOperand &Src,
+                      unsigned LEAOpcode, bool AllowSP,
+                      unsigned &NewSrc, bool &isKill,
+                      bool &isUndef, MachineOperand &ImplicitOp) const;
+
   /// convertToThreeAddress - This method must be implemented by targets that
   /// set the M_CONVERTIBLE_TO_3_ADDR flag.  When this flag is set, the target
   /// may be able to convert a two-address instruction into a true
@@ -218,6 +235,14 @@ public:
                                 MachineBasicBlock *FBB,
                                 const SmallVectorImpl<MachineOperand> &Cond,
                                 DebugLoc DL) const;
+  virtual bool canInsertSelect(const MachineBasicBlock&,
+                               const SmallVectorImpl<MachineOperand> &Cond,
+                               unsigned, unsigned, int&, int&, int&) const;
+  virtual void insertSelect(MachineBasicBlock &MBB,
+                            MachineBasicBlock::iterator MI, DebugLoc DL,
+                            unsigned DstReg,
+                            const SmallVectorImpl<MachineOperand> &Cond,
+                            unsigned TrueReg, unsigned FalseReg) const;
   virtual void copyPhysReg(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MI, DebugLoc DL,
                            unsigned DestReg, unsigned SrcReg,
@@ -249,12 +274,6 @@ public:
                                SmallVectorImpl<MachineInstr*> &NewMIs) const;
 
   virtual bool expandPostRAPseudo(MachineBasicBlock::iterator MI) const;
-
-  virtual
-  MachineInstr *emitFrameIndexDebugValue(MachineFunction &MF,
-                                         int FrameIx, uint64_t Offset,
-                                         const MDNode *MDPtr,
-                                         DebugLoc DL) const;
 
   /// foldMemoryOperand - If this target supports it, fold a load or store of
   /// the specified stack slot into the specified machine instruction for the
@@ -320,6 +339,9 @@ public:
                                        int64_t Offset1, int64_t Offset2,
                                        unsigned NumLoads) const;
 
+  virtual bool shouldScheduleAdjacent(MachineInstr* First,
+                                      MachineInstr *Second) const LLVM_OVERRIDE;
+
   virtual void getNoopForMachoTarget(MCInst &NopInst) const;
 
   virtual
@@ -362,6 +384,33 @@ public:
                              const MachineRegisterInfo *MRI,
                              const MachineInstr *DefMI, unsigned DefIdx,
                              const MachineInstr *UseMI, unsigned UseIdx) const;
+
+  /// analyzeCompare - For a comparison instruction, return the source registers
+  /// in SrcReg and SrcReg2 if having two register operands, and the value it
+  /// compares against in CmpValue. Return true if the comparison instruction
+  /// can be analyzed.
+  virtual bool analyzeCompare(const MachineInstr *MI, unsigned &SrcReg,
+                              unsigned &SrcReg2,
+                              int &CmpMask, int &CmpValue) const;
+
+  /// optimizeCompareInstr - Check if there exists an earlier instruction that
+  /// operates on the same source operands and sets flags in the same way as
+  /// Compare; remove Compare if possible.
+  virtual bool optimizeCompareInstr(MachineInstr *CmpInstr, unsigned SrcReg,
+                                    unsigned SrcReg2, int CmpMask, int CmpValue,
+                                    const MachineRegisterInfo *MRI) const;
+
+  /// optimizeLoadInstr - Try to remove the load by folding it to a register
+  /// operand at the use. We fold the load instructions if and only if the
+  /// def and use are in the same BB. We only look at one load and see
+  /// whether it can be folded into MI. FoldAsLoadDefReg is the virtual register
+  /// defined by the load we are trying to fold. DefMI returns the machine
+  /// instruction that defines FoldAsLoadDefReg, and the function returns
+  /// the machine instruction generated due to folding.
+  virtual MachineInstr* optimizeLoadInstr(MachineInstr *MI,
+                        const MachineRegisterInfo *MRI,
+                        unsigned &FoldAsLoadDefReg,
+                        MachineInstr *&DefMI) const;
 
 private:
   MachineInstr * convertToThreeAddressWithLEA(unsigned MIOpc,

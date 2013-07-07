@@ -15,33 +15,32 @@
 #define DEBUG_TYPE "mblaze-asm-printer"
 
 #include "MBlaze.h"
-#include "MBlazeSubtarget.h"
-#include "MBlazeInstrInfo.h"
-#include "MBlazeTargetMachine.h"
-#include "MBlazeMachineFunction.h"
-#include "MBlazeMCInstLower.h"
 #include "InstPrinter/MBlazeInstPrinter.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Module.h"
+#include "MBlazeInstrInfo.h"
+#include "MBlazeMCInstLower.h"
+#include "MBlazeMachineFunction.h"
+#include "MBlazeSubtarget.h"
+#include "MBlazeTargetMachine.h"
 #include "llvm/CodeGen/AsmPrinter.h"
-#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Module.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Target/Mangler.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetLoweringObjectFile.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetOptions.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/Mangler.h"
+#include "llvm/Target/TargetLoweringObjectFile.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include <cctype>
 
 using namespace llvm;
@@ -136,7 +135,7 @@ void MBlazeAsmPrinter::printSavedRegsBitmask() {
   for (unsigned i = 0, e = CSI.size(); i != e; ++i) {
     unsigned Reg = CSI[i].getReg();
     unsigned RegNum = getMBlazeRegisterNumbering(Reg);
-    if (MBlaze::GPRRegisterClass->contains(Reg))
+    if (MBlaze::GPRRegClass.contains(Reg))
       CPUBitmask |= (1 << RegNum);
   }
 
@@ -188,7 +187,7 @@ void MBlazeAsmPrinter::EmitFunctionBodyEnd() {
 
 //===----------------------------------------------------------------------===//
 void MBlazeAsmPrinter::EmitInstruction(const MachineInstr *MI) {
-  MBlazeMCInstLower MCInstLowering(OutContext, *Mang, *this);
+  MBlazeMCInstLower MCInstLowering(OutContext, *this);
 
   MCInst TmpInst;
   MCInstLowering.Lower(MI, TmpInst);
@@ -201,7 +200,13 @@ PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                 unsigned AsmVariant,const char *ExtraCode, raw_ostream &O) {
   // Does this asm operand have a single letter operand modifier?
   if (ExtraCode && ExtraCode[0])
-    return true; // Unknown modifier.
+    if (ExtraCode[1] != 0) return true; // Unknown modifier.
+
+    switch (ExtraCode[0]) {
+    default:
+      // See if this is a generic print operand
+      return AsmPrinter::PrintAsmOperand(MI, OpNo, AsmVariant, ExtraCode, O);
+    }
 
   printOperand(MI, OpNo, O);
   return false;

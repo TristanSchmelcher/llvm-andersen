@@ -1,4 +1,4 @@
-//===-- SelectionDAGBuilder.h - Selection-DAG building --------------------===//
+//===-- SelectionDAGBuilder.h - Selection-DAG building --------*- c++ -*---===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,12 +14,12 @@
 #ifndef SELECTIONDAGBUILDER_H
 #define SELECTIONDAGBUILDER_H
 
-#include "llvm/Constants.h"
-#include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <vector>
@@ -66,7 +66,7 @@ class ShuffleVectorInst;
 class SIToFPInst;
 class StoreInst;
 class SwitchInst;
-class TargetData;
+class DataLayout;
 class TargetLibraryInfo;
 class TargetLowering;
 class TruncInst;
@@ -80,8 +80,8 @@ class ZExtInst;
 /// implementation that is parameterized by a TargetLowering object.
 ///
 class SelectionDAGBuilder {
-  /// CurDebugLoc - current file + line number.  Changes as we build the DAG.
-  DebugLoc CurDebugLoc;
+  /// CurInst - The current instruction being visited
+  const Instruction *CurInst;
 
   DenseMap<const Value*, SDValue> NodeMap;
   
@@ -150,9 +150,11 @@ private:
     uint64_t Mask;
     MachineBasicBlock* BB;
     unsigned Bits;
+    uint32_t ExtraWeight;
 
-    CaseBits(uint64_t mask, MachineBasicBlock* bb, unsigned bits):
-      Mask(mask), BB(bb), Bits(bits) { }
+    CaseBits(uint64_t mask, MachineBasicBlock* bb, unsigned bits,
+             uint32_t Weight):
+      Mask(mask), BB(bb), Bits(bits), ExtraWeight(Weight) { }
   };
 
   typedef std::vector<Case>           CaseVector;
@@ -179,17 +181,6 @@ private:
   };
 
   typedef std::vector<CaseRec> CaseRecVector;
-
-  /// The comparison function for sorting the switch case values in the vector.
-  /// WARNING: Case ranges should be disjoint!
-  struct CaseCmp {
-    bool operator()(const Case &C1, const Case &C2) {
-      assert(isa<ConstantInt>(C1.Low) && isa<ConstantInt>(C2.High));
-      const ConstantInt* CI1 = cast<const ConstantInt>(C1.Low);
-      const ConstantInt* CI2 = cast<const ConstantInt>(C2.High);
-      return CI1->getValue().slt(CI2->getValue());
-    }
-  };
 
   struct CaseBitsCmp {
     bool operator()(const CaseBits &C1, const CaseBits &C2) {
@@ -258,18 +249,20 @@ private:
   typedef std::pair<JumpTableHeader, JumpTable> JumpTableBlock;
 
   struct BitTestCase {
-    BitTestCase(uint64_t M, MachineBasicBlock* T, MachineBasicBlock* Tr):
-      Mask(M), ThisBB(T), TargetBB(Tr) { }
+    BitTestCase(uint64_t M, MachineBasicBlock* T, MachineBasicBlock* Tr,
+                uint32_t Weight):
+      Mask(M), ThisBB(T), TargetBB(Tr), ExtraWeight(Weight) { }
     uint64_t Mask;
     MachineBasicBlock *ThisBB;
     MachineBasicBlock *TargetBB;
+    uint32_t ExtraWeight;
   };
 
   typedef SmallVector<BitTestCase, 3> BitTestInfo;
 
   struct BitTestBlock {
     BitTestBlock(APInt F, APInt R, const Value* SV,
-                 unsigned Rg, EVT RgVT, bool E,
+                 unsigned Rg, MVT RgVT, bool E,
                  MachineBasicBlock* P, MachineBasicBlock* D,
                  const BitTestInfo& C):
       First(F), Range(R), SValue(SV), Reg(Rg), RegVT(RgVT), Emitted(E),
@@ -278,21 +271,18 @@ private:
     APInt Range;
     const Value *SValue;
     unsigned Reg;
-    EVT RegVT;
+    MVT RegVT;
     bool Emitted;
     MachineBasicBlock *Parent;
     MachineBasicBlock *Default;
     BitTestInfo Cases;
   };
 
-public:
-  // TLI - This is information that describes the available target features we
-  // need for lowering.  This indicates when operations are unavailable,
-  // implemented with a libcall, etc.
+private:
   const TargetMachine &TM;
-  const TargetLowering &TLI;
+public:
   SelectionDAG &DAG;
-  const TargetData *TD;
+  const DataLayout *TD;
   AliasAnalysis *AA;
   const TargetLibraryInfo *LibInfo;
 
@@ -334,9 +324,9 @@ public:
 
   SelectionDAGBuilder(SelectionDAG &dag, FunctionLoweringInfo &funcinfo,
                       CodeGenOpt::Level ol)
-    : SDNodeOrder(0), TM(dag.getTarget()), TLI(dag.getTargetLoweringInfo()),
+    : CurInst(NULL), SDNodeOrder(0), TM(dag.getTarget()),
       DAG(dag), FuncInfo(funcinfo), OptLevel(ol),
-      HasTailCall(false), Context(dag.getContext()) {
+      HasTailCall(false) {
   }
 
   void init(GCFunctionInfo *gfi, AliasAnalysis &aa,
@@ -351,7 +341,7 @@ public:
   void clear();
 
   /// clearDanglingDebugInfo - Clear the dangling debug information
-  /// map. This function is seperated from the clear so that debug
+  /// map. This function is separated from the clear so that debug
   /// information that is dangling in a basic block can be properly
   /// resolved in a different basic block. This allows the
   /// SelectionDAG to resolve dangling debug information attached
@@ -371,16 +361,17 @@ public:
   ///
   SDValue getControlRoot();
 
-  DebugLoc getCurDebugLoc() const { return CurDebugLoc; }
+  SDLoc getCurSDLoc() const {
+    return SDLoc(CurInst, SDNodeOrder);
+  }
+
+  DebugLoc getCurDebugLoc() const {
+    return CurInst ? CurInst->getDebugLoc() : DebugLoc();
+  }
 
   unsigned getSDNodeOrder() const { return SDNodeOrder; }
 
   void CopyValueToVirtualRegister(const Value *V, unsigned Reg);
-
-  /// AssignOrderingToNode - Assign an ordering to the node. The order is gotten
-  /// from how the code appeared in the source. The ordering is used by the
-  /// scheduler to effectively turn off scheduling.
-  void AssignOrderingToNode(const SDNode *Node);
 
   void visit(const Instruction &I);
 
@@ -463,6 +454,7 @@ public:
   void visitBitTestHeader(BitTestBlock &B, MachineBasicBlock *SwitchBB);
   void visitBitTestCase(BitTestBlock &BB,
                         MachineBasicBlock* NextMBB,
+                        uint32_t BranchWeightToNext,
                         unsigned Reg,
                         BitTestCase &B,
                         MachineBasicBlock *SwitchBB);
@@ -531,19 +523,13 @@ private:
   void visitPHI(const PHINode &I);
   void visitCall(const CallInst &I);
   bool visitMemCmpCall(const CallInst &I);
+  bool visitUnaryFloatCall(const CallInst &I, unsigned Opcode);
   void visitAtomicLoad(const LoadInst &I);
   void visitAtomicStore(const StoreInst &I);
 
   void visitInlineAsm(ImmutableCallSite CS);
   const char *visitIntrinsicCall(const CallInst &I, unsigned Intrinsic);
   void visitTargetIntrinsic(const CallInst &I, unsigned Intrinsic);
-
-  void visitPow(const CallInst &I);
-  void visitExp2(const CallInst &I);
-  void visitExp(const CallInst &I);
-  void visitLog(const CallInst &I);
-  void visitLog2(const CallInst &I);
-  void visitLog10(const CallInst &I);
 
   void visitVAStart(const CallInst &I);
   void visitVAArg(const VAArgInst &I);
@@ -556,8 +542,6 @@ private:
   void visitUserOp2(const Instruction &I) {
     llvm_unreachable("UserOp2 should not exist at instruction selection time!");
   }
-  
-  const char *implVisitAluOverflow(const CallInst &I, ISD::NodeType Op);
 
   void HandlePHINodesInSuccessorBlocks(const BasicBlock *LLVMBB);
 

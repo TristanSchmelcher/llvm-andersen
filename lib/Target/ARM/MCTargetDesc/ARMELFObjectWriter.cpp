@@ -7,16 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MCTargetDesc/ARMFixupKinds.h"
 #include "MCTargetDesc/ARMMCTargetDesc.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
+#include "MCTargetDesc/ARMFixupKinds.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCValue.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -36,7 +37,6 @@ namespace {
     virtual unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
                                   bool IsPCRel, bool IsRelocWithSymbol,
                                   int64_t Addend) const;
-    virtual unsigned getEFlags() const;
     virtual const MCSymbol *ExplicitRelSym(const MCAssembler &Asm,
                                    const MCValue &Target,
                                    const MCFragment &F,
@@ -51,11 +51,6 @@ ARMELFObjectWriter::ARMELFObjectWriter(uint8_t OSABI)
                             /*HasRelocationAddend*/ false) {}
 
 ARMELFObjectWriter::~ARMELFObjectWriter() {}
-
-// FIXME: get the real EABI Version from the Triple.
-unsigned ARMELFObjectWriter::getEFlags() const {
-  return ELF::EF_ARM_EABIMASK & DefaultEABIVersion;
-}
 
 // In ARM, _MergedGlobals and other most symbols get emitted directly.
 // I.e. not as an offset to a section symbol.
@@ -132,6 +127,7 @@ const MCSymbol *ARMELFObjectWriter::ExplicitRelSym(const MCAssembler &Asm,
     switch (RelocType) {
     default: EmitThisSym = true; break;
     case ELF::R_ARM_ABS32: EmitThisSym = false; break;
+    case ELF::R_ARM_PREL31: EmitThisSym = false; break;
     }
   }
 
@@ -177,7 +173,8 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
         break;
       }
       break;
-    case ARM::fixup_arm_uncondbranch:
+    case ARM::fixup_arm_blx:
+    case ARM::fixup_arm_uncondbl:
       switch (Modifier) {
       case MCSymbolRefExpr::VK_ARM_PLT:
         Type = ELF::R_ARM_PLT32;
@@ -187,8 +184,14 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
         break;
       }
       break;
+    case ARM::fixup_arm_condbl:
     case ARM::fixup_arm_condbranch:
+    case ARM::fixup_arm_uncondbranch:
       Type = ELF::R_ARM_JUMP24;
+      break;
+    case ARM::fixup_t2_condbranch:
+    case ARM::fixup_t2_uncondbranch:
+      Type = ELF::R_ARM_THM_JUMP24;
       break;
     case ARM::fixup_arm_movt_hi16:
     case ARM::fixup_arm_movt_hi16_pcrel:
@@ -217,6 +220,9 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
     case FK_Data_4:
       switch (Modifier) {
       default: llvm_unreachable("Unsupported Modifier");
+      case MCSymbolRefExpr::VK_ARM_NONE:
+        Type = ELF::R_ARM_NONE;
+        break;
       case MCSymbolRefExpr::VK_ARM_GOT:
         Type = ELF::R_ARM_GOT_BREL;
         break;
@@ -238,7 +244,13 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
       case MCSymbolRefExpr::VK_ARM_TARGET1:
         Type = ELF::R_ARM_TARGET1;
         break;
-      } 
+      case MCSymbolRefExpr::VK_ARM_TARGET2:
+        Type = ELF::R_ARM_TARGET2;
+        break;
+      case MCSymbolRefExpr::VK_ARM_PREL31:
+        Type = ELF::R_ARM_PREL31;
+        break;
+      }
       break;
     case ARM::fixup_arm_ldst_pcrel_12:
     case ARM::fixup_arm_pcrel_10:
@@ -248,10 +260,8 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
     case ARM::fixup_arm_thumb_cp:
     case ARM::fixup_arm_thumb_br:
       llvm_unreachable("Unimplemented");
-    case ARM::fixup_arm_uncondbranch:
-      Type = ELF::R_ARM_CALL;
-      break;
     case ARM::fixup_arm_condbranch:
+    case ARM::fixup_arm_uncondbranch:
       Type = ELF::R_ARM_JUMP24;
       break;
     case ARM::fixup_arm_movt_hi16:

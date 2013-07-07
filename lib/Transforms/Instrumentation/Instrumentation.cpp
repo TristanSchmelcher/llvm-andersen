@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/InitializePasses.h"
+#include "llvm/PassRegistry.h"
 #include "llvm-c/Initialization.h"
 
 using namespace llvm;
@@ -20,11 +21,14 @@ using namespace llvm;
 /// initializeInstrumentation - Initialize all passes in the TransformUtils
 /// library.
 void llvm::initializeInstrumentation(PassRegistry &Registry) {
+  initializeAddressSanitizerPass(Registry);
+  initializeAddressSanitizerModulePass(Registry);
+  initializeBoundsCheckingPass(Registry);
   initializeEdgeProfilerPass(Registry);
+  initializeGCOVProfilerPass(Registry);
   initializeOptimalEdgeProfilerPass(Registry);
   initializePathProfilerPass(Registry);
-  initializeGCOVProfilerPass(Registry);
-  initializeAddressSanitizerPass(Registry);
+  initializeMemorySanitizerPass(Registry);
   initializeThreadSanitizerPass(Registry);
 }
 

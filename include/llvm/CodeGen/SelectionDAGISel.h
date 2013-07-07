@@ -12,13 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CODEGEN_SELECTIONDAG_ISEL_H
-#define LLVM_CODEGEN_SELECTIONDAG_ISEL_H
+#ifndef LLVM_CODEGEN_SELECTIONDAGISEL_H
+#define LLVM_CODEGEN_SELECTIONDAGISEL_H
 
-#include "llvm/BasicBlock.h"
-#include "llvm/Pass.h"
-#include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/Pass.h"
 
 namespace llvm {
   class FastISel;
@@ -30,7 +30,7 @@ namespace llvm {
   class MachineInstr;
   class TargetLowering;
   class TargetLibraryInfo;
-  class TargetInstrInfo;
+  class TargetTransformInfo;
   class FunctionLoweringInfo;
   class ScheduleHazardRecognizer;
   class GCFunctionInfo;
@@ -41,9 +41,9 @@ namespace llvm {
 /// pattern-matching instruction selectors.
 class SelectionDAGISel : public MachineFunctionPass {
 public:
-  const TargetMachine &TM;
-  const TargetLowering &TLI;
+  TargetMachine &TM;
   const TargetLibraryInfo *LibInfo;
+  const TargetTransformInfo *TTI;
   FunctionLoweringInfo *FuncInfo;
   MachineFunction *MF;
   MachineRegisterInfo *RegInfo;
@@ -54,11 +54,13 @@ public:
   CodeGenOpt::Level OptLevel;
   static char ID;
 
-  explicit SelectionDAGISel(const TargetMachine &tm,
+  explicit SelectionDAGISel(TargetMachine &tm,
                             CodeGenOpt::Level OL = CodeGenOpt::Default);
   virtual ~SelectionDAGISel();
 
-  const TargetLowering &getTargetLowering() { return TLI; }
+  const TargetLowering *getTargetLowering() const {
+    return TM.getTargetLowering();
+  }
 
   virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 
@@ -172,53 +174,22 @@ protected:
   ///
   unsigned DAGSize;
 
-  /// ISelPosition - Node iterator marking the current position of
-  /// instruction selection as it procedes through the topologically-sorted
-  /// node list.
-  SelectionDAG::allnodes_iterator ISelPosition;
-
-
-  /// ISelUpdater - helper class to handle updates of the
-  /// instruction selection graph.
-  class ISelUpdater : public SelectionDAG::DAGUpdateListener {
-    virtual void anchor();
-    SelectionDAG::allnodes_iterator &ISelPosition;
-  public:
-    explicit ISelUpdater(SelectionDAG::allnodes_iterator &isp)
-      : ISelPosition(isp) {}
-
-    /// NodeDeleted - Handle nodes deleted from the graph. If the
-    /// node being deleted is the current ISelPosition node, update
-    /// ISelPosition.
-    ///
-    virtual void NodeDeleted(SDNode *N, SDNode *E) {
-      if (ISelPosition == SelectionDAG::allnodes_iterator(N))
-        ++ISelPosition;
-    }
-
-    /// NodeUpdated - Ignore updates for now.
-    virtual void NodeUpdated(SDNode *N) {}
-  };
-
   /// ReplaceUses - replace all uses of the old node F with the use
   /// of the new node T.
   void ReplaceUses(SDValue F, SDValue T) {
-    ISelUpdater ISU(ISelPosition);
-    CurDAG->ReplaceAllUsesOfValueWith(F, T, &ISU);
+    CurDAG->ReplaceAllUsesOfValueWith(F, T);
   }
 
   /// ReplaceUses - replace all uses of the old nodes F with the use
   /// of the new nodes T.
   void ReplaceUses(const SDValue *F, const SDValue *T, unsigned Num) {
-    ISelUpdater ISU(ISelPosition);
-    CurDAG->ReplaceAllUsesOfValuesWith(F, T, Num, &ISU);
+    CurDAG->ReplaceAllUsesOfValuesWith(F, T, Num);
   }
 
   /// ReplaceUses - replace all uses of the old node F with the use
   /// of the new node T.
   void ReplaceUses(SDNode *F, SDNode *T) {
-    ISelUpdater ISU(ISelPosition);
-    CurDAG->ReplaceAllUsesWith(F, T, &ISU);
+    CurDAG->ReplaceAllUsesWith(F, T);
   }
 
 
@@ -278,16 +249,23 @@ private:
                     const SDValue *Ops, unsigned NumOps, unsigned EmitNodeInfo);
 
   void PrepareEHLandingPad();
-  void SelectAllBasicBlocks(const Function &Fn);
-  bool TryToFoldFastISelLoad(const LoadInst *LI, const Instruction *FoldInst,
-                             FastISel *FastIS);
-  void FinishBasicBlock();
 
+  /// \brief Perform instruction selection on all basic blocks in the function.
+  void SelectAllBasicBlocks(const Function &Fn);
+
+  /// \brief Perform instruction selection on a single basic block, for
+  /// instructions between \p Begin and \p End.  \p HadTailCall will be set
+  /// to true if a call in the block was translated as a tail call.
   void SelectBasicBlock(BasicBlock::const_iterator Begin,
                         BasicBlock::const_iterator End,
                         bool &HadTailCall);
+  void FinishBasicBlock();
+
   void CodeGenAndEmitDAG();
-  void LowerArguments(const BasicBlock *BB);
+
+  /// \brief Generate instructions for lowering the incoming arguments of the
+  /// given function.
+  void LowerArguments(const Function &F);
 
   void ComputeLiveOutVRegInfo();
 
@@ -310,4 +288,4 @@ private:
 
 }
 
-#endif /* LLVM_CODEGEN_SELECTIONDAG_ISEL_H */
+#endif /* LLVM_CODEGEN_SELECTIONDAGISEL_H */

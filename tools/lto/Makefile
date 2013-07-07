@@ -39,8 +39,7 @@ ifeq ($(HOST_OS),Darwin)
     endif
     # extra options to override libtool defaults 
     LLVMLibsOptions    := $(LLVMLibsOptions)  \
-                         -Wl,-dead_strip \
-                         -Wl,-seg1addr -Wl,0xE0000000 
+                         -Wl,-dead_strip
 
     # Mac OS X 10.4 and earlier tools do not allow a second -install_name on command line
     DARWIN_VERS := $(shell echo $(TARGET_TRIPLE) | sed 's/.*darwin\([0-9]*\).*/\1/')
@@ -48,5 +47,12 @@ ifeq ($(HOST_OS),Darwin)
        LLVMLibsOptions    := $(LLVMLibsOptions)  \
                             -Wl,-install_name \
                             -Wl,"@executable_path/../lib/lib$(LIBRARYNAME)$(SHLIBEXT)"
+    endif
+
+    # If we're doing an Apple-style build, add the LTO object path.
+    ifeq ($(RC_XBS),YES)
+       TempFile        := $(shell mkdir -p ${OBJROOT}/dSYMs ; mktemp ${OBJROOT}/dSYMs/llvm-lto.XXXXXX)
+       LLVMLibsOptions := $(LLVMLibsOptions) \
+                          -Wl,-object_path_lto -Wl,$(TempFile)
     endif
 endif

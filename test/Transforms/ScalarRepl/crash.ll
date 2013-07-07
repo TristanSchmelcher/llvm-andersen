@@ -1,5 +1,5 @@
-; RUN: opt -scalarrepl %s -disable-output
-; RUN: opt -scalarrepl-ssa %s -disable-output
+; RUN: opt -scalarrepl -disable-output < %s
+; RUN: opt -scalarrepl-ssa -disable-output < %s
 
 target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64"
 target triple = "x86_64-apple-darwin10.0.0"
@@ -257,6 +257,28 @@ entry:
   %memtmp = alloca i32, align 4
   %0 = bitcast i32* %memtmp to void ()*
   call void %0() nounwind
+  ret void
+}
+
+; rdar://11861001 - The dynamic GEP here was incorrectly making all accesses
+; to the alloca think they were also dynamic.  Inserts and extracts created to
+; access the vector were all being based from the dynamic access, even in BBs
+; not dominated by the GEP.
+define fastcc void @test() optsize inlinehint ssp align 2 {
+entry:
+  %alloc.0.0 = alloca <4 x float>, align 16
+  %bitcast = bitcast <4 x float>* %alloc.0.0 to [4 x float]*
+  %idx3 = getelementptr inbounds [4 x float]* %bitcast, i32 0, i32 3
+  store float 0.000000e+00, float* %idx3, align 4
+  br label %for.body10
+
+for.body10:                                       ; preds = %for.body10, %entry
+  %loopidx = phi i32 [ 0, %entry ], [ undef, %for.body10 ]
+  %unusedidx = getelementptr inbounds <4 x float>* %alloc.0.0, i32 0, i32 %loopidx
+  br i1 undef, label %for.end, label %for.body10
+
+for.end:                                          ; preds = %for.body10
+  store <4 x float> <float -1.000000e+00, float -1.000000e+00, float -1.000000e+00, float 0.000000e+00>, <4 x float>* %alloc.0.0, align 16
   ret void
 }
 

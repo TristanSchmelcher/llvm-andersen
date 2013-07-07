@@ -40,14 +40,14 @@
 /* Has gcc/MSVC atomic intrinsics */
 #cmakedefine01 LLVM_HAS_ATOMICS
 
+/* Host triple LLVM will be executed on */
+#cmakedefine LLVM_HOST_TRIPLE "${LLVM_HOST_TRIPLE}"
+
 /* Installation directory for include files */
 #cmakedefine LLVM_INCLUDEDIR "${LLVM_INCLUDEDIR}"
 
 /* Installation directory for .info files */
 #cmakedefine LLVM_INFODIR "${LLVM_INFODIR}"
-
-/* Installation directory for libraries */
-#cmakedefine LLVM_LIBDIR "${LLVM_LIBDIR}"
 
 /* Installation directory for man pages */
 #cmakedefine LLVM_MANDIR "${LLVM_MANDIR}"
@@ -60,6 +60,9 @@
 
 /* LLVM name for the native AsmPrinter init function, if available */
 #cmakedefine LLVM_NATIVE_ASMPRINTER LLVMInitialize${LLVM_NATIVE_ARCH}AsmPrinter
+
+/* LLVM name for the native Disassembler init function, if available */
+#cmakedefine LLVM_NATIVE_DISASSEMBLER LLVMInitialize${LLVM_NATIVE_ARCH}Disassembler
 
 /* LLVM name for the native Target init function, if available */
 #cmakedefine LLVM_NATIVE_TARGET LLVMInitialize${LLVM_NATIVE_ARCH}Target
@@ -106,10 +109,19 @@
 /* Installation prefix directory */
 #cmakedefine LLVM_PREFIX "${LLVM_PREFIX}"
 
+/* Define if we have the Intel JIT API runtime support library */
+#cmakedefine LLVM_USE_INTEL_JITEVENTS 1
+
+/* Define if we have the oprofile JIT-support library */
+#cmakedefine LLVM_USE_OPROFILE 1
+
 /* Major version of the LLVM API */
 #cmakedefine LLVM_VERSION_MAJOR ${LLVM_VERSION_MAJOR}
 
 /* Minor version of the LLVM API */
 #cmakedefine LLVM_VERSION_MINOR ${LLVM_VERSION_MINOR}
+
+/* Define to 1 if you have the <sanitizer/msan_interface.h> header file. */
+#cmakedefine HAVE_SANITIZER_MSAN_INTERFACE_H ${HAVE_SANITIZER_MSAN_INTERFACE_H}
 
 #endif

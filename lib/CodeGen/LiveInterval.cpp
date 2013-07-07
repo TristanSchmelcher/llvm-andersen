@@ -19,11 +19,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/LiveInterval.h"
+#include "RegisterCoalescer.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetRegisterInfo.h"
@@ -48,19 +49,32 @@ LiveInterval::iterator LiveInterval::find(SlotIndex Pos) {
   return I;
 }
 
-/// killedInRange - Return true if the interval has kills in [Start,End).
-bool LiveInterval::killedInRange(SlotIndex Start, SlotIndex End) const {
-  Ranges::const_iterator r =
-    std::lower_bound(ranges.begin(), ranges.end(), End);
+VNInfo *LiveInterval::createDeadDef(SlotIndex Def,
+                                    VNInfo::Allocator &VNInfoAllocator) {
+  assert(!Def.isDead() && "Cannot define a value at the dead slot");
+  iterator I = find(Def);
+  if (I == end()) {
+    VNInfo *VNI = getNextValue(Def, VNInfoAllocator);
+    ranges.push_back(LiveRange(Def, Def.getDeadSlot(), VNI));
+    return VNI;
+  }
+  if (SlotIndex::isSameInstr(Def, I->start)) {
+    assert(I->valno->def == I->start && "Inconsistent existing value def");
 
-  // Now r points to the first interval with start >= End, or ranges.end().
-  if (r == ranges.begin())
-    return false;
-
-  --r;
-  // Now r points to the last interval with end <= End.
-  // r->end is the kill point.
-  return r->end >= Start && r->end < End;
+    // It is possible to have both normal and early-clobber defs of the same
+    // register on an instruction. It doesn't make a lot of sense, but it is
+    // possible to specify in inline assembly.
+    //
+    // Just convert everything to early-clobber.
+    Def = std::min(Def, I->start);
+    if (Def != I->start)
+      I->start = I->valno->def = Def;
+    return I->valno;
+  }
+  assert(SlotIndex::isEarlierInstr(Def, I->start) && "Already live at def");
+  VNInfo *VNI = getNextValue(Def, VNInfoAllocator);
+  ranges.insert(I, LiveRange(Def, Def.getDeadSlot(), VNI));
+  return VNI;
 }
 
 // overlaps - Return true if the intersection of the two live intervals is
@@ -122,6 +136,48 @@ bool LiveInterval::overlapsFrom(const LiveInterval& other,
   return false;
 }
 
+bool LiveInterval::overlaps(const LiveInterval &Other,
+                            const CoalescerPair &CP,
+                            const SlotIndexes &Indexes) const {
+  assert(!empty() && "empty interval");
+  if (Other.empty())
+    return false;
+
+  // Use binary searches to find initial positions.
+  const_iterator I = find(Other.beginIndex());
+  const_iterator IE = end();
+  if (I == IE)
+    return false;
+  const_iterator J = Other.find(I->start);
+  const_iterator JE = Other.end();
+  if (J == JE)
+    return false;
+
+  for (;;) {
+    // J has just been advanced to satisfy:
+    assert(J->end >= I->start);
+    // Check for an overlap.
+    if (J->start < I->end) {
+      // I and J are overlapping. Find the later start.
+      SlotIndex Def = std::max(I->start, J->start);
+      // Allow the overlap if Def is a coalescable copy.
+      if (Def.isBlock() ||
+          !CP.isCoalescable(Indexes.getInstructionFromIndex(Def)))
+        return true;
+    }
+    // Advance the iterator that ends first to check for more overlaps.
+    if (J->end > I->end) {
+      std::swap(I, J);
+      std::swap(IE, JE);
+    }
+    // Advance J until J->end >= I->start.
+    do
+      if (++J == JE)
+        return false;
+    while (J->end < I->start);
+  }
+}
+
 /// overlaps - Return true if the live interval overlaps a range specified
 /// by [Start, End).
 bool LiveInterval::overlaps(SlotIndex Start, SlotIndex End) const {
@@ -140,7 +196,7 @@ void LiveInterval::markValNoForDeletion(VNInfo *ValNo) {
       valnos.pop_back();
     } while (!valnos.empty() && valnos.back()->isUnused());
   } else {
-    ValNo->setIsUnused(true);
+    ValNo->markUnused();
   }
 }
 
@@ -176,16 +232,16 @@ void LiveInterval::extendIntervalEndTo(Ranges::iterator I, SlotIndex NewEnd) {
   // If NewEnd was in the middle of an interval, make sure to get its endpoint.
   I->end = std::max(NewEnd, prior(MergeTo)->end);
 
-  // Erase any dead ranges.
-  ranges.erase(llvm::next(I), MergeTo);
-
   // If the newly formed range now touches the range after it and if they have
   // the same value number, merge the two ranges into one range.
-  Ranges::iterator Next = llvm::next(I);
-  if (Next != ranges.end() && Next->start <= I->end && Next->valno == ValNo) {
-    I->end = Next->end;
-    ranges.erase(Next);
+  if (MergeTo != ranges.end() && MergeTo->start <= I->end &&
+      MergeTo->valno == ValNo) {
+    I->end = MergeTo->end;
+    ++MergeTo;
   }
+
+  // Erase any dead ranges.
+  ranges.erase(llvm::next(I), MergeTo);
 }
 
 
@@ -353,18 +409,6 @@ void LiveInterval::removeValNo(VNInfo *ValNo) {
   markValNoForDeletion(ValNo);
 }
 
-/// findDefinedVNInfo - Find the VNInfo defined by the specified
-/// index (register interval).
-VNInfo *LiveInterval::findDefinedVNInfoForRegInt(SlotIndex Idx) const {
-  for (LiveInterval::const_vni_iterator i = vni_begin(), e = vni_end();
-       i != e; ++i) {
-    if ((*i)->def == Idx)
-      return *i;
-  }
-
-  return 0;
-}
-
 /// join - Join two live intervals (this, and other) together.  This applies
 /// mappings to the value numbers in the LHS/RHS intervals as specified.  If
 /// the intervals are not joinable, this aborts.
@@ -373,6 +417,8 @@ void LiveInterval::join(LiveInterval &Other,
                         const int *RHSValNoAssignments,
                         SmallVector<VNInfo*, 16> &NewVNInfo,
                         MachineRegisterInfo *MRI) {
+  verify();
+
   // Determine if any of our live range values are mapped.  This is uncommon, so
   // we want to avoid the interval scan if not.
   bool MustMapCurValNos = false;
@@ -389,12 +435,12 @@ void LiveInterval::join(LiveInterval &Other,
 
   // If we have to apply a mapping to our base interval assignment, rewrite it
   // now.
-  if (MustMapCurValNos) {
+  if (MustMapCurValNos && !empty()) {
     // Map the first live range.
 
     iterator OutIt = begin();
     OutIt->valno = NewVNInfo[LHSValNoAssignments[OutIt->valno->id]];
-    for (iterator I = next(OutIt), E = end(); I != E; ++I) {
+    for (iterator I = llvm::next(OutIt), E = end(); I != E; ++I) {
       VNInfo* nextValNo = NewVNInfo[LHSValNoAssignments[I->valno->id]];
       assert(nextValNo != 0 && "Huh?");
 
@@ -418,10 +464,12 @@ void LiveInterval::join(LiveInterval &Other,
     ranges.erase(OutIt, end());
   }
 
-  // Remember assignements because val# ids are changing.
-  SmallVector<unsigned, 16> OtherAssignments;
+  // Rewrite Other values before changing the VNInfo ids.
+  // This can leave Other in an invalid state because we're not coalescing
+  // touching segments that now have identical values. That's OK since Other is
+  // not supposed to be valid after calling join();
   for (iterator I = Other.begin(), E = Other.end(); I != E; ++I)
-    OtherAssignments.push_back(RHSValNoAssignments[I->valno->id]);
+    I->valno = NewVNInfo[RHSValNoAssignments[I->valno->id]];
 
   // Update val# info. Renumber them and make sure they all belong to this
   // LiveInterval now. Also remove dead val#'s.
@@ -440,16 +488,9 @@ void LiveInterval::join(LiveInterval &Other,
     valnos.resize(NumNewVals);  // shrinkify
 
   // Okay, now insert the RHS live ranges into the LHS.
-  iterator InsertPos = begin();
-  unsigned RangeNo = 0;
-  for (iterator I = Other.begin(), E = Other.end(); I != E; ++I, ++RangeNo) {
-    // Map the valno in the other live range to the current live range.
-    I->valno = NewVNInfo[OtherAssignments[RangeNo]];
-    assert(I->valno && "Adding a dead range?");
-    InsertPos = addRangeFrom(*I, InsertPos);
-  }
-
-  ComputeJoinedWeight(Other);
+  LiveRangeUpdater Updater(this);
+  for (iterator I = Other.begin(), E = Other.end(); I != E; ++I)
+    Updater.add(*I);
 }
 
 /// MergeRangesInAsValue - Merge all of the intervals in RHS into this live
@@ -458,37 +499,24 @@ void LiveInterval::join(LiveInterval &Other,
 /// the overlapping LiveRanges have the specified value number.
 void LiveInterval::MergeRangesInAsValue(const LiveInterval &RHS,
                                         VNInfo *LHSValNo) {
-  // TODO: Make this more efficient.
-  iterator InsertPos = begin();
-  for (const_iterator I = RHS.begin(), E = RHS.end(); I != E; ++I) {
-    // Map the valno in the other live range to the current live range.
-    LiveRange Tmp = *I;
-    Tmp.valno = LHSValNo;
-    InsertPos = addRangeFrom(Tmp, InsertPos);
-  }
+  LiveRangeUpdater Updater(this);
+  for (const_iterator I = RHS.begin(), E = RHS.end(); I != E; ++I)
+    Updater.add(I->start, I->end, LHSValNo);
 }
-
 
 /// MergeValueInAsValue - Merge all of the live ranges of a specific val#
 /// in RHS into this live interval as the specified value number.
 /// The LiveRanges in RHS are allowed to overlap with LiveRanges in the
 /// current interval, it will replace the value numbers of the overlaped
 /// live ranges with the specified value number.
-void LiveInterval::MergeValueInAsValue(
-                                    const LiveInterval &RHS,
-                                    const VNInfo *RHSValNo, VNInfo *LHSValNo) {
-  // TODO: Make this more efficient.
-  iterator InsertPos = begin();
-  for (const_iterator I = RHS.begin(), E = RHS.end(); I != E; ++I) {
-    if (I->valno != RHSValNo)
-      continue;
-    // Map the valno in the other live range to the current live range.
-    LiveRange Tmp = *I;
-    Tmp.valno = LHSValNo;
-    InsertPos = addRangeFrom(Tmp, InsertPos);
-  }
+void LiveInterval::MergeValueInAsValue(const LiveInterval &RHS,
+                                       const VNInfo *RHSValNo,
+                                       VNInfo *LHSValNo) {
+  LiveRangeUpdater Updater(this);
+  for (const_iterator I = RHS.begin(), E = RHS.end(); I != E; ++I)
+    if (I->valno == RHSValNo)
+      Updater.add(I->start, I->end, LHSValNo);
 }
-
 
 /// MergeValueNumberInto - This method is called when two value nubmers
 /// are found to be equivalent.  This eliminates V1, replacing all
@@ -543,32 +571,10 @@ VNInfo* LiveInterval::MergeValueNumberInto(VNInfo *V1, VNInfo *V2) {
     }
   }
 
-  // Merge the relevant flags.
-  V2->mergeFlags(V1);
-
   // Now that V1 is dead, remove it.
   markValNoForDeletion(V1);
 
   return V2;
-}
-
-void LiveInterval::Copy(const LiveInterval &RHS,
-                        MachineRegisterInfo *MRI,
-                        VNInfo::Allocator &VNInfoAllocator) {
-  ranges.clear();
-  valnos.clear();
-  std::pair<unsigned, unsigned> Hint = MRI->getRegAllocationHint(RHS.reg);
-  MRI->setRegAllocationHint(reg, Hint.first, Hint.second);
-
-  weight = RHS.weight;
-  for (unsigned i = 0, e = RHS.getNumValNums(); i != e; ++i) {
-    const VNInfo *VNI = RHS.getValNumInfo(i);
-    createValueCopy(VNI, VNInfoAllocator);
-  }
-  for (unsigned i = 0, e = RHS.ranges.size(); i != e; ++i) {
-    const LiveRange &LR = RHS.ranges[i];
-    addRange(LiveRange(LR.start, LR.end, getValNumInfo(LR.valno->id)));
-  }
 }
 
 unsigned LiveInterval::getSize() const {
@@ -578,46 +584,20 @@ unsigned LiveInterval::getSize() const {
   return Sum;
 }
 
-/// ComputeJoinedWeight - Set the weight of a live interval Joined
-/// after Other has been merged into it.
-void LiveInterval::ComputeJoinedWeight(const LiveInterval &Other) {
-  // If either of these intervals was spilled, the weight is the
-  // weight of the non-spilled interval.  This can only happen with
-  // iterative coalescers.
-
-  if (Other.weight != HUGE_VALF) {
-    weight += Other.weight;
-  }
-  else if (weight == HUGE_VALF &&
-      !TargetRegisterInfo::isPhysicalRegister(reg)) {
-    // Remove this assert if you have an iterative coalescer
-    assert(0 && "Joining to spilled interval");
-    weight = Other.weight;
-  }
-  else {
-    // Otherwise the weight stays the same
-    // Remove this assert if you have an iterative coalescer
-    assert(0 && "Joining from spilled interval");
-  }
-}
-
 raw_ostream& llvm::operator<<(raw_ostream& os, const LiveRange &LR) {
   return os << '[' << LR.start << ',' << LR.end << ':' << LR.valno->id << ")";
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void LiveRange::dump() const {
   dbgs() << *this << "\n";
 }
+#endif
 
-void LiveInterval::print(raw_ostream &OS, const TargetRegisterInfo *TRI) const {
-  OS << PrintReg(reg, TRI);
-  if (weight != 0)
-    OS << ',' << weight;
-
+void LiveInterval::print(raw_ostream &OS) const {
   if (empty())
-    OS << " EMPTY";
+    OS << "EMPTY";
   else {
-    OS << " = ";
     for (LiveInterval::Ranges::const_iterator I = ranges.begin(),
            E = ranges.end(); I != E; ++I) {
       OS << *I;
@@ -639,21 +619,238 @@ void LiveInterval::print(raw_ostream &OS, const TargetRegisterInfo *TRI) const {
       } else {
         OS << vni->def;
         if (vni->isPHIDef())
-          OS << "-phidef";
-        if (vni->hasPHIKill())
-          OS << "-phikill";
+          OS << "-phi";
       }
     }
   }
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void LiveInterval::dump() const {
   dbgs() << *this << "\n";
 }
+#endif
+
+#ifndef NDEBUG
+void LiveInterval::verify() const {
+  for (const_iterator I = begin(), E = end(); I != E; ++I) {
+    assert(I->start.isValid());
+    assert(I->end.isValid());
+    assert(I->start < I->end);
+    assert(I->valno != 0);
+    assert(I->valno == valnos[I->valno->id]);
+    if (llvm::next(I) != E) {
+      assert(I->end <= llvm::next(I)->start);
+      if (I->end == llvm::next(I)->start)
+        assert(I->valno != llvm::next(I)->valno);
+    }
+  }
+}
+#endif
 
 
 void LiveRange::print(raw_ostream &os) const {
   os << *this;
+}
+
+//===----------------------------------------------------------------------===//
+//                           LiveRangeUpdater class
+//===----------------------------------------------------------------------===//
+//
+// The LiveRangeUpdater class always maintains these invariants:
+//
+// - When LastStart is invalid, Spills is empty and the iterators are invalid.
+//   This is the initial state, and the state created by flush().
+//   In this state, isDirty() returns false.
+//
+// Otherwise, segments are kept in three separate areas:
+//
+// 1. [begin; WriteI) at the front of LI.
+// 2. [ReadI; end) at the back of LI.
+// 3. Spills.
+//
+// - LI.begin() <= WriteI <= ReadI <= LI.end().
+// - Segments in all three areas are fully ordered and coalesced.
+// - Segments in area 1 precede and can't coalesce with segments in area 2.
+// - Segments in Spills precede and can't coalesce with segments in area 2.
+// - No coalescing is possible between segments in Spills and segments in area
+//   1, and there are no overlapping segments.
+//
+// The segments in Spills are not ordered with respect to the segments in area
+// 1. They need to be merged.
+//
+// When they exist, Spills.back().start <= LastStart,
+//                 and WriteI[-1].start <= LastStart.
+
+void LiveRangeUpdater::print(raw_ostream &OS) const {
+  if (!isDirty()) {
+    if (LI)
+      OS << "Clean " << PrintReg(LI->reg) << " updater: " << *LI << '\n';
+    else
+      OS << "Null updater.\n";
+    return;
+  }
+  assert(LI && "Can't have null LI in dirty updater.");
+  OS << PrintReg(LI->reg) << " updater with gap = " << (ReadI - WriteI)
+     << ", last start = " << LastStart
+     << ":\n  Area 1:";
+  for (LiveInterval::const_iterator I = LI->begin(); I != WriteI; ++I)
+    OS << ' ' << *I;
+  OS << "\n  Spills:";
+  for (unsigned I = 0, E = Spills.size(); I != E; ++I)
+    OS << ' ' << Spills[I];
+  OS << "\n  Area 2:";
+  for (LiveInterval::const_iterator I = ReadI, E = LI->end(); I != E; ++I)
+    OS << ' ' << *I;
+  OS << '\n';
+}
+
+void LiveRangeUpdater::dump() const
+{
+  print(errs());
+}
+
+// Determine if A and B should be coalesced.
+static inline bool coalescable(const LiveRange &A, const LiveRange &B) {
+  assert(A.start <= B.start && "Unordered live ranges.");
+  if (A.end == B.start)
+    return A.valno == B.valno;
+  if (A.end < B.start)
+    return false;
+  assert(A.valno == B.valno && "Cannot overlap different values");
+  return true;
+}
+
+void LiveRangeUpdater::add(LiveRange Seg) {
+  assert(LI && "Cannot add to a null destination");
+
+  // Flush the state if Start moves backwards.
+  if (!LastStart.isValid() || LastStart > Seg.start) {
+    if (isDirty())
+      flush();
+    // This brings us to an uninitialized state. Reinitialize.
+    assert(Spills.empty() && "Leftover spilled segments");
+    WriteI = ReadI = LI->begin();
+  }
+
+  // Remember start for next time.
+  LastStart = Seg.start;
+
+  // Advance ReadI until it ends after Seg.start.
+  LiveInterval::iterator E = LI->end();
+  if (ReadI != E && ReadI->end <= Seg.start) {
+    // First try to close the gap between WriteI and ReadI with spills.
+    if (ReadI != WriteI)
+      mergeSpills();
+    // Then advance ReadI.
+    if (ReadI == WriteI)
+      ReadI = WriteI = LI->find(Seg.start);
+    else
+      while (ReadI != E && ReadI->end <= Seg.start)
+        *WriteI++ = *ReadI++;
+  }
+
+  assert(ReadI == E || ReadI->end > Seg.start);
+
+  // Check if the ReadI segment begins early.
+  if (ReadI != E && ReadI->start <= Seg.start) {
+    assert(ReadI->valno == Seg.valno && "Cannot overlap different values");
+    // Bail if Seg is completely contained in ReadI.
+    if (ReadI->end >= Seg.end)
+      return;
+    // Coalesce into Seg.
+    Seg.start = ReadI->start;
+    ++ReadI;
+  }
+
+  // Coalesce as much as possible from ReadI into Seg.
+  while (ReadI != E && coalescable(Seg, *ReadI)) {
+    Seg.end = std::max(Seg.end, ReadI->end);
+    ++ReadI;
+  }
+
+  // Try coalescing Spills.back() into Seg.
+  if (!Spills.empty() && coalescable(Spills.back(), Seg)) {
+    Seg.start = Spills.back().start;
+    Seg.end = std::max(Spills.back().end, Seg.end);
+    Spills.pop_back();
+  }
+
+  // Try coalescing Seg into WriteI[-1].
+  if (WriteI != LI->begin() && coalescable(WriteI[-1], Seg)) {
+    WriteI[-1].end = std::max(WriteI[-1].end, Seg.end);
+    return;
+  }
+
+  // Seg doesn't coalesce with anything, and needs to be inserted somewhere.
+  if (WriteI != ReadI) {
+    *WriteI++ = Seg;
+    return;
+  }
+
+  // Finally, append to LI or Spills.
+  if (WriteI == E) {
+    LI->ranges.push_back(Seg);
+    WriteI = ReadI = LI->ranges.end();
+  } else
+    Spills.push_back(Seg);
+}
+
+// Merge as many spilled segments as possible into the gap between WriteI
+// and ReadI. Advance WriteI to reflect the inserted instructions.
+void LiveRangeUpdater::mergeSpills() {
+  // Perform a backwards merge of Spills and [SpillI;WriteI).
+  size_t GapSize = ReadI - WriteI;
+  size_t NumMoved = std::min(Spills.size(), GapSize);
+  LiveInterval::iterator Src = WriteI;
+  LiveInterval::iterator Dst = Src + NumMoved;
+  LiveInterval::iterator SpillSrc = Spills.end();
+  LiveInterval::iterator B = LI->begin();
+
+  // This is the new WriteI position after merging spills.
+  WriteI = Dst;
+
+  // Now merge Src and Spills backwards.
+  while (Src != Dst) {
+    if (Src != B && Src[-1].start > SpillSrc[-1].start)
+      *--Dst = *--Src;
+    else
+      *--Dst = *--SpillSrc;
+  }
+  assert(NumMoved == size_t(Spills.end() - SpillSrc));
+  Spills.erase(SpillSrc, Spills.end());
+}
+
+void LiveRangeUpdater::flush() {
+  if (!isDirty())
+    return;
+  // Clear the dirty state.
+  LastStart = SlotIndex();
+
+  assert(LI && "Cannot add to a null destination");
+
+  // Nothing to merge?
+  if (Spills.empty()) {
+    LI->ranges.erase(WriteI, ReadI);
+    LI->verify();
+    return;
+  }
+
+  // Resize the WriteI - ReadI gap to match Spills.
+  size_t GapSize = ReadI - WriteI;
+  if (GapSize < Spills.size()) {
+    // The gap is too small. Make some room.
+    size_t WritePos = WriteI - LI->begin();
+    LI->ranges.insert(ReadI, Spills.size() - GapSize, LiveRange());
+    // This also invalidated ReadI, but it is recomputed below.
+    WriteI = LI->ranges.begin() + WritePos;
+  } else {
+    // Shrink the gap if necessary.
+    LI->ranges.erase(WriteI + Spills.size(), ReadI);
+  }
+  ReadI = WriteI + Spills.size();
+  mergeSpills();
+  LI->verify();
 }
 
 unsigned ConnectedVNInfoEqClasses::Classify(const LiveInterval *LI) {
@@ -712,13 +909,21 @@ void ConnectedVNInfoEqClasses::Distribute(LiveInterval *LIV[],
     MachineOperand &MO = RI.getOperand();
     MachineInstr *MI = MO.getParent();
     ++RI;
-    if (MO.isUse() && MO.isUndef())
+    // DBG_VALUE instructions don't have slot indexes, so get the index of the
+    // instruction before them.
+    // Normally, DBG_VALUE instructions are removed before this function is
+    // called, but it is not a requirement.
+    SlotIndex Idx;
+    if (MI->isDebugValue())
+      Idx = LIS.getSlotIndexes()->getIndexBefore(MI);
+    else
+      Idx = LIS.getInstructionIndex(MI);
+    LiveRangeQuery LRQ(LI, Idx);
+    const VNInfo *VNI = MO.readsReg() ? LRQ.valueIn() : LRQ.valueDefined();
+    // In the case of an <undef> use that isn't tied to any def, VNI will be
+    // NULL. If the use is tied to a def, VNI will be the defined value.
+    if (!VNI)
       continue;
-    // DBG_VALUE instructions should have been eliminated earlier.
-    SlotIndex Idx = LIS.getInstructionIndex(MI);
-    Idx = Idx.getRegSlot(MO.isUse());
-    const VNInfo *VNI = LI.getVNInfoAt(Idx);
-    assert(VNI && "Interval not live at use.");
     MO.setReg(LIV[getEqClass(VNI)]->reg);
   }
 

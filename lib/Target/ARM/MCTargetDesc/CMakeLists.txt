@@ -1,12 +1,15 @@
 add_llvm_library(LLVMARMDesc
   ARMAsmBackend.cpp
   ARMELFObjectWriter.cpp
+  ARMELFStreamer.cpp
   ARMMCAsmInfo.cpp
   ARMMCCodeEmitter.cpp
   ARMMCExpr.cpp
   ARMMCTargetDesc.cpp
   ARMMachObjectWriter.cpp
   ARMELFObjectWriter.cpp
+  ARMUnwindOpAsm.cpp
+  ARMMachORelocationInfo.cpp
   )
 add_dependencies(LLVMARMDesc ARMCommonTableGen)
 

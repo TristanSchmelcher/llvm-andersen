@@ -14,34 +14,32 @@
 
 #include "X86AsmPrinter.h"
 #include "InstPrinter/X86ATTInstPrinter.h"
-#include "InstPrinter/X86IntelInstPrinter.h"
-#include "X86MCInstLower.h"
 #include "X86.h"
 #include "X86COFFMachineModuleInfo.h"
 #include "X86MachineFunctionInfo.h"
 #include "X86TargetMachine.h"
-#include "llvm/CallingConv.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Module.h"
-#include "llvm/Type.h"
-#include "llvm/Analysis/DebugInfo.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Assembly/Writer.h"
+#include "llvm/CodeGen/MachineJumpTableInfo.h"
+#include "llvm/CodeGen/MachineModuleInfoImpls.h"
+#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
+#include "llvm/DebugInfo.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/CodeGen/MachineJumpTableInfo.h"
-#include "llvm/CodeGen/MachineModuleInfoImpls.h"
-#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
-#include "llvm/Target/Mangler.h"
-#include "llvm/Target/TargetOptions.h"
 #include "llvm/Support/COFF.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "llvm/ADT/SmallString.h"
+#include "llvm/Target/Mangler.h"
+#include "llvm/Target/TargetOptions.h"
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
@@ -187,10 +185,14 @@ void X86AsmPrinter::printSymbolOperand(const MachineOperand &MO,
     O << '-' << *MF->getPICBaseSymbol();
     break;
   case X86II::MO_TLSGD:     O << "@TLSGD";     break;
+  case X86II::MO_TLSLD:     O << "@TLSLD";     break;
+  case X86II::MO_TLSLDM:    O << "@TLSLDM";    break;
   case X86II::MO_GOTTPOFF:  O << "@GOTTPOFF";  break;
   case X86II::MO_INDNTPOFF: O << "@INDNTPOFF"; break;
   case X86II::MO_TPOFF:     O << "@TPOFF";     break;
+  case X86II::MO_DTPOFF:    O << "@DTPOFF";    break;
   case X86II::MO_NTPOFF:    O << "@NTPOFF";    break;
+  case X86II::MO_GOTNTPOFF: O << "@GOTNTPOFF"; break;
   case X86II::MO_GOTPCREL:  O << "@GOTPCREL";  break;
   case X86II::MO_GOT:       O << "@GOT";       break;
   case X86II::MO_GOTOFF:    O << "@GOTOFF";    break;
@@ -199,14 +201,14 @@ void X86AsmPrinter::printSymbolOperand(const MachineOperand &MO,
   case X86II::MO_TLVP_PIC_BASE:
     O << "@TLVP" << '-' << *MF->getPICBaseSymbol();
     break;
-  case X86II::MO_SECREL:      O << "@SECREL";      break;
+  case X86II::MO_SECREL:    O << "@SECREL32";  break;
   }
 }
 
-/// print_pcrel_imm - This is used to print an immediate value that ends up
+/// printPCRelImm - This is used to print an immediate value that ends up
 /// being encoded as a pc-relative value.  These print slightly differently, for
 /// example, a $ is not emitted.
-void X86AsmPrinter::print_pcrel_imm(const MachineInstr *MI, unsigned OpNo,
+void X86AsmPrinter::printPCRelImm(const MachineInstr *MI, unsigned OpNo,
                                     raw_ostream &O) {
   const MachineOperand &MO = MI->getOperand(OpNo);
   switch (MO.getType()) {
@@ -230,15 +232,17 @@ void X86AsmPrinter::print_pcrel_imm(const MachineInstr *MI, unsigned OpNo,
 
 
 void X86AsmPrinter::printOperand(const MachineInstr *MI, unsigned OpNo,
-                                 raw_ostream &O, const char *Modifier) {
+                                 raw_ostream &O, const char *Modifier,
+                                 unsigned AsmVariant) {
   const MachineOperand &MO = MI->getOperand(OpNo);
   switch (MO.getType()) {
   default: llvm_unreachable("unknown operand type!");
   case MachineOperand::MO_Register: {
-    O << '%';
+    // FIXME: Enumerating AsmVariant, so we can remove magic number.
+    if (AsmVariant == 0) O << '%';
     unsigned Reg = MO.getReg();
     if (Modifier && strncmp(Modifier, "subreg", strlen("subreg")) == 0) {
-      EVT VT = (strcmp(Modifier+6,"64") == 0) ?
+      MVT::SimpleValueType VT = (strcmp(Modifier+6,"64") == 0) ?
         MVT::i64 : ((strcmp(Modifier+6, "32") == 0) ? MVT::i32 :
                     ((strcmp(Modifier+6,"16") == 0) ? MVT::i16 : MVT::i8));
       Reg = getX86SubSuperRegister(Reg, VT);
@@ -248,57 +252,18 @@ void X86AsmPrinter::printOperand(const MachineInstr *MI, unsigned OpNo,
   }
 
   case MachineOperand::MO_Immediate:
-    O << '$' << MO.getImm();
+    if (AsmVariant == 0) O << '$';
+    O << MO.getImm();
     return;
 
   case MachineOperand::MO_JumpTableIndex:
   case MachineOperand::MO_ConstantPoolIndex:
   case MachineOperand::MO_GlobalAddress:
   case MachineOperand::MO_ExternalSymbol: {
-    O << '$';
+    if (AsmVariant == 0) O << '$';
     printSymbolOperand(MO, O);
     break;
   }
-  }
-}
-
-void X86AsmPrinter::printSSECC(const MachineInstr *MI, unsigned Op,
-                               raw_ostream &O) {
-  unsigned char value = MI->getOperand(Op).getImm();
-  assert(value <= 7 && "Invalid ssecc argument!");
-  switch (value) {
-  case    0: O << "eq"; break;
-  case    1: O << "lt"; break;
-  case    2: O << "le"; break;
-  case    3: O << "unord"; break;
-  case    4: O << "neq"; break;
-  case    5: O << "nlt"; break;
-  case    6: O << "nle"; break;
-  case    7: O << "ord"; break;
-  case    8: O << "eq_uq"; break;
-  case    9: O << "nge"; break;
-  case  0xa: O << "ngt"; break;
-  case  0xb: O << "false"; break;
-  case  0xc: O << "neq_oq"; break;
-  case  0xd: O << "ge"; break;
-  case  0xe: O << "gt"; break;
-  case  0xf: O << "true"; break;
-  case 0x10: O << "eq_os"; break;
-  case 0x11: O << "lt_oq"; break;
-  case 0x12: O << "le_oq"; break;
-  case 0x13: O << "unord_s"; break;
-  case 0x14: O << "neq_us"; break;
-  case 0x15: O << "nlt_uq"; break;
-  case 0x16: O << "nle_uq"; break;
-  case 0x17: O << "ord_s"; break;
-  case 0x18: O << "eq_us"; break;
-  case 0x19: O << "nge_uq"; break;
-  case 0x1a: O << "ngt_uq"; break;
-  case 0x1b: O << "false_os"; break;
-  case 0x1c: O << "neq_os"; break;
-  case 0x1d: O << "ge_oq"; break;
-  case 0x1e: O << "gt_oq"; break;
-  case 0x1f: O << "true_us"; break;
   }
 }
 
@@ -360,10 +325,55 @@ void X86AsmPrinter::printMemReference(const MachineInstr *MI, unsigned Op,
   printLeaMemReference(MI, Op, O, Modifier);
 }
 
-void X86AsmPrinter::printPICLabel(const MachineInstr *MI, unsigned Op,
-                                  raw_ostream &O) {
-  O << *MF->getPICBaseSymbol() << '\n';
-  O << *MF->getPICBaseSymbol() << ':';
+void X86AsmPrinter::printIntelMemReference(const MachineInstr *MI, unsigned Op,
+                                           raw_ostream &O, const char *Modifier,
+                                           unsigned AsmVariant){
+  const MachineOperand &BaseReg  = MI->getOperand(Op);
+  unsigned ScaleVal = MI->getOperand(Op+1).getImm();
+  const MachineOperand &IndexReg = MI->getOperand(Op+2);
+  const MachineOperand &DispSpec = MI->getOperand(Op+3);
+  const MachineOperand &SegReg   = MI->getOperand(Op+4);
+  
+  // If this has a segment register, print it.
+  if (SegReg.getReg()) {
+    printOperand(MI, Op+4, O, Modifier, AsmVariant);
+    O << ':';
+  }
+  
+  O << '[';
+  
+  bool NeedPlus = false;
+  if (BaseReg.getReg()) {
+    printOperand(MI, Op, O, Modifier, AsmVariant);
+    NeedPlus = true;
+  }
+  
+  if (IndexReg.getReg()) {
+    if (NeedPlus) O << " + ";
+    if (ScaleVal != 1)
+      O << ScaleVal << '*';
+    printOperand(MI, Op+2, O, Modifier, AsmVariant);
+    NeedPlus = true;
+  }
+
+  if (!DispSpec.isImm()) {
+    if (NeedPlus) O << " + ";
+    printOperand(MI, Op+3, O, Modifier, AsmVariant);
+  } else {
+    int64_t DispVal = DispSpec.getImm();
+    if (DispVal || (!IndexReg.getReg() && !BaseReg.getReg())) {
+      if (NeedPlus) {
+        if (DispVal > 0)
+          O << " + ";
+        else {
+          O << " - ";
+          DispVal = -DispVal;
+        }
+      }
+      O << DispVal;
+    }
+  }
+  O << ']';
 }
 
 bool X86AsmPrinter::printAsmMRegister(const MachineOperand &MO, char Mode,
@@ -404,7 +414,9 @@ bool X86AsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
     const MachineOperand &MO = MI->getOperand(OpNo);
 
     switch (ExtraCode[0]) {
-    default: return true;  // Unknown modifier.
+    default:
+      // See if this is a generic print operand
+      return AsmPrinter::PrintAsmOperand(MI, OpNo, AsmVariant, ExtraCode, O);
     case 'a': // This is an address.  Currently only 'i' and 'r' are expected.
       if (MO.isImm()) {
         O << MO.getImm();
@@ -452,7 +464,7 @@ bool X86AsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
       return false;
 
     case 'P': // This is the operand of a call, treat specially.
-      print_pcrel_imm(MI, OpNo, O);
+      printPCRelImm(MI, OpNo, O);
       return false;
 
     case 'n':  // Negate the immediate or print a '-' before the operand.
@@ -466,7 +478,7 @@ bool X86AsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
     }
   }
 
-  printOperand(MI, OpNo, O);
+  printOperand(MI, OpNo, O, /*Modifier*/ 0, AsmVariant);
   return false;
 }
 
@@ -474,6 +486,11 @@ bool X86AsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
                                           unsigned OpNo, unsigned AsmVariant,
                                           const char *ExtraCode,
                                           raw_ostream &O) {
+  if (AsmVariant) {
+    printIntelMemReference(MI, OpNo, O);
+    return false;
+  }
+
   if (ExtraCode && ExtraCode[0]) {
     if (ExtraCode[1] != 0) return true; // Unknown modifier.
 
@@ -531,7 +548,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
                                         MCSA_IndirectSymbol);
         // hlt; hlt; hlt; hlt; hlt     hlt = 0xf4.
         const char HltInsts[] = "\xf4\xf4\xf4\xf4\xf4";
-        OutStreamer.EmitBytes(StringRef(HltInsts, 5), 0/*addrspace*/);
+        OutStreamer.EmitBytes(StringRef(HltInsts, 5));
       }
 
       Stubs.clear();
@@ -557,7 +574,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
         // .long 0
         if (MCSym.getInt())
           // External to current translation unit.
-          OutStreamer.EmitIntValue(0, 4/*size*/, 0/*addrspace*/);
+          OutStreamer.EmitIntValue(0, 4/*size*/);
         else
           // Internal to current translation unit.
           //
@@ -566,8 +583,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
           // using NLPs.  However, sometimes the types are local to the file. So
           // we need to fill in the value for the NLP in those cases.
           OutStreamer.EmitValue(MCSymbolRefExpr::Create(MCSym.getPointer(),
-                                                        OutContext),
-                                4/*size*/, 0/*addrspace*/);
+                                                        OutContext), 4/*size*/);
       }
       Stubs.clear();
       OutStreamer.AddBlankLine();
@@ -584,8 +600,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
         // .long _foo
         OutStreamer.EmitValue(MCSymbolRefExpr::
                               Create(Stubs[i].second.getPointer(),
-                                     OutContext),
-                              4/*size*/, 0/*addrspace*/);
+                                     OutContext), 4/*size*/);
       }
       Stubs.clear();
       OutStreamer.AddBlankLine();
@@ -600,7 +615,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
   }
 
   if (Subtarget->isTargetWindows() && !Subtarget->isTargetCygMing() &&
-      MMI->callsExternalVAFunctionWithFloatingPointArguments()) {
+      MMI->usesVAFloatArgument()) {
     StringRef SymbolName = Subtarget->is64Bit() ? "_fltused" : "__fltused";
     MCSymbol *S = MMI->getContext().GetOrCreateSymbol(SymbolName);
     OutStreamer.EmitSymbolAttribute(S, MCSA_Global);
@@ -651,7 +666,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
           name += ",DATA";
         else
         name += ",data";
-        OutStreamer.EmitBytes(name, 0);
+        OutStreamer.EmitBytes(name);
       }
 
       for (unsigned i = 0, e = DLLExportedFns.size(); i != e; ++i) {
@@ -660,7 +675,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
         else
           name = " -export:";
         name += DLLExportedFns[i]->getName();
-        OutStreamer.EmitBytes(name, 0);
+        OutStreamer.EmitBytes(name);
       }
     }
   }
@@ -675,59 +690,17 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
     MachineModuleInfoELF::SymbolListTy Stubs = MMIELF.GetGVStubList();
     if (!Stubs.empty()) {
       OutStreamer.SwitchSection(TLOFELF.getDataRelSection());
-      const TargetData *TD = TM.getTargetData();
+      const DataLayout *TD = TM.getDataLayout();
 
       for (unsigned i = 0, e = Stubs.size(); i != e; ++i) {
         OutStreamer.EmitLabel(Stubs[i].first);
         OutStreamer.EmitSymbolValue(Stubs[i].second.getPointer(),
-                                    TD->getPointerSize(), 0);
+                                    TD->getPointerSize());
       }
       Stubs.clear();
     }
   }
 }
-
-MachineLocation
-X86AsmPrinter::getDebugValueLocation(const MachineInstr *MI) const {
-  MachineLocation Location;
-  assert (MI->getNumOperands() == 7 && "Invalid no. of machine operands!");
-  // Frame address.  Currently handles register +- offset only.
-
-  if (MI->getOperand(0).isReg() && MI->getOperand(3).isImm())
-    Location.set(MI->getOperand(0).getReg(), MI->getOperand(3).getImm());
-  else {
-    DEBUG(dbgs() << "DBG_VALUE instruction ignored! " << *MI << "\n");
-  }
-  return Location;
-}
-
-void X86AsmPrinter::PrintDebugValueComment(const MachineInstr *MI,
-                                           raw_ostream &O) {
-  // Only the target-dependent form of DBG_VALUE should get here.
-  // Referencing the offset and metadata as NOps-2 and NOps-1 is
-  // probably portable to other targets; frame pointer location is not.
-  unsigned NOps = MI->getNumOperands();
-  assert(NOps==7);
-  O << '\t' << MAI->getCommentString() << "DEBUG_VALUE: ";
-  // cast away const; DIetc do not take const operands for some reason.
-  DIVariable V(const_cast<MDNode *>(MI->getOperand(NOps-1).getMetadata()));
-  if (V.getContext().isSubprogram())
-    O << DISubprogram(V.getContext()).getDisplayName() << ":";
-  O << V.getName();
-  O << " <- ";
-  // Frame address.  Currently handles register +- offset only.
-  O << '[';
-  if (MI->getOperand(0).isReg() && MI->getOperand(0).getReg())
-    printOperand(MI, 0, O);
-  else
-    O << "undef";
-  O << '+'; printOperand(MI, 3, O);
-  O << ']';
-  O << "+";
-  printOperand(MI, NOps-2, O);
-}
-
-
 
 //===----------------------------------------------------------------------===//
 // Target Registry Stuff

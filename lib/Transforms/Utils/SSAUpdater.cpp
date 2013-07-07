@@ -12,12 +12,13 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "ssaupdater"
-#include "llvm/Constants.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
+#include "llvm/Transforms/Utils/SSAUpdater.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Analysis/InstructionSimplify.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/AlignOf.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/CFG.h"
@@ -25,7 +26,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include "llvm/Transforms/Utils/SSAUpdater.h"
 #include "llvm/Transforms/Utils/SSAUpdaterImpl.h"
 
 using namespace llvm;
@@ -39,7 +39,7 @@ SSAUpdater::SSAUpdater(SmallVectorImpl<PHINode*> *NewPHI)
   : AV(0), ProtoType(0), ProtoName(), InsertedPHIs(NewPHI) {}
 
 SSAUpdater::~SSAUpdater() {
-  delete &getAvailableVals(AV);
+  delete static_cast<AvailableValsTy*>(AV);
 }
 
 /// Initialize - Reset this object to get ready for a new set of SSA
@@ -190,8 +190,11 @@ Value *SSAUpdater::GetValueInMiddleOfBlock(BasicBlock *BB) {
     return V;
   }
 
-  // Set DebugLoc.
-  InsertedPHI->setDebugLoc(GetFirstDebugLocInBasicBlock(BB));
+  // Set the DebugLoc of the inserted PHI, if available.
+  DebugLoc DL;
+  if (const Instruction *I = BB->getFirstNonPHI())
+      DL = I->getDebugLoc();
+  InsertedPHI->setDebugLoc(DL);
 
   // If the client wants to know about all new instructions, tell it.
   if (InsertedPHIs) InsertedPHIs->push_back(InsertedPHI);
@@ -210,6 +213,11 @@ void SSAUpdater::RewriteUse(Use &U) {
     V = GetValueAtEndOfBlock(UserPN->getIncomingBlock(U));
   else
     V = GetValueInMiddleOfBlock(User->getParent());
+
+  // Notify that users of the existing value that it is being replaced.
+  Value *OldVal = U.get();
+  if (OldVal != V && OldVal->hasValueHandle())
+    ValueHandleBase::ValueIsRAUWd(OldVal, V);
 
   U.set(V);
 }
@@ -230,28 +238,6 @@ void SSAUpdater::RewriteUseAfterInsertions(Use &U) {
   U.set(V);
 }
 
-/// PHIiter - Iterator for PHI operands.  This is used for the PHI_iterator
-/// in the SSAUpdaterImpl template.
-namespace {
-  class PHIiter {
-  private:
-    PHINode *PHI;
-    unsigned idx;
-
-  public:
-    explicit PHIiter(PHINode *P) // begin iterator
-      : PHI(P), idx(0) {}
-    PHIiter(PHINode *P, bool) // end iterator
-      : PHI(P), idx(PHI->getNumIncomingValues()) {}
-
-    PHIiter &operator++() { ++idx; return *this; } 
-    bool operator==(const PHIiter& x) const { return idx == x.idx; }
-    bool operator!=(const PHIiter& x) const { return !operator==(x); }
-    Value *getIncomingValue() { return PHI->getIncomingValue(idx); }
-    BasicBlock *getIncomingBlock() { return PHI->getIncomingBlock(idx); }
-  };
-}
-
 /// SSAUpdaterTraits<SSAUpdater> - Traits for the SSAUpdaterImpl template,
 /// specialized for SSAUpdater.
 namespace llvm {
@@ -266,9 +252,26 @@ public:
   static BlkSucc_iterator BlkSucc_begin(BlkT *BB) { return succ_begin(BB); }
   static BlkSucc_iterator BlkSucc_end(BlkT *BB) { return succ_end(BB); }
 
-  typedef PHIiter PHI_iterator;
-  static inline PHI_iterator PHI_begin(PhiT *PHI) { return PHI_iterator(PHI); }
-  static inline PHI_iterator PHI_end(PhiT *PHI) {
+  class PHI_iterator {
+  private:
+    PHINode *PHI;
+    unsigned idx;
+
+  public:
+    explicit PHI_iterator(PHINode *P) // begin iterator
+      : PHI(P), idx(0) {}
+    PHI_iterator(PHINode *P, bool) // end iterator
+      : PHI(P), idx(PHI->getNumIncomingValues()) {}
+
+    PHI_iterator &operator++() { ++idx; return *this; } 
+    bool operator==(const PHI_iterator& x) const { return idx == x.idx; }
+    bool operator!=(const PHI_iterator& x) const { return !operator==(x); }
+    Value *getIncomingValue() { return PHI->getIncomingValue(idx); }
+    BasicBlock *getIncomingBlock() { return PHI->getIncomingBlock(idx); }
+  };
+
+  static PHI_iterator PHI_begin(PhiT *PHI) { return PHI_iterator(PHI); }
+  static PHI_iterator PHI_end(PhiT *PHI) {
     return PHI_iterator(PHI, true);
   }
 

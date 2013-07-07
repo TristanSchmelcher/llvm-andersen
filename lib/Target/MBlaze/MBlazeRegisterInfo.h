@@ -37,28 +37,24 @@ namespace MBlaze {
 
 struct MBlazeRegisterInfo : public MBlazeGenRegisterInfo {
   const MBlazeSubtarget &Subtarget;
-  const TargetInstrInfo &TII;
 
-  MBlazeRegisterInfo(const MBlazeSubtarget &Subtarget,
-                     const TargetInstrInfo &tii);
+  MBlazeRegisterInfo(const MBlazeSubtarget &Subtarget);
 
   /// Get PIC indirect call register
   static unsigned getPICCallReg();
 
   /// Code Generation virtual methods...
-  const unsigned *getCalleeSavedRegs(const MachineFunction* MF = 0) const;
+  const uint16_t *getCalleeSavedRegs(const MachineFunction* MF = 0) const;
 
   BitVector getReservedRegs(const MachineFunction &MF) const;
 
-  void eliminateCallFramePseudoInstr(MachineFunction &MF,
-                                     MachineBasicBlock &MBB,
-                                     MachineBasicBlock::iterator I) const;
-
   /// Stack Frame Processing Methods
   void eliminateFrameIndex(MachineBasicBlock::iterator II,
-                           int SPAdj, RegScavenger *RS = NULL) const;
+                           int SPAdj, unsigned FIOperandNum,
+                           RegScavenger *RS = NULL) const;
 
-  void processFunctionBeforeFrameFinalized(MachineFunction &MF) const;
+  void processFunctionBeforeFrameFinalized(MachineFunction &MF,
+                                           RegScavenger *RS = NULL) const;
 
   /// Debug information queries.
   unsigned getFrameRegister(const MachineFunction &MF) const;

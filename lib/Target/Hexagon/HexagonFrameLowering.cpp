@@ -8,31 +8,31 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "HexagonFrameLowering.h"
 #include "Hexagon.h"
 #include "HexagonInstrInfo.h"
+#include "HexagonMachineFunctionInfo.h"
 #include "HexagonRegisterInfo.h"
 #include "HexagonSubtarget.h"
 #include "HexagonTargetMachine.h"
-#include "HexagonMachineFunctionInfo.h"
-#include "HexagonFrameLowering.h"
-#include "llvm/Function.h"
-#include "llvm/Type.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/AsmPrinter.h"
-#include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
-#include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
-#include "llvm/MC/MachineLocation.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Type.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MachineLocation.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
 
@@ -76,16 +76,11 @@ void HexagonFrameLowering::determineFrameLayout(MachineFunction &MF) const {
 void HexagonFrameLowering::emitPrologue(MachineFunction &MF) const {
   MachineBasicBlock &MBB = MF.front();
   MachineFrameInfo *MFI = MF.getFrameInfo();
-  MachineModuleInfo &MMI = MF.getMMI();
   MachineBasicBlock::iterator MBBI = MBB.begin();
   const HexagonRegisterInfo *QRI =
     static_cast<const HexagonRegisterInfo *>(MF.getTarget().getRegisterInfo());
   DebugLoc dl = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
   determineFrameLayout(MF);
-
-  // Check if frame moves are needed for EH.
-  bool needsFrameMoves = MMI.hasDebugInfo() ||
-    !MF.getFunction()->needsUnwindTableEntry();
 
   // Get the number of bytes to allocate from the FrameInfo.
   int NumBytes = (int) MFI->getStackSize();
@@ -112,28 +107,6 @@ void HexagonFrameLowering::emitPrologue(MachineFunction &MF) const {
     assert(MO.isImm() && "Expected immediate");
     MO.setImm(MFI->getMaxCallFrameSize());
   }
-
- std::vector<MachineMove> &Moves = MMI.getFrameMoves();
-
- if (needsFrameMoves) {
-   // Advance CFA. DW_CFA_def_cfa
-   unsigned FPReg = QRI->getFrameRegister();
-   unsigned RAReg = QRI->getRARegister();
-
-   MachineLocation Dst(MachineLocation::VirtualFP);
-   MachineLocation Src(FPReg, -8);
-   Moves.push_back(MachineMove(0, Dst, Src));
-
-   // R31 = (R31 - #4)
-   MachineLocation LRDst(RAReg, -4);
-   MachineLocation LRSrc(RAReg);
-   Moves.push_back(MachineMove(0, LRDst, LRSrc));
-
-   // R30 = (R30 - #8)
-   MachineLocation SPDst(FPReg, -8);
-   MachineLocation SPSrc(FPReg);
-   Moves.push_back(MachineMove(0, SPDst, SPSrc));
- }
 
   //
   // Only insert ALLOCFRAME if we need to.
@@ -166,37 +139,63 @@ bool HexagonFrameLowering::hasTailCall(MachineBasicBlock &MBB) const {
   MachineBasicBlock::iterator MBBI = MBB.getLastNonDebugInstr();
   unsigned RetOpcode = MBBI->getOpcode();
 
-  return RetOpcode == Hexagon::TCRETURNtg || RetOpcode == Hexagon::TCRETURNtext;}
+  return RetOpcode == Hexagon::TCRETURNtg || RetOpcode == Hexagon::TCRETURNtext;
+}
 
 void HexagonFrameLowering::emitEpilogue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
   MachineBasicBlock::iterator MBBI = prior(MBB.end());
   DebugLoc dl = MBBI->getDebugLoc();
   //
-  // Only insert deallocframe if we need to.
+  // Only insert deallocframe if we need to.  Also at -O0.  See comment
+  // in emitPrologue above.
   //
-  if (hasFP(MF)) {
+  if (hasFP(MF) || MF.getTarget().getOptLevel() == CodeGenOpt::None) {
     MachineBasicBlock::iterator MBBI = prior(MBB.end());
     MachineBasicBlock::iterator MBBI_end = MBB.end();
-    //
-    // For Hexagon, we don't need the frame size.
-    //
-    MachineFrameInfo *MFI = MF.getFrameInfo();
-    int NumBytes = (int) MFI->getStackSize();
 
     const TargetInstrInfo &TII = *MF.getTarget().getInstrInfo();
-
+    // Handle EH_RETURN.
+    if (MBBI->getOpcode() == Hexagon::EH_RETURN_JMPR) {
+      assert(MBBI->getOperand(0).isReg() && "Offset should be in register!");
+      BuildMI(MBB, MBBI, dl, TII.get(Hexagon::DEALLOCFRAME));
+      BuildMI(MBB, MBBI, dl, TII.get(Hexagon::ADD_rr),
+              Hexagon::R29).addReg(Hexagon::R29).addReg(Hexagon::R28);
+      return;
+    }
     // Replace 'jumpr r31' instruction with dealloc_return for V4 and higher
     // versions.
-    if (STI.hasV4TOps() && MBBI->getOpcode() == Hexagon::JMPR
+    if (STI.hasV4TOps() && MBBI->getOpcode() == Hexagon::JMPret
                         && !DisableDeallocRet) {
-      // Remove jumpr node.
-      MBB.erase(MBBI);
+      // Check for RESTORE_DEALLOC_RET_JMP_V4 call. Don't emit an extra DEALLOC
+      // instruction if we encounter it.
+      MachineBasicBlock::iterator BeforeJMPR =
+        MBB.begin() == MBBI ? MBBI : prior(MBBI);
+      if (BeforeJMPR != MBBI &&
+          BeforeJMPR->getOpcode() == Hexagon::RESTORE_DEALLOC_RET_JMP_V4) {
+        // Remove the JMPR node.
+        MBB.erase(MBBI);
+        return;
+      }
+
       // Add dealloc_return.
-      BuildMI(MBB, MBBI_end, dl, TII.get(Hexagon::DEALLOC_RET_V4))
-        .addImm(NumBytes);
-    } else { // Add deallocframe for V2 and V3.
-      BuildMI(MBB, MBBI, dl, TII.get(Hexagon::DEALLOCFRAME)).addImm(NumBytes);
+      MachineInstrBuilder MIB =
+        BuildMI(MBB, MBBI_end, dl, TII.get(Hexagon::DEALLOC_RET_V4));
+      // Transfer the function live-out registers.
+      MIB->copyImplicitOps(*MBB.getParent(), &*MBBI);
+      // Remove the JUMPR node.
+      MBB.erase(MBBI);
+    } else { // Add deallocframe for V2 and V3, and V4 tail calls.
+      // Check for RESTORE_DEALLOC_BEFORE_TAILCALL_V4. We don't need an extra
+      // DEALLOCFRAME instruction after it.
+      MachineBasicBlock::iterator Term = MBB.getFirstTerminator();
+      MachineBasicBlock::iterator I =
+        Term == MBB.begin() ?  MBB.end() : prior(Term);
+      if (I != MBB.end() &&
+          I->getOpcode() == Hexagon::RESTORE_DEALLOC_BEFORE_TAILCALL_V4)
+        return;
+
+      BuildMI(MBB, MBBI, dl, TII.get(Hexagon::DEALLOCFRAME));
     }
   }
 }
@@ -207,6 +206,16 @@ bool HexagonFrameLowering::hasFP(const MachineFunction &MF) const {
     MF.getInfo<HexagonMachineFunctionInfo>();
   return (MFI->hasCalls() || (MFI->getStackSize() > 0) ||
           FuncInfo->hasClobberLR() );
+}
+
+static inline
+unsigned uniqueSuperReg(unsigned Reg, const TargetRegisterInfo *TRI) {
+  MCSuperRegIterator SRI(Reg, TRI);
+  assert(SRI.isValid() && "Expected a superreg");
+  unsigned SuperReg = *SRI;
+  ++SRI;
+  assert(!SRI.isValid() && "Expected exactly one superreg");
+  return SuperReg;
 }
 
 bool
@@ -235,26 +244,21 @@ HexagonFrameLowering::spillCalleeSavedRegisters(
     //
     // Check if we can use a double-word store.
     //
-    const unsigned* SuperReg = TRI->getSuperRegisters(Reg);
-
-    // Assume that there is exactly one superreg.
-    assert(SuperReg[0] && !SuperReg[1] && "Expected exactly one superreg");
+    unsigned SuperReg = uniqueSuperReg(Reg, TRI);
     bool CanUseDblStore = false;
     const TargetRegisterClass* SuperRegClass = 0;
 
     if (ContiguousRegs && (i < CSI.size()-1)) {
-      const unsigned* SuperRegNext = TRI->getSuperRegisters(CSI[i+1].getReg());
-      assert(SuperRegNext[0] && !SuperRegNext[1] &&
-             "Expected exactly one superreg");
-      SuperRegClass = TRI->getMinimalPhysRegClass(SuperReg[0]);
-      CanUseDblStore = (SuperRegNext[0] == SuperReg[0]);
+      unsigned SuperRegNext = uniqueSuperReg(CSI[i+1].getReg(), TRI);
+      SuperRegClass = TRI->getMinimalPhysRegClass(SuperReg);
+      CanUseDblStore = (SuperRegNext == SuperReg);
     }
 
 
     if (CanUseDblStore) {
-      TII.storeRegToStackSlot(MBB, MI, SuperReg[0], true,
+      TII.storeRegToStackSlot(MBB, MI, SuperReg, true,
                               CSI[i+1].getFrameIdx(), SuperRegClass, TRI);
-      MBB.addLiveIn(SuperReg[0]);
+      MBB.addLiveIn(SuperReg);
       ++i;
     } else {
       // Cannot use a double-word store.
@@ -295,25 +299,20 @@ bool HexagonFrameLowering::restoreCalleeSavedRegisters(
     //
     // Check if we can use a double-word load.
     //
-    const unsigned* SuperReg = TRI->getSuperRegisters(Reg);
+    unsigned SuperReg = uniqueSuperReg(Reg, TRI);
     const TargetRegisterClass* SuperRegClass = 0;
-
-    // Assume that there is exactly one superreg.
-    assert(SuperReg[0] && !SuperReg[1] && "Expected exactly one superreg");
     bool CanUseDblLoad = false;
     if (ContiguousRegs && (i < CSI.size()-1)) {
-      const unsigned* SuperRegNext = TRI->getSuperRegisters(CSI[i+1].getReg());
-      assert(SuperRegNext[0] && !SuperRegNext[1] &&
-             "Expected exactly one superreg");
-      SuperRegClass = TRI->getMinimalPhysRegClass(SuperReg[0]);
-      CanUseDblLoad = (SuperRegNext[0] == SuperReg[0]);
+      unsigned SuperRegNext = uniqueSuperReg(CSI[i+1].getReg(), TRI);
+      SuperRegClass = TRI->getMinimalPhysRegClass(SuperReg);
+      CanUseDblLoad = (SuperRegNext == SuperReg);
     }
 
 
     if (CanUseDblLoad) {
-      TII.loadRegFromStackSlot(MBB, MI, SuperReg[0], CSI[i+1].getFrameIdx(),
+      TII.loadRegFromStackSlot(MBB, MI, SuperReg, CSI[i+1].getFrameIdx(),
                                SuperRegClass, TRI);
-      MBB.addLiveIn(SuperReg[0]);
+      MBB.addLiveIn(SuperReg);
       ++i;
     } else {
       // Cannot use a double-word load.
@@ -324,6 +323,21 @@ bool HexagonFrameLowering::restoreCalleeSavedRegisters(
     }
   }
   return true;
+}
+
+void HexagonFrameLowering::
+eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator I) const {
+  MachineInstr &MI = *I;
+
+  if (MI.getOpcode() == Hexagon::ADJCALLSTACKDOWN) {
+    // Hexagon_TODO: add code
+  } else if (MI.getOpcode() == Hexagon::ADJCALLSTACKUP) {
+    // Hexagon_TODO: add code
+  } else {
+    llvm_unreachable("Cannot handle this call frame pseudo instruction");
+  }
+  MBB.erase(I);
 }
 
 int HexagonFrameLowering::getFrameIndexOffset(const MachineFunction &MF,

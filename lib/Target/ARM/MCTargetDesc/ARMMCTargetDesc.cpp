@@ -11,10 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ARMMCTargetDesc.h"
-#include "ARMMCAsmInfo.h"
 #include "ARMBaseInfo.h"
+#include "ARMELFStreamer.h"
+#include "ARMMCAsmInfo.h"
+#include "ARMMCTargetDesc.h"
 #include "InstPrinter/ARMInstPrinter.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
@@ -35,7 +37,9 @@
 
 using namespace llvm;
 
-std::string ARM_MC::ParseARMTriple(StringRef TT) {
+std::string ARM_MC::ParseARMTriple(StringRef TT, StringRef CPU) {
+  Triple triple(TT);
+
   // Set the boolean corresponding to the current target triple, or the default
   // if one cannot be determined, to true.
   unsigned Len = TT.size();
@@ -51,27 +55,61 @@ std::string ARM_MC::ParseARMTriple(StringRef TT) {
       Idx = 6;
   }
 
+  bool NoCPU = CPU == "generic" || CPU.empty();
   std::string ARMArchFeature;
   if (Idx) {
     unsigned SubVer = TT[Idx];
-    if (SubVer >= '7' && SubVer <= '9') {
+    if (SubVer == '8') {
+      // FIXME: Parse v8 features
+      ARMArchFeature = "+v8";
+    } else if (SubVer == '7') {
       if (Len >= Idx+2 && TT[Idx+1] == 'm') {
-        // v7m: FeatureNoARM, FeatureDB, FeatureHWDiv, FeatureMClass
-        ARMArchFeature = "+v7,+noarm,+db,+hwdiv,+mclass";
+        isThumb = true;
+        if (NoCPU)
+          // v7m: FeatureNoARM, FeatureDB, FeatureHWDiv, FeatureMClass
+          ARMArchFeature = "+v7,+noarm,+db,+hwdiv,+mclass";
+        else
+          // Use CPU to figure out the exact features.
+          ARMArchFeature = "+v7";
       } else if (Len >= Idx+3 && TT[Idx+1] == 'e'&& TT[Idx+2] == 'm') {
-        // v7em: FeatureNoARM, FeatureDB, FeatureHWDiv, FeatureDSPThumb2,
-        //       FeatureT2XtPk, FeatureMClass
-        ARMArchFeature = "+v7,+noarm,+db,+hwdiv,+t2dsp,t2xtpk,+mclass";
-      } else
-        // v7a: FeatureNEON, FeatureDB, FeatureDSPThumb2, FeatureT2XtPk
-        ARMArchFeature = "+v7,+neon,+db,+t2dsp,+t2xtpk";
+        if (NoCPU)
+          // v7em: FeatureNoARM, FeatureDB, FeatureHWDiv, FeatureDSPThumb2,
+          //       FeatureT2XtPk, FeatureMClass
+          ARMArchFeature = "+v7,+noarm,+db,+hwdiv,+t2dsp,t2xtpk,+mclass";
+        else
+          // Use CPU to figure out the exact features.
+          ARMArchFeature = "+v7";
+      } else if (Len >= Idx+2 && TT[Idx+1] == 's') {
+        if (NoCPU)
+          // v7s: FeatureNEON, FeatureDB, FeatureDSPThumb2, FeatureT2XtPk
+          //      Swift
+          ARMArchFeature = "+v7,+swift,+neon,+db,+t2dsp,+t2xtpk";
+        else
+          // Use CPU to figure out the exact features.
+          ARMArchFeature = "+v7";
+      } else {
+        // v7 CPUs have lots of different feature sets. If no CPU is specified,
+        // then assume v7a (e.g. cortex-a8) feature set. Otherwise, return
+        // the "minimum" feature set and use CPU string to figure out the exact
+        // features.
+        if (NoCPU)
+          // v7a: FeatureNEON, FeatureDB, FeatureDSPThumb2, FeatureT2XtPk
+          ARMArchFeature = "+v7,+neon,+db,+t2dsp,+t2xtpk";
+        else
+          // Use CPU to figure out the exact features.
+          ARMArchFeature = "+v7";
+      }
     } else if (SubVer == '6') {
       if (Len >= Idx+3 && TT[Idx+1] == 't' && TT[Idx+2] == '2')
         ARMArchFeature = "+v6t2";
-      else if (Len >= Idx+2 && TT[Idx+1] == 'm')
-        // v6m: FeatureNoARM, FeatureMClass
-        ARMArchFeature = "+v6t2,+noarm,+mclass";
-      else
+      else if (Len >= Idx+2 && TT[Idx+1] == 'm') {
+        isThumb = true;
+        if (NoCPU)
+          // v6m: FeatureNoARM, FeatureMClass
+          ARMArchFeature = "+v6,+noarm,+mclass";
+        else
+          ARMArchFeature = "+v6";
+      } else
         ARMArchFeature = "+v6";
     } else if (SubVer == '5') {
       if (Len >= Idx+3 && TT[Idx+1] == 't' && TT[Idx+2] == 'e')
@@ -89,12 +127,19 @@ std::string ARM_MC::ParseARMTriple(StringRef TT) {
       ARMArchFeature += ",+thumb-mode";
   }
 
+  if (triple.isOSNaCl()) {
+    if (ARMArchFeature.empty())
+      ARMArchFeature = "+nacl-trap";
+    else
+      ARMArchFeature += ",+nacl-trap";
+  }
+
   return ARMArchFeature;
 }
 
 MCSubtargetInfo *ARM_MC::createARMMCSubtargetInfo(StringRef TT, StringRef CPU,
                                                   StringRef FS) {
-  std::string ArchFS = ARM_MC::ParseARMTriple(TT);
+  std::string ArchFS = ARM_MC::ParseARMTriple(TT, CPU);
   if (!FS.empty()) {
     if (!ArchFS.empty())
       ArchFS = ArchFS + "," + FS.str();
@@ -115,11 +160,11 @@ static MCInstrInfo *createARMMCInstrInfo() {
 
 static MCRegisterInfo *createARMMCRegisterInfo(StringRef Triple) {
   MCRegisterInfo *X = new MCRegisterInfo();
-  InitARMMCRegisterInfo(X, ARM::LR);
+  InitARMMCRegisterInfo(X, ARM::LR, 0, 0, ARM::PC);
   return X;
 }
 
-static MCAsmInfo *createARMMCAsmInfo(const Target &T, StringRef TT) {
+static MCAsmInfo *createARMMCAsmInfo(const MCRegisterInfo &MRI, StringRef TT) {
   Triple TheTriple(TT);
 
   if (TheTriple.isOSDarwin())
@@ -151,22 +196,34 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
   Triple TheTriple(TT);
 
   if (TheTriple.isOSDarwin())
-    return createMachOStreamer(Ctx, MAB, OS, Emitter, RelaxAll);
+    return createMachOStreamer(Ctx, MAB, OS, Emitter, false);
 
   if (TheTriple.isOSWindows()) {
     llvm_unreachable("ARM does not support Windows COFF format");
   }
 
-  return createELFStreamer(Ctx, MAB, OS, Emitter, RelaxAll, NoExecStack);
+  return createARMELFStreamer(Ctx, MAB, OS, Emitter, false, NoExecStack,
+                              TheTriple.getArch() == Triple::thumb);
 }
 
 static MCInstPrinter *createARMMCInstPrinter(const Target &T,
                                              unsigned SyntaxVariant,
                                              const MCAsmInfo &MAI,
+                                             const MCInstrInfo &MII,
+                                             const MCRegisterInfo &MRI,
                                              const MCSubtargetInfo &STI) {
   if (SyntaxVariant == 0)
-    return new ARMInstPrinter(MAI, STI);
+    return new ARMInstPrinter(MAI, MII, MRI, STI);
   return 0;
+}
+
+static MCRelocationInfo *createARMMCRelocationInfo(StringRef TT,
+                                                   MCContext &Ctx) {
+  Triple TheTriple(TT);
+  if (TheTriple.isEnvironmentMachO())
+    return createARMMachORelocationInfo(Ctx);
+  // Default to the stock relocation info.
+  return llvm::createMCRelocationInfo(TT, Ctx);
 }
 
 namespace {
@@ -189,15 +246,16 @@ public:
     return MCInstrAnalysis::isConditionalBranch(Inst);
   }
 
-  uint64_t evaluateBranch(const MCInst &Inst, uint64_t Addr,
-                          uint64_t Size) const {
+  bool evaluateBranch(const MCInst &Inst, uint64_t Addr,
+                      uint64_t Size, uint64_t &Target) const {
     // We only handle PCRel branches for now.
     if (Info->get(Inst.getOpcode()).OpInfo[0].OperandType!=MCOI::OPERAND_PCREL)
-      return -1ULL;
+      return false;
 
     int64_t Imm = Inst.getOperand(0).getImm();
     // FIXME: This is not right for thumb.
-    return Addr+Imm+8; // In ARM mode the PC is always off by 8 bytes.
+    Target = Addr+Imm+8; // In ARM mode the PC is always off by 8 bytes.
+    return true;
   }
 };
 
@@ -252,4 +310,10 @@ extern "C" void LLVMInitializeARMTargetMC() {
   // Register the MCInstPrinter.
   TargetRegistry::RegisterMCInstPrinter(TheARMTarget, createARMMCInstPrinter);
   TargetRegistry::RegisterMCInstPrinter(TheThumbTarget, createARMMCInstPrinter);
+
+  // Register the MC relocation info.
+  TargetRegistry::RegisterMCRelocationInfo(TheARMTarget,
+                                           createARMMCRelocationInfo);
+  TargetRegistry::RegisterMCRelocationInfo(TheThumbTarget,
+                                           createARMMCRelocationInfo);
 }

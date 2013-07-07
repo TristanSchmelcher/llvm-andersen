@@ -17,21 +17,27 @@
 
 #define DEBUG_TYPE "ppc-branch-select"
 #include "PPC.h"
+#include "MCTargetDesc/PPCPredicates.h"
 #include "PPCInstrBuilder.h"
 #include "PPCInstrInfo.h"
-#include "MCTargetDesc/PPCPredicates.h"
-#include "llvm/CodeGen/MachineFunctionPass.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Target/TargetMachine.h"
 using namespace llvm;
 
 STATISTIC(NumExpanded, "Number of branches expanded to long format");
 
+namespace llvm {
+  void initializePPCBSelPass(PassRegistry&);
+}
+
 namespace {
   struct PPCBSel : public MachineFunctionPass {
     static char ID;
-    PPCBSel() : MachineFunctionPass(ID) {}
+    PPCBSel() : MachineFunctionPass(ID) {
+      initializePPCBSelPass(*PassRegistry::getPassRegistry());
+    }
 
     /// BlockSizes - The sizes of the basic blocks in the function.
     std::vector<unsigned> BlockSizes;
@@ -44,6 +50,9 @@ namespace {
   };
   char PPCBSel::ID = 0;
 }
+
+INITIALIZE_PASS(PPCBSel, "ppc-branch-select", "PowerPC Branch Selector",
+                false, false)
 
 /// createPPCBranchSelectionPass - returns an instance of the Branch Selection
 /// Pass
@@ -103,15 +112,21 @@ bool PPCBSel::runOnMachineFunction(MachineFunction &Fn) {
       unsigned MBBStartOffset = 0;
       for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end();
            I != E; ++I) {
-        if (I->getOpcode() != PPC::BCC || I->getOperand(2).isImm()) {
+        MachineBasicBlock *Dest = 0;
+        if (I->getOpcode() == PPC::BCC && !I->getOperand(2).isImm())
+          Dest = I->getOperand(2).getMBB();
+        else if ((I->getOpcode() == PPC::BDNZ8 || I->getOpcode() == PPC::BDNZ ||
+                  I->getOpcode() == PPC::BDZ8  || I->getOpcode() == PPC::BDZ) &&
+                 !I->getOperand(0).isImm())
+          Dest = I->getOperand(0).getMBB();
+
+        if (!Dest) {
           MBBStartOffset += TII->GetInstSizeInBytes(I);
           continue;
         }
         
         // Determine the offset from the current branch to the destination
         // block.
-        MachineBasicBlock *Dest = I->getOperand(2).getMBB();
-        
         int BranchSize;
         if (Dest->getNumber() <= MBB.getNumber()) {
           // If this is a backwards branch, the delta is the offset from the
@@ -135,21 +150,33 @@ bool PPCBSel::runOnMachineFunction(MachineFunction &Fn) {
           MBBStartOffset += 4;
           continue;
         }
-        
+
         // Otherwise, we have to expand it to a long branch.
-        // The BCC operands are:
-        // 0. PPC branch predicate
-        // 1. CR register
-        // 2. Target MBB
-        PPC::Predicate Pred = (PPC::Predicate)I->getOperand(0).getImm();
-        unsigned CRReg = I->getOperand(1).getReg();
-        
         MachineInstr *OldBranch = I;
         DebugLoc dl = OldBranch->getDebugLoc();
-        
-        // Jump over the uncond branch inst (i.e. $PC+8) on opposite condition.
-        BuildMI(MBB, I, dl, TII->get(PPC::BCC))
-          .addImm(PPC::InvertPredicate(Pred)).addReg(CRReg).addImm(2);
+ 
+        if (I->getOpcode() == PPC::BCC) {
+          // The BCC operands are:
+          // 0. PPC branch predicate
+          // 1. CR register
+          // 2. Target MBB
+          PPC::Predicate Pred = (PPC::Predicate)I->getOperand(0).getImm();
+          unsigned CRReg = I->getOperand(1).getReg();
+       
+          // Jump over the uncond branch inst (i.e. $PC+8) on opposite condition.
+          BuildMI(MBB, I, dl, TII->get(PPC::BCC))
+            .addImm(PPC::InvertPredicate(Pred)).addReg(CRReg).addImm(2);
+        } else if (I->getOpcode() == PPC::BDNZ) {
+          BuildMI(MBB, I, dl, TII->get(PPC::BDZ)).addImm(2);
+        } else if (I->getOpcode() == PPC::BDNZ8) {
+          BuildMI(MBB, I, dl, TII->get(PPC::BDZ8)).addImm(2);
+        } else if (I->getOpcode() == PPC::BDZ) {
+          BuildMI(MBB, I, dl, TII->get(PPC::BDNZ)).addImm(2);
+        } else if (I->getOpcode() == PPC::BDZ8) {
+          BuildMI(MBB, I, dl, TII->get(PPC::BDNZ8)).addImm(2);
+        } else {
+           llvm_unreachable("Unhandled branch type!");
+        }
         
         // Uncond branch to the real destination.
         I = BuildMI(MBB, I, dl, TII->get(PPC::B)).addMBB(Dest);

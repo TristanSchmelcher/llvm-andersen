@@ -532,6 +532,7 @@ class AIswp<bit b, dag oops, dag iops, string opc, list<dag> pattern>
   let Inst{11-4} = 0b00001001;
   let Inst{3-0} = Rt2;
 
+  let Unpredictable{11-8} = 0b1111;
   let DecoderMethod = "DecodeSwap";
 }
 
@@ -826,6 +827,8 @@ class AExtI<bits<8> opcod, dag oops, dag iops, InstrItinClass itin,
   let Inst{7-4}   = 0b0111;
   let Inst{9-8}   = 0b00;
   let Inst{27-20} = opcod;
+
+  let Unpredictable{9-8} = 0b11;
 }
 
 // Misc Arithmetic instructions.
@@ -841,6 +844,23 @@ class AMiscA1I<bits<8> opcod, bits<4> opc7_4, dag oops, dag iops,
   let Inst{11-8}  = 0b1111;
   let Inst{7-4}   = opc7_4;
   let Inst{3-0}   = Rm;
+}
+
+// Division instructions.
+class ADivA1I<bits<3> opcod, dag oops, dag iops,
+              InstrItinClass itin, string opc, string asm, list<dag> pattern>
+  : I<oops, iops, AddrModeNone, 4, IndexModeNone, ArithMiscFrm, itin,
+      opc, asm, "", pattern> {
+  bits<4> Rd;
+  bits<4> Rn;
+  bits<4> Rm;
+  let Inst{27-23} = 0b01110;
+  let Inst{22-20} = opcod;
+  let Inst{19-16} = Rd;
+  let Inst{15-12} = 0b1111;
+  let Inst{11-8}  = Rm;
+  let Inst{7-4}   = 0b0001;
+  let Inst{3-0}   = Rn;
 }
 
 // PKH instructions
@@ -889,6 +909,10 @@ class ARMV5TPat<dag pattern, dag result> : Pat<pattern, result> {
 }
 class ARMV5TEPat<dag pattern, dag result> : Pat<pattern, result> {
   list<Predicate> Predicates = [IsARM, HasV5TE];
+}
+// ARMV5MOPat - Same as ARMV5TEPat with UseMulOps.
+class ARMV5MOPat<dag pattern, dag result> : Pat<pattern, result> {
+  list<Predicate> Predicates = [IsARM, HasV5TE, UseMulOps];
 }
 class ARMV6Pat<dag pattern, dag result> : Pat<pattern, result> {
   list<Predicate> Predicates = [IsARM, HasV6];
@@ -1206,8 +1230,9 @@ class T2JTI<dag oops, dag iops, InstrItinClass itin,
   : Thumb2XI<oops, iops, AddrModeNone, 0, itin, asm, "", pattern>;
 
 // Move to/from coprocessor instructions
-class T2Cop<bits<4> opc, dag oops, dag iops, string asm, list<dag> pattern>
-  : T2XI <oops, iops, NoItinerary, asm, pattern>, Requires<[IsThumb2]> {
+class T2Cop<bits<4> opc, dag oops, dag iops, string opcstr, string asm,
+            list<dag> pattern>
+  : T2I <oops, iops, NoItinerary, opcstr, asm, pattern>, Requires<[IsThumb2]> {
   let Inst{31-28} = opc;
 }
 
@@ -1365,7 +1390,6 @@ class ADI5<bits<4> opcod1, bits<2> opcod2, dag oops, dag iops,
   let Inst{15-12} = Dd{3-0};
   let Inst{7-0}   = addr{7-0};    // imm8
 
-  // TODO: Mark the instructions with the appropriate subtarget info.
   let Inst{27-24} = opcod1;
   let Inst{21-20} = opcod2;
   let Inst{11-9}  = 0b101;
@@ -1391,7 +1415,6 @@ class ASI5<bits<4> opcod1, bits<2> opcod2, dag oops, dag iops,
   let Inst{15-12} = Sd{4-1};
   let Inst{7-0}   = addr{7-0};    // imm8
 
-  // TODO: Mark the instructions with the appropriate subtarget info.
   let Inst{27-24} = opcod1;
   let Inst{21-20} = opcod2;
   let Inst{11-9}  = 0b101;
@@ -1413,6 +1436,28 @@ class PseudoVFPLdStM<dag oops, dag iops, InstrItinClass itin, string cstr,
 }
 
 // Load / store multiple
+
+// Unknown precision
+class AXXI4<dag oops, dag iops, IndexMode im,
+            string asm, string cstr, list<dag> pattern>
+  : VFPXI<oops, iops, AddrMode4, 4, im,
+          VFPLdStFrm, NoItinerary, asm, cstr, pattern> {
+  // Instruction operands.
+  bits<4>  Rn;
+  bits<13> regs;
+
+  // Encode instruction operands.
+  let Inst{19-16} = Rn;
+  let Inst{22}    = 0;
+  let Inst{15-12} = regs{11-8};
+  let Inst{7-1}   = regs{7-1};
+
+  let Inst{27-25} = 0b110;
+  let Inst{11-8}  = 0b1011;
+  let Inst{0}     = 1;
+}
+
+// Double precision
 class AXDI4<dag oops, dag iops, IndexMode im, InstrItinClass itin,
             string asm, string cstr, list<dag> pattern>
   : VFPXI<oops, iops, AddrMode4, 4, im,
@@ -1425,14 +1470,15 @@ class AXDI4<dag oops, dag iops, IndexMode im, InstrItinClass itin,
   let Inst{19-16} = Rn;
   let Inst{22}    = regs{12};
   let Inst{15-12} = regs{11-8};
-  let Inst{7-0}   = regs{7-0};
+  let Inst{7-1}   = regs{7-1};
 
-  // TODO: Mark the instructions with the appropriate subtarget info.
   let Inst{27-25} = 0b110;
   let Inst{11-9}  = 0b101;
   let Inst{8}     = 1;          // Double precision
+  let Inst{0}     = 0;
 }
 
+// Single Precision
 class AXSI4<dag oops, dag iops, IndexMode im, InstrItinClass itin,
             string asm, string cstr, list<dag> pattern>
   : VFPXI<oops, iops, AddrMode4, 4, im,
@@ -1447,7 +1493,6 @@ class AXSI4<dag oops, dag iops, IndexMode im, InstrItinClass itin,
   let Inst{15-12} = regs{12-9};
   let Inst{7-0}   = regs{7-0};
 
-  // TODO: Mark the instructions with the appropriate subtarget info.
   let Inst{27-25} = 0b110;
   let Inst{11-9}  = 0b101;
   let Inst{8}     = 0;          // Single precision
@@ -1501,6 +1546,35 @@ class ADbI<bits<5> opcod1, bits<2> opcod2, bit op6, bit op4, dag oops,
   let Inst{8}     = 1;          // Double precision
   let Inst{6}     = op6;
   let Inst{4}     = op4;
+}
+
+// FP, binary, not predicated
+class ADbInp<bits<5> opcod1, bits<2> opcod2, bit opcod3, dag oops, dag iops,
+           InstrItinClass itin, string asm, list<dag> pattern>
+  : VFPXI<oops, iops, AddrModeNone, 4, IndexModeNone,
+          VFPBinaryFrm, itin, asm, "", pattern>
+{
+  // Instruction operands.
+  bits<5> Dd;
+  bits<5> Dn;
+  bits<5> Dm;
+
+  let Inst{31-28} = 0b1111;
+
+  // Encode instruction operands.
+  let Inst{3-0}   = Dm{3-0};
+  let Inst{5}     = Dm{4};
+  let Inst{19-16} = Dn{3-0};
+  let Inst{7}     = Dn{4};
+  let Inst{15-12} = Dd{3-0};
+  let Inst{22}    = Dd{4};
+
+  let Inst{27-23} = opcod1;
+  let Inst{21-20} = opcod2;
+  let Inst{11-9}  = 0b101;
+  let Inst{8}     = 1; // double precision
+  let Inst{6}     = opcod3;
+  let Inst{4}     = 0;
 }
 
 // Single precision, unary
@@ -1560,6 +1634,35 @@ class ASbI<bits<5> opcod1, bits<2> opcod2, bit op6, bit op4, dag oops, dag iops,
   let Inst{8}     = 0;          // Single precision
   let Inst{6}     = op6;
   let Inst{4}     = op4;
+}
+
+// Single precision, binary, not predicated
+class ASbInp<bits<5> opcod1, bits<2> opcod2, bit opcod3, dag oops, dag iops,
+           InstrItinClass itin, string asm, list<dag> pattern>
+  : VFPXI<oops, iops, AddrModeNone, 4, IndexModeNone,
+          VFPBinaryFrm, itin, asm, "", pattern>
+{
+  // Instruction operands.
+  bits<5> Sd;
+  bits<5> Sn;
+  bits<5> Sm;
+
+  let Inst{31-28} = 0b1111;
+
+  // Encode instruction operands.
+  let Inst{3-0}   = Sm{4-1};
+  let Inst{5}     = Sm{0};
+  let Inst{19-16} = Sn{4-1};
+  let Inst{7}     = Sn{0};
+  let Inst{15-12} = Sd{4-1};
+  let Inst{22}    = Sd{0};
+
+  let Inst{27-23} = opcod1;
+  let Inst{21-20} = opcod2;
+  let Inst{11-9}  = 0b101;
+  let Inst{8}     = 0; // Single precision
+  let Inst{6}     = opcod3;
+  let Inst{4}     = 0;
 }
 
 // Single precision binary, if no NEON. Same as ASbI except not available if
@@ -1861,7 +1964,6 @@ class N3V<bit op24, bit op23, bits<2> op21_20, bits<4> op11_8, bit op6, bit op4,
           string opc, string dt, string asm, string cstr, list<dag> pattern>
   : N3VCommon<op24, op23, op21_20, op11_8, op6, op4,
               oops, iops, f, itin, opc, dt, asm, cstr, pattern> {
-
   // Instruction operands.
   bits<5> Vd;
   bits<5> Vn;

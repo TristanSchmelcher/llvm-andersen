@@ -1,4 +1,4 @@
-; RUN: llc < %s -mtriple=x86_64-apple-darwin -mcpu=corei7 -promote-elements -mattr=+sse41 | FileCheck %s
+; RUN: llc < %s -mtriple=x86_64-apple-darwin -mcpu=corei7 -mattr=+sse41 | FileCheck %s
 
 ;CHECK: vsel_float
 ;CHECK: blendvps
@@ -80,3 +80,11 @@ define <2 x double> @B(<2 x double> %x, <2 x double> %y) {
   ret <2 x double> %min
 }
 
+; CHECK: float_crash
+define void @float_crash() nounwind {
+entry:
+  %merge205vector_func.i = select <4 x i1> undef, <4 x double> undef, <4 x double> undef
+  %extract214vector_func.i = extractelement <4 x double> %merge205vector_func.i, i32 0
+  store double %extract214vector_func.i, double addrspace(1)* undef, align 8
+  ret void
+}

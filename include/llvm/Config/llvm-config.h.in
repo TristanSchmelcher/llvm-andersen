@@ -40,14 +40,14 @@
 /* Has gcc/MSVC atomic intrinsics */
 #undef LLVM_HAS_ATOMICS
 
+/* Host triple LLVM will be executed on */
+#undef LLVM_HOST_TRIPLE
+
 /* Installation directory for include files */
 #undef LLVM_INCLUDEDIR
 
 /* Installation directory for .info files */
 #undef LLVM_INFODIR
-
-/* Installation directory for libraries */
-#undef LLVM_LIBDIR
 
 /* Installation directory for man pages */
 #undef LLVM_MANDIR
@@ -60,6 +60,9 @@
 
 /* LLVM name for the native AsmPrinter init function, if available */
 #undef LLVM_NATIVE_ASMPRINTER
+
+/* LLVM name for the native Disassembler init function, if available */
+#undef LLVM_NATIVE_DISASSEMBLER
 
 /* LLVM name for the native Target init function, if available */
 #undef LLVM_NATIVE_TARGET
@@ -105,6 +108,12 @@
 
 /* Installation prefix directory */
 #undef LLVM_PREFIX
+
+/* Define if we have the Intel JIT API runtime support library */
+#undef LLVM_USE_INTEL_JITEVENTS
+
+/* Define if we have the oprofile JIT-support library */
+#undef LLVM_USE_OPROFILE
 
 /* Major version of the LLVM API */
 #undef LLVM_VERSION_MAJOR

@@ -13,15 +13,17 @@
 
 #define DEBUG_TYPE "asm-printer"
 #include "MipsInstPrinter.h"
+#include "MipsInstrInfo.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
-#define GET_INSTRUCTION_NAME
+#define PRINT_ALIAS_INSTR
 #include "MipsGenAsmWriter.inc"
 
 const char* Mips::MipsFCCToString(Mips::CondCode CC) {
@@ -62,18 +64,33 @@ const char* Mips::MipsFCCToString(Mips::CondCode CC) {
   llvm_unreachable("Impossible condition code!");
 }
 
-StringRef MipsInstPrinter::getOpcodeName(unsigned Opcode) const {
-  return getInstructionName(Opcode);
-}
-
 void MipsInstPrinter::printRegName(raw_ostream &OS, unsigned RegNo) const {
   OS << '$' << StringRef(getRegisterName(RegNo)).lower();
 }
 
 void MipsInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
                                 StringRef Annot) {
-  printInstruction(MI, O);
+  switch (MI->getOpcode()) {
+  default:
+    break;
+  case Mips::RDHWR:
+  case Mips::RDHWR64:
+    O << "\t.set\tpush\n";
+    O << "\t.set\tmips32r2\n";
+  }
+
+  // Try to print any aliases first.
+  if (!printAliasInstr(MI, O))
+    printInstruction(MI, O);
   printAnnotation(O, Annot);
+
+  switch (MI->getOpcode()) {
+  default:
+    break;
+  case Mips::RDHWR:
+  case Mips::RDHWR64:
+    O << "\n\t.set\tpop";
+  }
 }
 
 static void printExpr(const MCExpr *Expr, raw_ostream &OS) {
@@ -112,6 +129,12 @@ static void printExpr(const MCExpr *Expr, raw_ostream &OS) {
   case MCSymbolRefExpr::VK_Mips_GOT_DISP:  OS << "%got_disp("; break;
   case MCSymbolRefExpr::VK_Mips_GOT_PAGE:  OS << "%got_page("; break;
   case MCSymbolRefExpr::VK_Mips_GOT_OFST:  OS << "%got_ofst("; break;
+  case MCSymbolRefExpr::VK_Mips_HIGHER:    OS << "%higher("; break;
+  case MCSymbolRefExpr::VK_Mips_HIGHEST:   OS << "%highest("; break;
+  case MCSymbolRefExpr::VK_Mips_GOT_HI16:  OS << "%got_hi("; break;
+  case MCSymbolRefExpr::VK_Mips_GOT_LO16:  OS << "%got_lo("; break;
+  case MCSymbolRefExpr::VK_Mips_CALL_HI16: OS << "%call_hi("; break;
+  case MCSymbolRefExpr::VK_Mips_CALL_LO16: OS << "%call_lo("; break;
   }
 
   OS << SRE->getSymbol();
@@ -129,6 +152,11 @@ static void printExpr(const MCExpr *Expr, raw_ostream &OS) {
     OS << ')';
 }
 
+void MipsInstPrinter::printCPURegs(const MCInst *MI, unsigned OpNo,
+                                   raw_ostream &O) {
+  printRegName(O, MI->getOperand(OpNo).getReg());
+}
+
 void MipsInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
                                    raw_ostream &O) {
   const MCOperand &Op = MI->getOperand(OpNo);
@@ -136,12 +164,12 @@ void MipsInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
     printRegName(O, Op.getReg());
     return;
   }
-  
+
   if (Op.isImm()) {
     O << Op.getImm();
     return;
   }
-  
+
   assert(Op.isExpr() && "unknown operand kind in printOperand");
   printExpr(Op.getExpr(), O);
 }

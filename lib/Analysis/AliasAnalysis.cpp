@@ -25,14 +25,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/CaptureTracking.h"
+#include "llvm/Analysis/Dominators.h"
+#include "llvm/Analysis/ValueTracking.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Pass.h"
-#include "llvm/BasicBlock.h"
-#include "llvm/Function.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Instructions.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Type.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 using namespace llvm;
 
 // Register the AliasAnalysis interface, providing a nice name to refer to.
@@ -356,6 +360,123 @@ AliasAnalysis::getModRefInfo(const AtomicRMWInst *RMW, const Location &Loc) {
   return ModRef;
 }
 
+namespace {
+  // Conservatively return true. Return false, if there is a single path
+  // starting from "From" and the path does not reach "To".
+  static bool hasPath(const BasicBlock *From, const BasicBlock *To) {
+    const unsigned MaxCheck = 5;
+    const BasicBlock *Current = From;
+    for (unsigned I = 0; I < MaxCheck; I++) {
+      unsigned NumSuccs = Current->getTerminator()->getNumSuccessors();
+      if (NumSuccs > 1)
+        return true;
+      if (NumSuccs == 0)
+        return false;
+      Current = Current->getTerminator()->getSuccessor(0);
+      if (Current == To)
+        return true;
+    }
+    return true;
+  }
+
+  /// Only find pointer captures which happen before the given instruction. Uses
+  /// the dominator tree to determine whether one instruction is before another.
+  /// Only support the case where the Value is defined in the same basic block
+  /// as the given instruction and the use.
+  struct CapturesBefore : public CaptureTracker {
+    CapturesBefore(const Instruction *I, DominatorTree *DT)
+      : BeforeHere(I), DT(DT), Captured(false) {}
+
+    void tooManyUses() { Captured = true; }
+
+    bool shouldExplore(Use *U) {
+      Instruction *I = cast<Instruction>(U->getUser());
+      BasicBlock *BB = I->getParent();
+      // We explore this usage only if the usage can reach "BeforeHere".
+      // If use is not reachable from entry, there is no need to explore.
+      if (BeforeHere != I && !DT->isReachableFromEntry(BB))
+        return false;
+      // If the value is defined in the same basic block as use and BeforeHere,
+      // there is no need to explore the use if BeforeHere dominates use.
+      // Check whether there is a path from I to BeforeHere.
+      if (BeforeHere != I && DT->dominates(BeforeHere, I) &&
+          !hasPath(BB, BeforeHere->getParent()))
+        return false;
+      return true;
+    }
+
+    bool captured(Use *U) {
+      Instruction *I = cast<Instruction>(U->getUser());
+      BasicBlock *BB = I->getParent();
+      // Same logic as in shouldExplore.
+      if (BeforeHere != I && !DT->isReachableFromEntry(BB))
+        return false;
+      if (BeforeHere != I && DT->dominates(BeforeHere, I) &&
+          !hasPath(BB, BeforeHere->getParent()))
+        return false;
+      Captured = true;
+      return true;
+    }
+
+    const Instruction *BeforeHere;
+    DominatorTree *DT;
+
+    bool Captured;
+  };
+}
+
+// FIXME: this is really just shoring-up a deficiency in alias analysis.
+// BasicAA isn't willing to spend linear time determining whether an alloca
+// was captured before or after this particular call, while we are. However,
+// with a smarter AA in place, this test is just wasting compile time.
+AliasAnalysis::ModRefResult
+AliasAnalysis::callCapturesBefore(const Instruction *I,
+                                  const AliasAnalysis::Location &MemLoc,
+                                  DominatorTree *DT) {
+  if (!DT || !TD) return AliasAnalysis::ModRef;
+
+  const Value *Object = GetUnderlyingObject(MemLoc.Ptr, TD);
+  if (!isIdentifiedObject(Object) || isa<GlobalValue>(Object) ||
+      isa<Constant>(Object))
+    return AliasAnalysis::ModRef;
+
+  ImmutableCallSite CS(I);
+  if (!CS.getInstruction() || CS.getInstruction() == Object)
+    return AliasAnalysis::ModRef;
+
+  CapturesBefore CB(I, DT);
+  llvm::PointerMayBeCaptured(Object, &CB);
+  if (CB.Captured)
+    return AliasAnalysis::ModRef;
+
+  unsigned ArgNo = 0;
+  AliasAnalysis::ModRefResult R = AliasAnalysis::NoModRef;
+  for (ImmutableCallSite::arg_iterator CI = CS.arg_begin(), CE = CS.arg_end();
+       CI != CE; ++CI, ++ArgNo) {
+    // Only look at the no-capture or byval pointer arguments.  If this
+    // pointer were passed to arguments that were neither of these, then it
+    // couldn't be no-capture.
+    if (!(*CI)->getType()->isPointerTy() ||
+        (!CS.doesNotCapture(ArgNo) && !CS.isByValArgument(ArgNo)))
+      continue;
+
+    // If this is a no-capture pointer argument, see if we can tell that it
+    // is impossible to alias the pointer we're checking.  If not, we have to
+    // assume that the call could touch the pointer, even though it doesn't
+    // escape.
+    if (isNoAlias(AliasAnalysis::Location(*CI),
+		  AliasAnalysis::Location(Object)))
+      continue;
+    if (CS.doesNotAccessMemory(ArgNo))
+      continue;
+    if (CS.onlyReadsMemory(ArgNo)) {
+      R = AliasAnalysis::Ref;
+      continue;
+    }
+    return AliasAnalysis::ModRef;
+  }
+  return R;
+}
 
 // AliasAnalysis destructor: DO NOT move this to the header file for
 // AliasAnalysis or else clients of the AliasAnalysis class may not depend on
@@ -368,7 +489,8 @@ AliasAnalysis::~AliasAnalysis() {}
 /// AliasAnalysis interface before any other methods are called.
 ///
 void AliasAnalysis::InitializeAliasAnalysis(Pass *P) {
-  TD = P->getAnalysisIfAvailable<TargetData>();
+  TD = P->getAnalysisIfAvailable<DataLayout>();
+  TLI = P->getAnalysisIfAvailable<TargetLibraryInfo>();
   AA = &P->getAnalysis<AliasAnalysis>();
 }
 
@@ -378,7 +500,7 @@ void AliasAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<AliasAnalysis>();         // All AA's chain
 }
 
-/// getTypeStoreSize - Return the TargetData store size for the given type,
+/// getTypeStoreSize - Return the DataLayout store size for the given type,
 /// if known, or a conservative value otherwise.
 ///
 uint64_t AliasAnalysis::getTypeStoreSize(Type *Ty) {
@@ -419,6 +541,15 @@ bool llvm::isNoAliasCall(const Value *V) {
   if (isa<CallInst>(V) || isa<InvokeInst>(V))
     return ImmutableCallSite(cast<Instruction>(V))
       .paramHasAttr(0, Attribute::NoAlias);
+  return false;
+}
+
+/// isNoAliasArgument - Return true if this is an argument with the noalias
+/// attribute.
+bool llvm::isNoAliasArgument(const Value *V)
+{
+  if (const Argument *A = dyn_cast<Argument>(V))
+    return A->hasNoAliasAttr();
   return false;
 }
 

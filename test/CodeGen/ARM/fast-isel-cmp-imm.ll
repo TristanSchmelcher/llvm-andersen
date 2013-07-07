@@ -1,4 +1,5 @@
 ; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-linux-gnueabi | FileCheck %s --check-prefix=ARM
 ; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-apple-ios | FileCheck %s --check-prefix=THUMB
 
 define void @t1a(float %a) uwtable ssp {
@@ -229,3 +230,22 @@ if.then:                                          ; preds = %entry
 if.end:                                           ; preds = %if.then, %entry
   ret void
 }
+
+; rdar://11038907
+; When comparing LONG_MIN/INT_MIN use a cmp instruction.
+define void @t13() nounwind ssp {
+entry:
+; ARM: t13
+; THUMB: t13
+  %cmp = icmp slt i32 -123, -2147483648
+; ARM: cmp r{{[0-9]}}, #-2147483648
+; THUMB: cmp.w r{{[0-9]}}, #-2147483648
+  br i1 %cmp, label %if.then, label %if.end
+
+if.then:                                          ; preds = %entry
+  ret void
+
+if.end:                                           ; preds = %entry
+  ret void
+}
+

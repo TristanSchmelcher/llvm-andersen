@@ -13,13 +13,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/Locale.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
 using namespace llvm;
+
+static const size_t TabStop = 8;
 
 namespace {
   struct LineNoCacheTy {
@@ -61,7 +65,7 @@ unsigned SourceMgr::AddIncludeFile(const std::string &Filename,
     MemoryBuffer::getFile(IncludedFile.c_str(), NewBuf);
   }
 
-  if (NewBuf == 0) return ~0U;
+  if (!NewBuf) return ~0U;
 
   return AddNewSourceBuffer(NewBuf.take(), IncludeLoc);
 }
@@ -79,9 +83,10 @@ int SourceMgr::FindBufferContainingLoc(SMLoc Loc) const {
   return -1;
 }
 
-/// FindLineNumber - Find the line number for the specified location in the
-/// specified file.  This is not a fast method.
-unsigned SourceMgr::FindLineNumber(SMLoc Loc, int BufferID) const {
+/// getLineAndColumn - Find the line and column number for the specified
+/// location in the specified file.  This is not a fast method.
+std::pair<unsigned, unsigned>
+SourceMgr::getLineAndColumn(SMLoc Loc, int BufferID) const {
   if (BufferID == -1) BufferID = FindBufferContainingLoc(Loc);
   assert(BufferID != -1 && "Invalid Location!");
 
@@ -91,7 +96,8 @@ unsigned SourceMgr::FindLineNumber(SMLoc Loc, int BufferID) const {
   // location.
   unsigned LineNo = 1;
 
-  const char *Ptr = Buff->getBufferStart();
+  const char *BufStart = Buff->getBufferStart();
+  const char *Ptr = BufStart;
 
   // If we have a line number cache, and if the query is to a later point in the
   // same file, start searching from the last query location.  This optimizes
@@ -108,7 +114,6 @@ unsigned SourceMgr::FindLineNumber(SMLoc Loc, int BufferID) const {
   for (; SMLoc::getFromPointer(Ptr) != Loc; ++Ptr)
     if (*Ptr == '\n') ++LineNo;
 
-
   // Allocate the line number cache if it doesn't exist.
   if (LineNoCache == 0)
     LineNoCache = new LineNoCacheTy();
@@ -118,7 +123,10 @@ unsigned SourceMgr::FindLineNumber(SMLoc Loc, int BufferID) const {
   Cache.LastQueryBufferID = BufferID;
   Cache.LastQuery = Ptr;
   Cache.LineNoOfQuery = LineNo;
-  return LineNo;
+  
+  size_t NewlineOffs = StringRef(BufStart, Ptr-BufStart).find_last_of("\n\r");
+  if (NewlineOffs == StringRef::npos) NewlineOffs = ~(size_t)0;
+  return std::make_pair(LineNo, Ptr-BufStart-NewlineOffs);
 }
 
 void SourceMgr::PrintIncludeStack(SMLoc IncludeLoc, raw_ostream &OS) const {
@@ -142,59 +150,71 @@ void SourceMgr::PrintIncludeStack(SMLoc IncludeLoc, raw_ostream &OS) const {
 /// prefixed to the message.
 SMDiagnostic SourceMgr::GetMessage(SMLoc Loc, SourceMgr::DiagKind Kind,
                                    const Twine &Msg,
-                                   ArrayRef<SMRange> Ranges) const {
+                                   ArrayRef<SMRange> Ranges,
+                                   ArrayRef<SMFixIt> FixIts) const {
 
   // First thing to do: find the current buffer containing the specified
-  // location.
-  int CurBuf = FindBufferContainingLoc(Loc);
-  assert(CurBuf != -1 && "Invalid or unspecified location!");
-
-  MemoryBuffer *CurMB = getBufferInfo(CurBuf).Buffer;
-
-  // Scan backward to find the start of the line.
-  const char *LineStart = Loc.getPointer();
-  while (LineStart != CurMB->getBufferStart() &&
-         LineStart[-1] != '\n' && LineStart[-1] != '\r')
-    --LineStart;
-
-  // Get the end of the line.
-  const char *LineEnd = Loc.getPointer();
-  while (LineEnd != CurMB->getBufferEnd() &&
-         LineEnd[0] != '\n' && LineEnd[0] != '\r')
-    ++LineEnd;
-  std::string LineStr(LineStart, LineEnd);
-
-  // Convert any ranges to column ranges that only intersect the line of the
-  // location.
+  // location to pull out the source line.
   SmallVector<std::pair<unsigned, unsigned>, 4> ColRanges;
-  for (unsigned i = 0, e = Ranges.size(); i != e; ++i) {
-    SMRange R = Ranges[i];
-    if (!R.isValid()) continue;
-    
-    // If the line doesn't contain any part of the range, then ignore it.
-    if (R.Start.getPointer() > LineEnd || R.End.getPointer() < LineStart)
-      continue;
-   
-    // Ignore pieces of the range that go onto other lines.
-    if (R.Start.getPointer() < LineStart)
-      R.Start = SMLoc::getFromPointer(LineStart);
-    if (R.End.getPointer() > LineEnd)
-      R.End = SMLoc::getFromPointer(LineEnd);
-    
-    // Translate from SMLoc ranges to column ranges.
-    ColRanges.push_back(std::make_pair(R.Start.getPointer()-LineStart,
-                                       R.End.getPointer()-LineStart));
-  }
+  std::pair<unsigned, unsigned> LineAndCol;
+  const char *BufferID = "<unknown>";
+  std::string LineStr;
   
-  return SMDiagnostic(*this, Loc,
-                      CurMB->getBufferIdentifier(), FindLineNumber(Loc, CurBuf),
-                      Loc.getPointer()-LineStart, Kind, Msg.str(),
-                      LineStr, ColRanges);
+  if (Loc.isValid()) {
+    int CurBuf = FindBufferContainingLoc(Loc);
+    assert(CurBuf != -1 && "Invalid or unspecified location!");
+
+    MemoryBuffer *CurMB = getBufferInfo(CurBuf).Buffer;
+    BufferID = CurMB->getBufferIdentifier();
+    
+    // Scan backward to find the start of the line.
+    const char *LineStart = Loc.getPointer();
+    const char *BufStart = CurMB->getBufferStart();
+    while (LineStart != BufStart && LineStart[-1] != '\n' &&
+           LineStart[-1] != '\r')
+      --LineStart;
+
+    // Get the end of the line.
+    const char *LineEnd = Loc.getPointer();
+    const char *BufEnd = CurMB->getBufferEnd();
+    while (LineEnd != BufEnd && LineEnd[0] != '\n' && LineEnd[0] != '\r')
+      ++LineEnd;
+    LineStr = std::string(LineStart, LineEnd);
+
+    // Convert any ranges to column ranges that only intersect the line of the
+    // location.
+    for (unsigned i = 0, e = Ranges.size(); i != e; ++i) {
+      SMRange R = Ranges[i];
+      if (!R.isValid()) continue;
+      
+      // If the line doesn't contain any part of the range, then ignore it.
+      if (R.Start.getPointer() > LineEnd || R.End.getPointer() < LineStart)
+        continue;
+     
+      // Ignore pieces of the range that go onto other lines.
+      if (R.Start.getPointer() < LineStart)
+        R.Start = SMLoc::getFromPointer(LineStart);
+      if (R.End.getPointer() > LineEnd)
+        R.End = SMLoc::getFromPointer(LineEnd);
+      
+      // Translate from SMLoc ranges to column ranges.
+      // FIXME: Handle multibyte characters.
+      ColRanges.push_back(std::make_pair(R.Start.getPointer()-LineStart,
+                                         R.End.getPointer()-LineStart));
+    }
+
+    LineAndCol = getLineAndColumn(Loc, CurBuf);
+  }
+    
+  return SMDiagnostic(*this, Loc, BufferID, LineAndCol.first,
+                      LineAndCol.second-1, Kind, Msg.str(),
+                      LineStr, ColRanges, FixIts);
 }
 
 void SourceMgr::PrintMessage(SMLoc Loc, SourceMgr::DiagKind Kind,
-                             const Twine &Msg, ArrayRef<SMRange> Ranges) const {
-  SMDiagnostic Diagnostic = GetMessage(Loc, Kind, Msg, Ranges);
+                             const Twine &Msg, ArrayRef<SMRange> Ranges,
+                             ArrayRef<SMFixIt> FixIts, bool ShowColors) const {
+  SMDiagnostic Diagnostic = GetMessage(Loc, Kind, Msg, Ranges, FixIts);
   
   // Report the message with the diagnostic handler if present.
   if (DiagHandler) {
@@ -204,28 +224,130 @@ void SourceMgr::PrintMessage(SMLoc Loc, SourceMgr::DiagKind Kind,
 
   raw_ostream &OS = errs();
 
-  int CurBuf = FindBufferContainingLoc(Loc);
-  assert(CurBuf != -1 && "Invalid or unspecified location!");
-  PrintIncludeStack(getBufferInfo(CurBuf).IncludeLoc, OS);
+  if (Loc != SMLoc()) {
+    int CurBuf = FindBufferContainingLoc(Loc);
+    assert(CurBuf != -1 && "Invalid or unspecified location!");
+    PrintIncludeStack(getBufferInfo(CurBuf).IncludeLoc, OS);
+  }
 
-  Diagnostic.print(0, OS);
+  Diagnostic.print(0, OS, ShowColors);
 }
 
 //===----------------------------------------------------------------------===//
 // SMDiagnostic Implementation
 //===----------------------------------------------------------------------===//
 
-SMDiagnostic::SMDiagnostic(const SourceMgr &sm, SMLoc L, const std::string &FN,
+SMDiagnostic::SMDiagnostic(const SourceMgr &sm, SMLoc L, StringRef FN,
                            int Line, int Col, SourceMgr::DiagKind Kind,
-                           const std::string &Msg,
-                           const std::string &LineStr,
-                           ArrayRef<std::pair<unsigned,unsigned> > Ranges)
+                           StringRef Msg, StringRef LineStr,
+                           ArrayRef<std::pair<unsigned,unsigned> > Ranges,
+                           ArrayRef<SMFixIt> Hints)
   : SM(&sm), Loc(L), Filename(FN), LineNo(Line), ColumnNo(Col), Kind(Kind),
-    Message(Msg), LineContents(LineStr), Ranges(Ranges.vec()) {
+    Message(Msg), LineContents(LineStr), Ranges(Ranges.vec()),
+    FixIts(Hints.begin(), Hints.end()) {
+  std::sort(FixIts.begin(), FixIts.end());
 }
 
+static void buildFixItLine(std::string &CaretLine, std::string &FixItLine,
+                           ArrayRef<SMFixIt> FixIts, ArrayRef<char> SourceLine){
+  if (FixIts.empty())
+    return;
 
-void SMDiagnostic::print(const char *ProgName, raw_ostream &S) const {
+  const char *LineStart = SourceLine.begin();
+  const char *LineEnd = SourceLine.end();
+
+  size_t PrevHintEndCol = 0;
+
+  for (ArrayRef<SMFixIt>::iterator I = FixIts.begin(), E = FixIts.end();
+       I != E; ++I) {
+    // If the fixit contains a newline or tab, ignore it.
+    if (I->getText().find_first_of("\n\r\t") != StringRef::npos)
+      continue;
+
+    SMRange R = I->getRange();
+
+    // If the line doesn't contain any part of the range, then ignore it.
+    if (R.Start.getPointer() > LineEnd || R.End.getPointer() < LineStart)
+      continue;
+
+    // Translate from SMLoc to column.
+    // Ignore pieces of the range that go onto other lines.
+    // FIXME: Handle multibyte characters in the source line.
+    unsigned FirstCol;
+    if (R.Start.getPointer() < LineStart)
+      FirstCol = 0;
+    else
+      FirstCol = R.Start.getPointer() - LineStart;
+
+    // If we inserted a long previous hint, push this one forwards, and add
+    // an extra space to show that this is not part of the previous
+    // completion. This is sort of the best we can do when two hints appear
+    // to overlap.
+    //
+    // Note that if this hint is located immediately after the previous
+    // hint, no space will be added, since the location is more important.
+    unsigned HintCol = FirstCol;
+    if (HintCol < PrevHintEndCol)
+      HintCol = PrevHintEndCol + 1;
+
+    // FIXME: This assertion is intended to catch unintended use of multibyte
+    // characters in fixits. If we decide to do this, we'll have to track
+    // separate byte widths for the source and fixit lines.
+    assert((size_t)llvm::sys::locale::columnWidth(I->getText()) ==
+           I->getText().size());
+
+    // This relies on one byte per column in our fixit hints.
+    unsigned LastColumnModified = HintCol + I->getText().size();
+    if (LastColumnModified > FixItLine.size())
+      FixItLine.resize(LastColumnModified, ' ');
+
+    std::copy(I->getText().begin(), I->getText().end(),
+              FixItLine.begin() + HintCol);
+
+    PrevHintEndCol = LastColumnModified;
+
+    // For replacements, mark the removal range with '~'.
+    // FIXME: Handle multibyte characters in the source line.
+    unsigned LastCol;
+    if (R.End.getPointer() >= LineEnd)
+      LastCol = LineEnd - LineStart;
+    else
+      LastCol = R.End.getPointer() - LineStart;
+
+    std::fill(&CaretLine[FirstCol], &CaretLine[LastCol], '~');
+  }
+}
+
+static void printSourceLine(raw_ostream &S, StringRef LineContents) {
+  // Print out the source line one character at a time, so we can expand tabs.
+  for (unsigned i = 0, e = LineContents.size(), OutCol = 0; i != e; ++i) {
+    if (LineContents[i] != '\t') {
+      S << LineContents[i];
+      ++OutCol;
+      continue;
+    }
+
+    // If we have a tab, emit at least one space, then round up to 8 columns.
+    do {
+      S << ' ';
+      ++OutCol;
+    } while ((OutCol % TabStop) != 0);
+  }
+  S << '\n';
+}
+
+static bool isNonASCII(char c) {
+  return c & 0x80;
+}
+
+void SMDiagnostic::print(const char *ProgName, raw_ostream &S,
+                         bool ShowColors) const {
+  // Display colors only if OS supports colors.
+  ShowColors &= S.has_colors();
+
+  if (ShowColors)
+    S.changeColor(raw_ostream::SAVEDCOLOR, true);
+
   if (ProgName && ProgName[0])
     S << ProgName << ": ";
 
@@ -244,53 +366,81 @@ void SMDiagnostic::print(const char *ProgName, raw_ostream &S) const {
   }
 
   switch (Kind) {
-  case SourceMgr::DK_Error: S << "error: "; break;
-  case SourceMgr::DK_Warning: S << "warning: "; break;
-  case SourceMgr::DK_Note: S << "note: "; break;
+  case SourceMgr::DK_Error:
+    if (ShowColors)
+      S.changeColor(raw_ostream::RED, true);
+    S << "error: ";
+    break;
+  case SourceMgr::DK_Warning:
+    if (ShowColors)
+      S.changeColor(raw_ostream::MAGENTA, true);
+    S << "warning: ";
+    break;
+  case SourceMgr::DK_Note:
+    if (ShowColors)
+      S.changeColor(raw_ostream::BLACK, true);
+    S << "note: ";
+    break;
   }
-  
+
+  if (ShowColors) {
+    S.resetColor();
+    S.changeColor(raw_ostream::SAVEDCOLOR, true);
+  }
+
   S << Message << '\n';
+
+  if (ShowColors)
+    S.resetColor();
 
   if (LineNo == -1 || ColumnNo == -1)
     return;
 
+  // FIXME: If there are multibyte or multi-column characters in the source, all
+  // our ranges will be wrong. To do this properly, we'll need a byte-to-column
+  // map like Clang's TextDiagnostic. For now, we'll just handle tabs by
+  // expanding them later, and bail out rather than show incorrect ranges and
+  // misaligned fixits for any other odd characters.
+  if (std::find_if(LineContents.begin(), LineContents.end(), isNonASCII) !=
+      LineContents.end()) {
+    printSourceLine(S, LineContents);
+    return;
+  }
+  size_t NumColumns = LineContents.size();
+
   // Build the line with the caret and ranges.
-  std::string CaretLine(LineContents.size()+1, ' ');
+  std::string CaretLine(NumColumns+1, ' ');
   
   // Expand any ranges.
   for (unsigned r = 0, e = Ranges.size(); r != e; ++r) {
     std::pair<unsigned, unsigned> R = Ranges[r];
-    for (unsigned i = R.first,
-         e = std::min(R.second, (unsigned)LineContents.size())+1; i != e; ++i)
-      CaretLine[i] = '~';
+    std::fill(&CaretLine[R.first],
+              &CaretLine[std::min((size_t)R.second, CaretLine.size())],
+              '~');
   }
-    
+
+  // Add any fix-its.
+  // FIXME: Find the beginning of the line properly for multibyte characters.
+  std::string FixItInsertionLine;
+  buildFixItLine(CaretLine, FixItInsertionLine, FixIts,
+                 makeArrayRef(Loc.getPointer() - ColumnNo,
+                              LineContents.size()));
+
   // Finally, plop on the caret.
-  if (unsigned(ColumnNo) <= LineContents.size())
+  if (unsigned(ColumnNo) <= NumColumns)
     CaretLine[ColumnNo] = '^';
   else 
-    CaretLine[LineContents.size()] = '^';
+    CaretLine[NumColumns] = '^';
   
   // ... and remove trailing whitespace so the output doesn't wrap for it.  We
   // know that the line isn't completely empty because it has the caret in it at
   // least.
   CaretLine.erase(CaretLine.find_last_not_of(' ')+1);
   
-  // Print out the source line one character at a time, so we can expand tabs.
-  for (unsigned i = 0, e = LineContents.size(), OutCol = 0; i != e; ++i) {
-    if (LineContents[i] != '\t') {
-      S << LineContents[i];
-      ++OutCol;
-      continue;
-    }
-    
-    // If we have a tab, emit at least one space, then round up to 8 columns.
-    do {
-      S << ' ';
-      ++OutCol;
-    } while (OutCol & 7);
-  }
-  S << '\n';
+  printSourceLine(S, LineContents);
+
+  if (ShowColors)
+    S.changeColor(raw_ostream::GREEN, true);
 
   // Print out the caret line, matching tabs in the source line.
   for (unsigned i = 0, e = CaretLine.size(), OutCol = 0; i != e; ++i) {
@@ -304,10 +454,36 @@ void SMDiagnostic::print(const char *ProgName, raw_ostream &S) const {
     do {
       S << CaretLine[i];
       ++OutCol;
-    } while (OutCol & 7);
+    } while ((OutCol % TabStop) != 0);
   }
+  S << '\n';
+
+  if (ShowColors)
+    S.resetColor();
+
+  // Print out the replacement line, matching tabs in the source line.
+  if (FixItInsertionLine.empty())
+    return;
   
+  for (size_t i = 0, e = FixItInsertionLine.size(), OutCol = 0; i != e; ++i) {
+    if (i >= LineContents.size() || LineContents[i] != '\t') {
+      S << FixItInsertionLine[i];
+      ++OutCol;
+      continue;
+    }
+
+    // Okay, we have a tab.  Insert the appropriate number of characters.
+    do {
+      S << FixItInsertionLine[i];
+      // FIXME: This is trying not to break up replacements, but then to re-sync
+      // with the tabs between replacements. This will fail, though, if two
+      // fix-it replacements are exactly adjacent, or if a fix-it contains a
+      // space. Really we should be precomputing column widths, which we'll
+      // need anyway for multibyte chars.
+      if (FixItInsertionLine[i] != ' ')
+        ++i;
+      ++OutCol;
+    } while (((OutCol % TabStop) != 0) && i != e);
+  }
   S << '\n';
 }
-
-

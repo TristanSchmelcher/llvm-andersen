@@ -99,8 +99,8 @@
 #ifndef LLVM_ADT_INTERVALMAP_H
 #define LLVM_ADT_INTERVALMAP_H
 
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/PointerIntPair.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/RecyclingAllocator.h"
 #include <iterator>
@@ -147,6 +147,26 @@ struct IntervalMapInfo {
   /// This is a+1 == b for closed intervals, a == b for half-open intervals.
   static inline bool adjacent(const T &a, const T &b) {
     return a+1 == b;
+  }
+
+};
+
+template <typename T>
+struct IntervalMapHalfOpenInfo {
+
+  /// startLess - Return true if x is not in [a;b).
+  static inline bool startLess(const T &x, const T &a) {
+    return x < a;
+  }
+
+  /// stopLess - Return true if x is not in [a;b).
+  static inline bool stopLess(const T &b, const T &x) {
+    return b <= x;
+  }
+
+  /// adjacent - Return true when the intervals [x;a) and [b;y) can coalesce.
+  static inline bool adjacent(const T &a, const T &b) {
+    return a == b;
   }
 
 };
@@ -476,7 +496,7 @@ public:
   NodeRef() {}
 
   /// operator bool - Detect a null ref.
-  operator bool() const { return pip.getOpaqueValue(); }
+  LLVM_EXPLICIT operator bool() const { return pip.getOpaqueValue(); }
 
   /// NodeRef - Create a reference to the node p with n elements.
   template <typename NodeT>
@@ -1977,7 +1997,7 @@ iterator::overflow(unsigned Level) {
     CurSize[Nodes] = CurSize[NewNode];
     Node[Nodes] = Node[NewNode];
     CurSize[NewNode] = 0;
-    Node[NewNode] = this->map->newNode<NodeT>();
+    Node[NewNode] = this->map->template newNode<NodeT>();
     ++Nodes;
   }
 

@@ -1,6 +1,8 @@
 ; RUN: llc < %s -march=arm -mattr=+vfp2 | FileCheck %s -check-prefix=VFP2
 ; RUN: llc < %s -march=arm -mattr=+neon | FileCheck %s -check-prefix=VFP2
-; RUN: llc < %s -march=arm -mcpu=cortex-a8 | FileCheck %s -check-prefix=NEON
+; RUN: llc < %s -mtriple=arm-eabi -mcpu=cortex-a8 | FileCheck %s -check-prefix=VFP2
+; RUN: llc < %s -mtriple=arm-eabi -mcpu=cortex-a8 --enable-unsafe-fp-math | FileCheck %s -check-prefix=NEON
+; RUN: llc < %s -mtriple=arm-darwin -mcpu=cortex-a8 | FileCheck %s -check-prefix=NEON
 ; RUN: llc < %s -march=arm -mcpu=cortex-a9 | FileCheck %s -check-prefix=VFP2
 
 define i32 @test1(float %a, float %b) {
@@ -31,7 +33,7 @@ define float @test3(i32 %a, i32 %b) {
 ; VFP2: test3:
 ; VFP2: vcvt.f32.u32 s{{.}}, s{{.}}
 ; NEON: test3:
-; NEON: vcvt.f32.u32 d0, d0
+; NEON: vcvt.f32.u32 d
 entry:
         %0 = add i32 %a, %b
         %1 = uitofp i32 %0 to float
@@ -42,7 +44,7 @@ define float @test4(i32 %a, i32 %b) {
 ; VFP2: test4:
 ; VFP2: vcvt.f32.s32 s{{.}}, s{{.}}
 ; NEON: test4:
-; NEON: vcvt.f32.s32 d0, d0
+; NEON: vcvt.f32.s32 d
 entry:
         %0 = add i32 %a, %b
         %1 = sitofp i32 %0 to float

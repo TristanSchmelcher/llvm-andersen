@@ -12,14 +12,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "PPCMCTargetDesc.h"
-#include "PPCMCAsmInfo.h"
 #include "InstPrinter/PPCInstPrinter.h"
-#include "llvm/MC/MachineLocation.h"
+#include "PPCMCAsmInfo.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MachineLocation.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
 
@@ -58,7 +58,7 @@ static MCSubtargetInfo *createPPCMCSubtargetInfo(StringRef TT, StringRef CPU,
   return X;
 }
 
-static MCAsmInfo *createPPCMCAsmInfo(const Target &T, StringRef TT) {
+static MCAsmInfo *createPPCMCAsmInfo(const MCRegisterInfo &MRI, StringRef TT) {
   Triple TheTriple(TT);
   bool isPPC64 = TheTriple.getArch() == Triple::ppc64;
 
@@ -69,9 +69,10 @@ static MCAsmInfo *createPPCMCAsmInfo(const Target &T, StringRef TT) {
     MAI = new PPCLinuxMCAsmInfo(isPPC64);
 
   // Initial state of the frame pointer is R1.
-  MachineLocation Dst(MachineLocation::VirtualFP);
-  MachineLocation Src(PPC::R1, 0);
-  MAI->addInitialFrameState(0, Dst, Src);
+  unsigned Reg = isPPC64 ? PPC::X1 : PPC::R1;
+  MCCFIInstruction Inst =
+      MCCFIInstruction::createDefCfa(0, MRI.getDwarfRegNum(Reg, true), 0);
+  MAI->addInitialFrameState(Inst);
 
   return MAI;
 }
@@ -87,6 +88,11 @@ static MCCodeGenInfo *createPPCMCCodeGenInfo(StringRef TT, Reloc::Model RM,
       RM = Reloc::DynamicNoPIC;
     else
       RM = Reloc::Static;
+  }
+  if (CM == CodeModel::Default) {
+    Triple T(TT);
+    if (!T.isOSDarwin() && T.getArch() == Triple::ppc64)
+      CM = CodeModel::Medium;
   }
   X->InitMCCodeGenInfo(RM, CM, OL);
   return X;
@@ -108,8 +114,10 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
 static MCInstPrinter *createPPCMCInstPrinter(const Target &T,
                                              unsigned SyntaxVariant,
                                              const MCAsmInfo &MAI,
+                                             const MCInstrInfo &MII,
+                                             const MCRegisterInfo &MRI,
                                              const MCSubtargetInfo &STI) {
-  return new PPCInstPrinter(MAI, SyntaxVariant);
+  return new PPCInstPrinter(MAI, MII, MRI, SyntaxVariant);
 }
 
 extern "C" void LLVMInitializePowerPCTargetMC() {

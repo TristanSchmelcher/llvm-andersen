@@ -18,18 +18,18 @@
 
 #define DEBUG_TYPE "machine-sink"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/MachineDominators.h"
-#include "llvm/CodeGen/MachineLoopInfo.h"
-#include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/CodeGen/MachineDominators.h"
+#include "llvm/CodeGen/MachineLoopInfo.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
 
 static cl::opt<bool>
@@ -49,7 +49,6 @@ namespace {
     MachineDominatorTree *DT;   // Machine dominator tree
     MachineLoopInfo *LI;
     AliasAnalysis *AA;
-    BitVector AllocatableSet;   // Which physregs are allocatable?
 
     // Remember which edges have been considered for breaking.
     SmallSet<std::pair<MachineBasicBlock*,MachineBasicBlock*>, 8>
@@ -98,6 +97,16 @@ namespace {
 
     bool PerformTrivialForwardCoalescing(MachineInstr *MI,
                                          MachineBasicBlock *MBB);
+  };
+
+  // SuccessorSorter - Sort Successors according to their loop depth. 
+  struct SuccessorSorter {
+    SuccessorSorter(MachineLoopInfo *LoopInfo) : LI(LoopInfo) {}
+    bool operator()(const MachineBasicBlock *LHS,
+                    const MachineBasicBlock *RHS) const {
+      return LI->getLoopDepth(LHS) < LI->getLoopDepth(RHS);
+    }
+    MachineLoopInfo *LI;
   };
 } // end anonymous namespace
 
@@ -219,7 +228,6 @@ bool MachineSinking::runOnMachineFunction(MachineFunction &MF) {
   DT = &getAnalysis<MachineDominatorTree>();
   LI = &getAnalysis<MachineLoopInfo>();
   AA = &getAnalysis<AliasAnalysis>();
-  AllocatableSet = TRI->getAllocatableSet(MF);
 
   bool EverMadeChange = false;
 
@@ -526,8 +534,11 @@ MachineBasicBlock *MachineSinking::FindSuccToSinkTo(MachineInstr *MI,
 
       // Otherwise, we should look at all the successors and decide which one
       // we should sink to.
-      for (MachineBasicBlock::succ_iterator SI = MBB->succ_begin(),
-           E = MBB->succ_end(); SI != E; ++SI) {
+      // We give successors with smaller loop depth higher priority.
+      SmallVector<MachineBasicBlock*, 4> Succs(MBB->succ_begin(), MBB->succ_end());
+      std::stable_sort(Succs.begin(), Succs.end(), SuccessorSorter(LI));
+      for (SmallVectorImpl<MachineBasicBlock *>::iterator SI = Succs.begin(),
+             E = Succs.end(); SI != E; ++SI) {
         MachineBasicBlock *SuccBlock = *SI;
         bool LocalUse = false;
         if (AllUsesDominatedByBlock(Reg, SuccBlock, MBB,
@@ -686,7 +697,7 @@ bool MachineSinking::SinkInstruction(MachineInstr *MI, bool &SawStore) {
                        ++MachineBasicBlock::iterator(MI));
 
   // Move debug values.
-  for (SmallVector<MachineInstr *, 2>::iterator DBI = DbgValuesToSink.begin(),
+  for (SmallVectorImpl<MachineInstr *>::iterator DBI = DbgValuesToSink.begin(),
          DBE = DbgValuesToSink.end(); DBI != DBE; ++DBI) {
     MachineInstr *DbgMI = *DBI;
     SuccToSinkTo->splice(InsertPos, ParentBlock,  DbgMI,

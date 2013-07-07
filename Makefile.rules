@@ -97,9 +97,10 @@ endif
 $(LLVMBuildMakeFrag): $(PROJ_SRC_ROOT)/Makefile.rules \
 		      $(PROJ_OBJ_ROOT)/Makefile.config
 	$(Echo) Constructing LLVMBuild project information.
-	$(Verb) $(LLVMBuildTool) \
+	$(Verb)$(PYTHON) $(LLVMBuildTool) \
 	  --native-target "$(TARGET_NATIVE_ARCH)" \
 	  --enable-targets "$(TARGETS_TO_BUILD)" \
+	  --enable-optional-components "$(OPTIONAL_COMPONENTS)" \
 	  --write-library-table $(LLVMConfigLibraryDependenciesInc) \
 	  --write-make-fragment $(LLVMBuildMakeFrag)
 
@@ -274,17 +275,13 @@ ifeq ($(ENABLE_OPTIMIZED),1)
   BuildMode := Release
   # Don't use -fomit-frame-pointer on Darwin or FreeBSD.
   ifneq ($(HOST_OS),FreeBSD)
+  ifneq ($(HOST_OS),GNU/kFreeBSD)
   ifneq ($(HOST_OS),Darwin)
     OmitFramePointer := -fomit-frame-pointer
   endif
   endif
+  endif
 
-  # Darwin requires -fstrict-aliasing to be explicitly enabled.
-  # Avoid -fstrict-aliasing on Darwin for now, there are unresolved issues
-  # with -fstrict-aliasing and ipa-type-escape radr://6756684
-  #ifeq ($(HOST_OS),Darwin)
-  #  EXTRA_OPTIONS += -fstrict-aliasing -Wstrict-aliasing
-  #endif
   CXX.Flags += $(OPTIMIZE_OPTION) $(OmitFramePointer)
   C.Flags   += $(OPTIMIZE_OPTION) $(OmitFramePointer)
   LD.Flags  += $(OPTIMIZE_OPTION)
@@ -292,7 +289,6 @@ ifeq ($(ENABLE_OPTIMIZED),1)
     BuildMode := $(BuildMode)+Debug
     CXX.Flags += -g
     C.Flags   += -g
-    LD.Flags  += -g
     KEEP_SYMBOLS := 1
   endif
 else
@@ -300,13 +296,16 @@ else
     BuildMode := Unoptimized
     CXX.Flags +=
     C.Flags   +=
-    LD.Flags  +=
     KEEP_SYMBOLS := 1
   else
     BuildMode := Debug
+    ifeq ($(ENABLE_SPLIT_DWARF), 1)
+    CXX.Flags += -gsplit-dwarf
+    C.Flags   += -gsplit-dwarf
+    else
     CXX.Flags += -g
     C.Flags   += -g
-    LD.Flags  += -g
+    endif
     KEEP_SYMBOLS := 1
   endif
 endif
@@ -316,11 +315,20 @@ ifeq ($(ENABLE_LIBCPP),1)
   LD.Flags +=  -stdlib=libc++
 endif
 
+ifeq ($(ENABLE_CXX11),1)
+  CXX.Flags += -std=c++11
+endif
+
+ifeq ($(ENABLE_WERROR),1)
+  CXX.Flags += -Werror
+  C.Flags += -Werror
+endif
+
 ifeq ($(ENABLE_PROFILING),1)
   BuildMode := $(BuildMode)+Profile
   CXX.Flags := $(filter-out -fomit-frame-pointer,$(CXX.Flags)) -pg -g
   C.Flags   := $(filter-out -fomit-frame-pointer,$(C.Flags)) -pg -g
-  LD.Flags  := $(filter-out -fomit-frame-pointer,$(LD.Flags)) -pg -g
+  LD.Flags  := $(filter-out -fomit-frame-pointer,$(LD.Flags)) -pg
   KEEP_SYMBOLS := 1
 endif
 
@@ -537,9 +545,6 @@ ifeq ($(LLVM_CROSS_COMPILING),1)
 else
   LLVM_CONFIG := $(LLVMToolDir)/llvm-config$(EXEEXT)
 endif
-ifndef LLVMLD
-LLVMLD    := $(LLVMToolDir)/llvm-ld$(EXEEXT)
-endif
 ifndef LLVMDIS
 LLVMDIS  := $(LLVMToolDir)/llvm-dis$(EXEEXT)
 endif
@@ -555,13 +560,20 @@ endif
 ifndef LBUGPOINT
 LBUGPOINT := $(LLVMToolDir)/bugpoint$(EXEEXT)
 endif
+ifndef LLVMLINK
+LLVMLINK      := $(LLVMToolDir)/llvm-link$(EXEEXT)
+endif
 
 #--------------------------------------------------------------------
 # Adjust to user's request
 #--------------------------------------------------------------------
 
 ifeq ($(HOST_OS),Darwin)
+ ifdef MACOSX_DEPLOYMENT_TARGET
+  DARWIN_VERSION := $(MACOSX_DEPLOYMENT_TARGET)
+ else
   DARWIN_VERSION := `sw_vers -productVersion`
+ endif
   # Strip a number like 10.4.7 to 10.4
   DARWIN_VERSION := $(shell echo $(DARWIN_VERSION)| sed -E 's/(10.[0-9]).*/\1/')
   # Get "4" out of 10.4 for later pieces in the makefile.
@@ -569,16 +581,24 @@ ifeq ($(HOST_OS),Darwin)
 
   LoadableModuleOptions := -Wl,-flat_namespace -Wl,-undefined,suppress
   SharedLinkOptions := -dynamiclib
-  ifneq ($(ARCH),ARM)
-    SharedLinkOptions += -mmacosx-version-min=$(DARWIN_VERSION)
+  ifdef DEPLOYMENT_TARGET
+    SharedLinkOptions += $(DEPLOYMENT_TARGET)
+  else
+    ifneq ($(ARCH),ARM)
+      SharedLinkOptions += -mmacosx-version-min=$(DARWIN_VERSION)
+    endif
   endif
 else
   SharedLinkOptions=-shared
 endif
 
 ifeq ($(TARGET_OS),Darwin)
-  ifneq ($(ARCH),ARM)
-    TargetCommonOpts += -mmacosx-version-min=$(DARWIN_VERSION)
+  ifdef DEPLOYMENT_TARGET
+    TargetCommonOpts += $(DEPLOYMENT_TARGET)
+  else
+    ifneq ($(ARCH),ARM)
+      TargetCommonOpts += -mmacosx-version-min=$(DARWIN_VERSION)
+    endif
   endif
 endif
 
@@ -621,20 +641,19 @@ endif
 
 # Adjust linker flags for building an executable
 ifneq ($(HOST_OS), $(filter $(HOST_OS), Cygwin MingW))
-ifneq ($(HOST_OS), Darwin)
-ifdef TOOLNAME
-  LD.Flags += $(RPATH) -Wl,'$$ORIGIN/../lib'
-  ifdef EXAMPLE_TOOL
-    LD.Flags += $(RPATH) -Wl,$(ExmplDir) $(DynamicFlag)
+  ifneq ($(HOST_OS), Darwin)
+    ifdef TOOLNAME
+      LD.Flags += $(RPATH) -Wl,'$$ORIGIN/../lib' $(DynamicFlag)
+    endif
   else
-    LD.Flags += $(RPATH) -Wl,$(ToolDir) $(DynamicFlag)
+    ifneq ($(DARWIN_MAJVERS),4)
+      LD.Flags += $(RPATH) -Wl,@executable_path/../lib
+    endif
+    ifeq ($(RC_XBS),YES)
+      TempFile := $(shell mkdir -p ${OBJROOT}/dSYMs ; mktemp ${OBJROOT}/dSYMs/llvm-lto.XXXXXX)
+      LD.Flags += -Wl,-object_path_lto -Wl,$(TempFile)
+    endif
   endif
-endif
-else
-ifneq ($(DARWIN_MAJVERS),4)
-  LD.Flags += $(RPATH) -Wl,@executable_path/../lib
-endif
-endif
 endif
 
 
@@ -650,7 +669,9 @@ ifndef NO_PEDANTIC
 CompileCommonOpts += -pedantic -Wno-long-long
 endif
 CompileCommonOpts += -Wall -W -Wno-unused-parameter -Wwrite-strings \
-                     $(EXTRA_OPTIONS)
+                     $(EXTRA_OPTIONS) $(COVERED_SWITCH_DEFAULT) \
+                     $(NO_UNINITIALIZED) $(NO_MAYBE_UNINITIALIZED) \
+                     $(NO_MISSING_FIELD_INITIALIZERS)
 # Enable cast-qual for C++; the workaround is to use const_cast.
 CXX.Flags += -Wcast-qual
 
@@ -674,9 +695,9 @@ ifdef UNIVERSAL
     UNIVERSAL_ARCH := i386 ppc
   endif
   UNIVERSAL_ARCH_OPTIONS := $(UNIVERSAL_ARCH:%=-arch %)
-  CompileCommonOpts += $(UNIVERSAL_ARCH_OPTIONS)
+  TargetCommonOpts += $(UNIVERSAL_ARCH_OPTIONS)
   ifdef UNIVERSAL_SDK_PATH
-    CompileCommonOpts += -isysroot $(UNIVERSAL_SDK_PATH)
+    TargetCommonOpts += -isysroot $(UNIVERSAL_SDK_PATH)
   endif
 
   # Building universal cannot compute dependencies automatically.
@@ -738,8 +759,8 @@ Preprocess.CXX= $(Compile.Wrapper) \
 	          $(CXX) $(CPP.Flags) $(TargetCommonOpts) $(CPPFLAGS) \
                 $(CompileCommonOpts) $(CXX.Flags) -E
 Link          = $(Compile.Wrapper) \
-	          $(CXX) $(CPP.Flags) $(CXX.Flags) $(CXXFLAGS) $(LD.Flags) \
-                $(LDFLAGS) $(TargetCommonOpts)  $(CompileCommonOpts) $(Strip)
+	          $(CXX) $(CXXFLAGS) $(LD.Flags) $(LDFLAGS) \
+                $(TargetCommonOpts) $(Strip)
 
 BCCompile.C   = $(LLVMCC) $(CPP.Flags) $(C.Flags) $(CFLAGS) $(CPPFLAGS) \
                 $(TargetCommonOpts) $(CompileCommonOpts)
@@ -806,7 +827,7 @@ ObjectsBC := $(BaseNameSources:%=$(ObjDir)/%.bc)
 #----------------------------------------------------------
 
 ifeq (-mingw32,$(findstring -mingw32,$(BUILD_TRIPLE)))
-  ECHOPATH := $(Verb)python -u -c "import sys;print ' '.join(sys.argv[1:])"
+  ECHOPATH := $(Verb)$(PYTHON) -u -c "import sys;print ' '.join(sys.argv[1:])"
 else
   ECHOPATH := $(Verb)$(ECHO)
 endif
@@ -1070,7 +1091,7 @@ ifeq ($(HAVE_LINK_VERSION_SCRIPT),1)
 NativeExportsFile := $(ObjDir)/$(notdir $(EXPORTED_SYMBOL_FILE)).map
 $(NativeExportsFile): $(EXPORTED_SYMBOL_FILE) $(ObjDir)/.dir
 	$(Verb) echo "{" > $@
-	$(Verb) grep -q "\<" $< && echo "  global:" >> $@ || :
+	$(Verb) grep -q '[[:alnum:]_]' $< && echo "  global:" >> $@ || :
 	$(Verb) sed -e 's/$$/;/' -e 's/^/    /' < $< >> $@
 ifneq ($(HOST_OS),OpenBSD)
 	$(Verb) echo "  local: *;" >> $@
@@ -1133,14 +1154,14 @@ $(warning Modules require LLVM capable compiler but none is available ****)
 else
 
 Module     := $(LibDir)/$(MODULE_NAME).bc
-LinkModule := $(LLVMLD) -r
+LinkModule := $(LLVMLINK)
 
 
 ifdef EXPORTED_SYMBOL_FILE
 LinkModule += -internalize-public-api-file=$(EXPORTED_SYMBOL_FILE)
 endif
 
-$(Module): $(BUILT_SOURCES) $(ObjectsBC) $(LibDir)/.dir $(LLVMLD)
+$(Module): $(BUILT_SOURCES) $(ObjectsBC) $(LibDir)/.dir $(LLVMLINK)
 	$(Echo) Building $(BuildMode) Bytecode Module $(notdir $@)
 	$(Verb) $(LinkModule) -o $@ $(ObjectsBC)
 
@@ -1275,9 +1296,9 @@ else
 all-local:: $(LibName.BCA)
 
 ifdef EXPORTED_SYMBOL_FILE
-BCLinkLib = $(LLVMLD) -internalize-public-api-file=$(EXPORTED_SYMBOL_FILE)
+BCLinkLib = $(LLVMLINK) -internalize-public-api-file=$(EXPORTED_SYMBOL_FILE)
 
-$(LibName.BCA): $(ObjectsBC) $(LibDir)/.dir $(LLVMLD) \
+$(LibName.BCA): $(ObjectsBC) $(LibDir)/.dir $(LLVMLINK) \
                 $(LLVMToolDir)/llvm-ar
 	$(Echo) Building $(BuildMode) Bytecode Archive $(notdir $@) \
 	  "(internalize)"
@@ -1432,7 +1453,7 @@ LD.Flags += -Wl,-exported_symbol,_main
 endif
 endif
 
-ifeq ($(HOST_OS), $(filter $(HOST_OS), Linux NetBSD FreeBSD))
+ifeq ($(HOST_OS), $(filter $(HOST_OS), Linux NetBSD FreeBSD GNU/kFreeBSD GNU))
 ifneq ($(ARCH), Mips)
   LD.Flags += -Wl,--version-script=$(LLVM_SRC_ROOT)/autoconf/ExportMap.map
 endif
@@ -1492,18 +1513,31 @@ else
 $(ToolBuildPath): $(ToolDir)/.dir
 endif
 
+ifdef CODESIGN_TOOLS
+TOOL_CODESIGN_IDENTITY ?= -
+
 $(ToolBuildPath): $(ObjectsO) $(ProjLibsPaths) $(LLVMLibsPaths)
 	$(Echo) Linking $(BuildMode) executable $(TOOLNAME) $(StripWarnMsg)
 	$(Verb) $(Link) -o $@ $(TOOLLINKOPTS) $(ObjectsO) $(ProjLibsOptions) \
 	$(LLVMLibsOptions) $(ExtraLibs) $(TOOLLINKOPTSB) $(LIBS)
 	$(Echo) ======= Finished Linking $(BuildMode) Executable $(TOOLNAME) \
           $(StripWarnMsg)
+	$(Echo) ======= Code-Signing $(BuildMode) Executable $(TOOLNAME)
+	$(Verb) codesign -s $(TOOL_CODESIGN_IDENTITY) $@
+else
+$(ToolBuildPath): $(ObjectsO) $(ProjLibsPaths) $(LLVMLibsPaths)
+	$(Echo) Linking $(BuildMode) executable $(TOOLNAME) $(StripWarnMsg)
+	$(Verb) $(Link) -o $@ $(TOOLLINKOPTS) $(ObjectsO) $(ProjLibsOptions) \
+	$(LLVMLibsOptions) $(ExtraLibs) $(TOOLLINKOPTSB) $(LIBS)
+	$(Echo) ======= Finished Linking $(BuildMode) Executable $(TOOLNAME) \
+          $(StripWarnMsg)
+endif
 
 ifneq ($(strip $(ToolAliasBuildPath)),)
 $(ToolAliasBuildPath): $(ToolBuildPath)
 	$(Echo) Creating $(BuildMode) Alias $(TOOLALIAS) $(StripWarnMsg)
 	$(Verb) $(RM) -f $(ToolAliasBuildPath)
-	$(Verb) $(AliasTool) $(TOOLEXENAME) $(ToolAliasBuildPath)
+	$(Verb) $(AliasTool) $(notdir $(ToolBuildPath)) $(ToolAliasBuildPath)
 	$(Echo) ======= Finished Creating $(BuildMode) Alias $(TOOLALIAS) \
           $(StripWarnMsg)
 endif
@@ -1520,7 +1554,7 @@ ToolBinDir = $(DESTDIR)$(PROJ_internal_prefix)/bin
 else
 ToolBinDir = $(DESTDIR)$(PROJ_bindir)
 endif
-DestTool = $(ToolBinDir)/$(TOOLEXENAME)
+DestTool = $(ToolBinDir)/$(program_prefix)$(TOOLEXENAME)
 
 install-local:: $(DestTool)
 
@@ -1535,14 +1569,14 @@ uninstall-local::
 
 # TOOLALIAS install.
 ifdef TOOLALIAS
-DestToolAlias = $(ToolBinDir)/$(TOOLALIAS)$(EXEEXT)
+DestToolAlias = $(ToolBinDir)/$(program_prefix)$(TOOLALIAS)$(EXEEXT)
 
 install-local:: $(DestToolAlias)
 
 $(DestToolAlias): $(DestTool)
 	$(Echo) Installing $(BuildMode) $(DestToolAlias)
 	$(Verb) $(RM) -f $(DestToolAlias)
-	$(Verb) $(AliasTool) $(TOOLEXENAME) $(DestToolAlias)
+	$(Verb) $(AliasTool) $(notdir $(DestTool)) $(DestToolAlias)
 
 uninstall-local::
 	$(Echo) Uninstalling $(BuildMode) $(DestToolAlias)
@@ -1785,7 +1819,7 @@ TDFiles := $(strip $(wildcard $(PROJ_SRC_DIR)/*.td) \
            $(LLVM_SRC_ROOT)/include/llvm/Target/TargetSchedule.td \
            $(LLVM_SRC_ROOT)/include/llvm/Target/TargetSelectionDAG.td \
            $(LLVM_SRC_ROOT)/include/llvm/CodeGen/ValueTypes.td) \
-           $(wildcard $(LLVM_SRC_ROOT)/include/llvm/Intrinsics*.td)
+           $(wildcard $(LLVM_SRC_ROOT)/include/llvm/IR/Intrinsics*.td)
 
 # All .inc.tmp files depend on the .td files.
 $(INCTMPFiles) : $(TDFiles)
@@ -1839,11 +1873,6 @@ $(TARGET:%=$(ObjDir)/%GenDisassemblerTables.inc.tmp): \
 $(ObjDir)/%GenDisassemblerTables.inc.tmp : %.td $(ObjDir)/.dir $(LLVM_TBLGEN)
 	$(Echo) "Building $(<F) disassembly tables with tblgen"
 	$(Verb) $(LLVMTableGen) -gen-disassembler -o $(call SYSPATH, $@) $<
-
-$(TARGET:%=$(ObjDir)/%GenEDInfo.inc.tmp): \
-$(ObjDir)/%GenEDInfo.inc.tmp : %.td $(ObjDir)/.dir $(LLVM_TBLGEN)
-	$(Echo) "Building $(<F) enhanced disassembly information with tblgen"
-	$(Verb) $(LLVMTableGen) -gen-enhanced-disassembly-info -o $(call SYSPATH, $@) $<
 
 $(TARGET:%=$(ObjDir)/%GenFastISel.inc.tmp): \
 $(ObjDir)/%GenFastISel.inc.tmp : %.td $(ObjDir)/.dir $(LLVM_TBLGEN)
@@ -1939,7 +1968,7 @@ endif
 # CHECK: Running the test suite
 ###############################################################################
 
-check::
+check:: all
 	$(Verb) if test -d "$(PROJ_OBJ_ROOT)/test" ; then \
 	  if test -f "$(PROJ_OBJ_ROOT)/test/Makefile" ; then \
 	    $(EchoCmd) Running test suite ; \
@@ -1952,19 +1981,8 @@ check::
 	  $(EchoCmd) No test directory ; \
 	fi
 
+# An alias dating from when both lit and DejaGNU test runners were used.
 check-lit:: check
-
-check-dg::
-	$(Verb) if test -d "$(PROJ_OBJ_ROOT)/test" ; then \
-	  if test -f "$(PROJ_OBJ_ROOT)/test/Makefile" ; then \
-	    $(EchoCmd) Running test suite ; \
-	    $(MAKE) -C $(PROJ_OBJ_ROOT)/test check-local-dg ; \
-	  else \
-	    $(EchoCmd) No Makefile in test directory ; \
-	  fi ; \
-	else \
-	  $(EchoCmd) No test directory ; \
-	fi
 
 check-all::
 	$(Verb) if test -d "$(PROJ_OBJ_ROOT)/test" ; then \

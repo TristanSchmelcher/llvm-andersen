@@ -16,28 +16,35 @@
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/SubtargetFeature.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
+
+TargetMachine *EngineBuilder::selectTarget() {
+  Triple TT;
+
+  // MCJIT can generate code for remote targets, but the old JIT and Interpreter
+  // must use the host architecture.
+  if (UseMCJIT && WhichEngine != EngineKind::Interpreter && M)
+    TT.setTriple(M->getTargetTriple());
+
+  return selectTarget(TT, MArch, MCPU, MAttrs);
+}
 
 /// selectTarget - Pick a target either via -march or by guessing the native
 /// arch.  Add any CPU features specified via -mcpu or -mattr.
 TargetMachine *EngineBuilder::selectTarget(const Triple &TargetTriple,
                               StringRef MArch,
                               StringRef MCPU,
-                              const SmallVectorImpl<std::string>& MAttrs,
-                              const TargetOptions &Options,
-                              Reloc::Model RM,
-                              CodeModel::Model CM,
-                              CodeGenOpt::Level OL,
-                              std::string *ErrorStr) {
+                              const SmallVectorImpl<std::string>& MAttrs) {
   Triple TheTriple(TargetTriple);
   if (TheTriple.getTriple().empty())
-    TheTriple.setTriple(sys::getDefaultTargetTriple());
+    TheTriple.setTriple(sys::getProcessTriple());
 
   // Adjust the triple to match what the user requested.
   const Target *TheTarget = 0;
@@ -51,8 +58,9 @@ TargetMachine *EngineBuilder::selectTarget(const Triple &TargetTriple,
     }
 
     if (!TheTarget) {
-      *ErrorStr = "No available targets are compatible with this -march, "
-        "see -version for the available targets.\n";
+      if (ErrorStr)
+        *ErrorStr = "No available targets are compatible with this -march, "
+                    "see -version for the available targets.\n";
       return 0;
     }
 
@@ -80,11 +88,20 @@ TargetMachine *EngineBuilder::selectTarget(const Triple &TargetTriple,
     FeaturesStr = Features.getString();
   }
 
+  // FIXME: non-iOS ARM FastISel is broken with MCJIT.
+  if (UseMCJIT &&
+      TheTriple.getArch() == Triple::arm &&
+      TheTriple.getOS() != Triple::IOS &&
+      OptLevel == CodeGenOpt::None) {
+    OptLevel = CodeGenOpt::Less;
+  }
+
   // Allocate a target...
   TargetMachine *Target = TheTarget->createTargetMachine(TheTriple.getTriple(),
                                                          MCPU, FeaturesStr,
                                                          Options,
-                                                         RM, CM, OL);
+                                                         RelocModel, CMModel,
+                                                         OptLevel);
   assert(Target && "Could not allocate target machine!");
   return Target;
 }

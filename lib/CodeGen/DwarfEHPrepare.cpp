@@ -13,15 +13,15 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "dwarfehprepare"
-#include "llvm/Function.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Module.h"
-#include "llvm/Pass.h"
+#include "llvm/CodeGen/Passes.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/Dominators.h"
-#include "llvm/CodeGen/Passes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -33,19 +33,17 @@ STATISTIC(NumResumesLowered, "Number of resume calls lowered");
 namespace {
   class DwarfEHPrepare : public FunctionPass {
     const TargetMachine *TM;
-    const TargetLowering *TLI;
 
     // RewindFunction - _Unwind_Resume or the target equivalent.
     Constant *RewindFunction;
 
     bool InsertUnwindResumeCalls(Function &Fn);
-    Instruction *GetExceptionObject(ResumeInst *RI);
+    Value *GetExceptionObject(ResumeInst *RI);
 
   public:
     static char ID; // Pass identification, replacement for typeid.
-    DwarfEHPrepare(const TargetMachine *tm) :
-      FunctionPass(ID), TM(tm), TLI(TM->getTargetLowering()),
-      RewindFunction(0) {
+    DwarfEHPrepare(const TargetMachine *TM) :
+      FunctionPass(ID), TM(TM), RewindFunction(0) {
         initializeDominatorTreePass(*PassRegistry::getPassRegistry());
       }
 
@@ -61,16 +59,16 @@ namespace {
 
 char DwarfEHPrepare::ID = 0;
 
-FunctionPass *llvm::createDwarfEHPass(const TargetMachine *tm) {
-  return new DwarfEHPrepare(tm);
+FunctionPass *llvm::createDwarfEHPass(const TargetMachine *TM) {
+  return new DwarfEHPrepare(TM);
 }
 
 /// GetExceptionObject - Return the exception object from the value passed into
 /// the 'resume' instruction (typically an aggregate). Clean up any dead
 /// instructions, including the 'resume' instruction.
-Instruction *DwarfEHPrepare::GetExceptionObject(ResumeInst *RI) {
+Value *DwarfEHPrepare::GetExceptionObject(ResumeInst *RI) {
   Value *V = RI->getOperand(0);
-  Instruction *ExnObj = 0;
+  Value *ExnObj = 0;
   InsertValueInst *SelIVI = dyn_cast<InsertValueInst>(V);
   LoadInst *SelLoad = 0;
   InsertValueInst *ExcIVI = 0;
@@ -81,7 +79,7 @@ Instruction *DwarfEHPrepare::GetExceptionObject(ResumeInst *RI) {
       ExcIVI = dyn_cast<InsertValueInst>(SelIVI->getOperand(0));
       if (ExcIVI && isa<UndefValue>(ExcIVI->getOperand(0)) &&
           ExcIVI->getNumIndices() == 1 && *ExcIVI->idx_begin() == 0) {
-        ExnObj = cast<Instruction>(ExcIVI->getOperand(1));
+        ExnObj = ExcIVI->getOperand(1);
         SelLoad = dyn_cast<LoadInst>(SelIVI->getOperand(1));
         EraseIVIs = true;
       }
@@ -108,20 +106,18 @@ Instruction *DwarfEHPrepare::GetExceptionObject(ResumeInst *RI) {
 /// InsertUnwindResumeCalls - Convert the ResumeInsts that are still present
 /// into calls to the appropriate _Unwind_Resume function.
 bool DwarfEHPrepare::InsertUnwindResumeCalls(Function &Fn) {
-  bool UsesNewEH = false;
   SmallVector<ResumeInst*, 16> Resumes;
   for (Function::iterator I = Fn.begin(), E = Fn.end(); I != E; ++I) {
     TerminatorInst *TI = I->getTerminator();
     if (ResumeInst *RI = dyn_cast<ResumeInst>(TI))
       Resumes.push_back(RI);
-    else if (InvokeInst *II = dyn_cast<InvokeInst>(TI))
-      UsesNewEH = II->getUnwindDest()->isLandingPad();
   }
 
   if (Resumes.empty())
-    return UsesNewEH;
+    return false;
 
   // Find the rewind function if we didn't already.
+  const TargetLowering *TLI = TM->getTargetLowering();
   if (!RewindFunction) {
     LLVMContext &Ctx = Resumes[0]->getContext();
     FunctionType *FTy = FunctionType::get(Type::getVoidTy(Ctx),
@@ -139,7 +135,7 @@ bool DwarfEHPrepare::InsertUnwindResumeCalls(Function &Fn) {
     // _Unwind_Resume to the end of the single resume block.
     ResumeInst *RI = Resumes.front();
     BasicBlock *UnwindBB = RI->getParent();
-    Instruction *ExnObj = GetExceptionObject(RI);
+    Value *ExnObj = GetExceptionObject(RI);
 
     // Call the _Unwind_Resume function.
     CallInst *CI = CallInst::Create(RewindFunction, ExnObj, "", UnwindBB);
@@ -162,7 +158,7 @@ bool DwarfEHPrepare::InsertUnwindResumeCalls(Function &Fn) {
     BasicBlock *Parent = RI->getParent();
     BranchInst::Create(UnwindBB, Parent);
 
-    Instruction *ExnObj = GetExceptionObject(RI);
+    Value *ExnObj = GetExceptionObject(RI);
     PN->addIncoming(ExnObj, Parent);
 
     ++NumResumesLowered;

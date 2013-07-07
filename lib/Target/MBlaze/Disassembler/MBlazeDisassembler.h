@@ -23,8 +23,6 @@ class MCInst;
 class MemoryObject;
 class raw_ostream;
 
-struct EDInstInfo;
-  
 /// MBlazeDisassembler - Disassembler for all MBlaze platforms.
 class MBlazeDisassembler : public MCDisassembler {
 public:
@@ -40,13 +38,10 @@ public:
   /// getInstruction - See MCDisassembler.
   MCDisassembler::DecodeStatus getInstruction(MCInst &instr,
                       uint64_t &size,
-                      MemoryObject &region,
+                      const MemoryObject &region,
                       uint64_t address,
                       raw_ostream &vStream,
                       raw_ostream &cStream) const;
-
-  /// getEDInfo - See MCDisassembler.
-  const EDInstInfo *getEDInfo() const;
 };
 
 } // namespace llvm

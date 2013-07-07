@@ -13,19 +13,17 @@
 
 #include "DiffLog.h"
 #include "DifferenceEngine.h"
-
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
-#include "llvm/Type.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/IRReader.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/SourceMgr.h"
-
+#include "llvm/Support/raw_ostream.h"
 #include <string>
 #include <utility>
 
@@ -78,8 +76,8 @@ int main(int argc, char **argv) {
   Module *RModule = ReadModule(Context, RightFilename);
   if (!LModule || !RModule) return 1;
 
-  DiffConsumer Consumer(LModule, RModule);
-  DifferenceEngine Engine(Context, Consumer);
+  DiffConsumer Consumer;
+  DifferenceEngine Engine(Consumer);
 
   // If any global names were given, just diff those.
   if (!GlobalsToCompare.empty()) {

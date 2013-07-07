@@ -19,12 +19,14 @@
 #ifndef LLVM_CODEGEN_SLOTINDEXES_H
 #define LLVM_CODEGEN_SLOTINDEXES_H
 
-#include "llvm/CodeGen/MachineBasicBlock.h"
-#include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/IntervalMap.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/ilist.h"
+#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineInstrBundle.h"
 #include "llvm/Support/Allocator.h"
 
 namespace llvm {
@@ -33,8 +35,7 @@ namespace llvm {
   /// SlotIndexes pass. It should not be used directly. See the
   /// SlotIndex & SlotIndexes classes for the public interface to this
   /// information.
-  class IndexListEntry {
-    IndexListEntry *next, *prev;
+  class IndexListEntry : public ilist_node<IndexListEntry> {
     MachineInstr *mi;
     unsigned index;
 
@@ -51,37 +52,45 @@ namespace llvm {
     void setIndex(unsigned index) {
       this->index = index;
     }
-    
-    IndexListEntry* getNext() { return next; }
-    const IndexListEntry* getNext() const { return next; }
-    void setNext(IndexListEntry *next) {
-      this->next = next;
+
+#ifdef EXPENSIVE_CHECKS
+    // When EXPENSIVE_CHECKS is defined, "erased" index list entries will
+    // actually be moved to a "graveyard" list, and have their pointers
+    // poisoned, so that dangling SlotIndex access can be reliably detected.
+    void setPoison() {
+      intptr_t tmp = reinterpret_cast<intptr_t>(mi);
+      assert(((tmp & 0x1) == 0x0) && "Pointer already poisoned?");  
+      tmp |= 0x1;
+      mi = reinterpret_cast<MachineInstr*>(tmp);
     }
 
-    IndexListEntry* getPrev() { return prev; }
-    const IndexListEntry* getPrev() const { return prev; }
-    void setPrev(IndexListEntry *prev) {
-      this->prev = prev;
-    }
+    bool isPoisoned() const { return (reinterpret_cast<intptr_t>(mi) & 0x1) == 0x1; }
+#endif // EXPENSIVE_CHECKS
+
   };
 
-  // Specialize PointerLikeTypeTraits for IndexListEntry.
   template <>
-  class PointerLikeTypeTraits<IndexListEntry*> { 
+  struct ilist_traits<IndexListEntry> : public ilist_default_traits<IndexListEntry> {
+  private:
+    mutable ilist_half_node<IndexListEntry> Sentinel;
   public:
-    static inline void* getAsVoidPointer(IndexListEntry *p) {
-      return p;
+    IndexListEntry *createSentinel() const {
+      return static_cast<IndexListEntry*>(&Sentinel);
     }
-    static inline IndexListEntry* getFromVoidPointer(void *p) {
-      return static_cast<IndexListEntry*>(p);
-    }
-    enum { NumLowBitsAvailable = 3 };
+    void destroySentinel(IndexListEntry *) const {}
+
+    IndexListEntry *provideInitialHead() const { return createSentinel(); }
+    IndexListEntry *ensureHead(IndexListEntry*) const { return createSentinel(); }
+    static void noteHead(IndexListEntry*, IndexListEntry*) {}
+    void deleteNode(IndexListEntry *N) {}
+
+  private:
+    void createNode(const IndexListEntry &);
   };
 
   /// SlotIndex - An opaque wrapper around machine indexes.
   class SlotIndex {
     friend class SlotIndexes;
-    friend struct DenseMapInfo<SlotIndex>;
 
     enum Slot {
       /// Basic block boundary.  Used for live ranges entering and leaving a
@@ -112,23 +121,22 @@ namespace llvm {
     SlotIndex(IndexListEntry *entry, unsigned slot)
       : lie(entry, slot) {}
 
-    IndexListEntry& entry() const {
+    IndexListEntry* listEntry() const {
       assert(isValid() && "Attempt to compare reserved index.");
-      return *lie.getPointer();
+#ifdef EXPENSIVE_CHECKS
+      assert(!lie.getPointer()->isPoisoned() &&
+             "Attempt to access deleted list-entry.");
+#endif // EXPENSIVE_CHECKS
+      return lie.getPointer();
     }
 
-    int getIndex() const {
-      return entry().getIndex() | getSlot();
+    unsigned getIndex() const {
+      return listEntry()->getIndex() | getSlot();
     }
 
     /// Returns the slot for this SlotIndex.
     Slot getSlot() const {
       return static_cast<Slot>(lie.getInt());
-    }
-
-    static inline unsigned getHashValue(const SlotIndex &v) {
-      void *ptrVal = v.lie.getOpaqueValue();
-      return (unsigned((intptr_t)ptrVal)) ^ (unsigned((intptr_t)ptrVal) >> 9);
     }
 
   public:
@@ -138,20 +146,11 @@ namespace llvm {
       InstrDist = 4 * Slot_Count
     };
 
-    static inline SlotIndex getEmptyKey() {
-      return SlotIndex(0, 1);
-    }
-
-    static inline SlotIndex getTombstoneKey() {
-      return SlotIndex(0, 2);
-    }
-
     /// Construct an invalid index.
     SlotIndex() : lie(0, 0) {}
 
     // Construct a new slot index from the given one, and set the slot.
-    SlotIndex(const SlotIndex &li, Slot s)
-      : lie(&li.entry(), unsigned(s)) {
+    SlotIndex(const SlotIndex &li, Slot s) : lie(li.listEntry(), unsigned(s)) {
       assert(lie.getPointer() != 0 &&
              "Attempt to construct index with 0 pointer.");
     }
@@ -163,7 +162,7 @@ namespace llvm {
     }
 
     /// Return true for a valid index.
-    operator bool() const { return isValid(); }
+    LLVM_EXPLICIT operator bool() const { return isValid(); }
 
     /// Print this index to the given raw_ostream.
     void print(raw_ostream &os) const;
@@ -179,7 +178,7 @@ namespace llvm {
     bool operator!=(SlotIndex other) const {
       return lie != other.lie;
     }
-   
+
     /// Compare two SlotIndex objects. Return true if the first index
     /// is strictly lower than the second.
     bool operator<(SlotIndex other) const {
@@ -211,7 +210,7 @@ namespace llvm {
     /// isEarlierInstr - Return true if A refers to an instruction earlier than
     /// B. This is equivalent to A < B && !isSameInstr(A, B).
     static bool isEarlierInstr(SlotIndex A, SlotIndex B) {
-      return A.entry().getIndex() < B.entry().getIndex();
+      return A.listEntry()->getIndex() < B.listEntry()->getIndex();
     }
 
     /// Return the distance from this index to the given one.
@@ -236,25 +235,25 @@ namespace llvm {
     /// is the one associated with the Slot_Block slot for the instruction
     /// pointed to by this index.
     SlotIndex getBaseIndex() const {
-      return SlotIndex(&entry(), Slot_Block);
+      return SlotIndex(listEntry(), Slot_Block);
     }
 
     /// Returns the boundary index for associated with this index. The boundary
     /// index is the one associated with the Slot_Block slot for the instruction
     /// pointed to by this index.
     SlotIndex getBoundaryIndex() const {
-      return SlotIndex(&entry(), Slot_Dead);
+      return SlotIndex(listEntry(), Slot_Dead);
     }
 
     /// Returns the register use/def slot in the current instruction for a
     /// normal or early-clobber def.
     SlotIndex getRegSlot(bool EC = false) const {
-      return SlotIndex(&entry(), EC ? Slot_EarlyClobber : Slot_Register);
+      return SlotIndex(listEntry(), EC ? Slot_EarlyClobber : Slot_Register);
     }
 
     /// Returns the dead def kill slot for the current instruction.
     SlotIndex getDeadSlot() const {
-      return SlotIndex(&entry(), Slot_Dead);
+      return SlotIndex(listEntry(), Slot_Dead);
     }
 
     /// Returns the next slot in the index list. This could be either the
@@ -266,15 +265,15 @@ namespace llvm {
     SlotIndex getNextSlot() const {
       Slot s = getSlot();
       if (s == Slot_Dead) {
-        return SlotIndex(entry().getNext(), Slot_Block);
+        return SlotIndex(listEntry()->getNextNode(), Slot_Block);
       }
-      return SlotIndex(&entry(), s + 1);
+      return SlotIndex(listEntry(), s + 1);
     }
 
     /// Returns the next index. This is the index corresponding to the this
     /// index's slot, but for the next instruction.
     SlotIndex getNextIndex() const {
-      return SlotIndex(entry().getNext(), getSlot());
+      return SlotIndex(listEntry()->getNextNode(), getSlot());
     }
 
     /// Returns the previous slot in the index list. This could be either the
@@ -286,38 +285,20 @@ namespace llvm {
     SlotIndex getPrevSlot() const {
       Slot s = getSlot();
       if (s == Slot_Block) {
-        return SlotIndex(entry().getPrev(), Slot_Dead);
+        return SlotIndex(listEntry()->getPrevNode(), Slot_Dead);
       }
-      return SlotIndex(&entry(), s - 1);
+      return SlotIndex(listEntry(), s - 1);
     }
 
     /// Returns the previous index. This is the index corresponding to this
     /// index's slot, but for the previous instruction.
     SlotIndex getPrevIndex() const {
-      return SlotIndex(entry().getPrev(), getSlot());
+      return SlotIndex(listEntry()->getPrevNode(), getSlot());
     }
 
   };
 
-  /// DenseMapInfo specialization for SlotIndex.
-  template <>
-  struct DenseMapInfo<SlotIndex> {
-    static inline SlotIndex getEmptyKey() {
-      return SlotIndex::getEmptyKey();
-    }
-    static inline SlotIndex getTombstoneKey() {
-      return SlotIndex::getTombstoneKey();
-    }
-    static inline unsigned getHashValue(const SlotIndex &v) {
-      return SlotIndex::getHashValue(v);
-    }
-    static inline bool isEqual(const SlotIndex &LHS, const SlotIndex &RHS) {
-      return (LHS == RHS);
-    }
-  };
-  
   template <> struct isPodLike<SlotIndex> { static const bool value = true; };
-
 
   inline raw_ostream& operator<<(raw_ostream &os, SlotIndex li) {
     li.print(os);
@@ -346,9 +327,14 @@ namespace llvm {
   class SlotIndexes : public MachineFunctionPass {
   private:
 
+    typedef ilist<IndexListEntry> IndexList;
+    IndexList indexList;
+
+#ifdef EXPENSIVE_CHECKS
+    IndexList graveyardList;
+#endif // EXPENSIVE_CHECKS
+
     MachineFunction *mf;
-    IndexListEntry *indexListHead;
-    unsigned functionSize;
 
     typedef DenseMap<const MachineInstr*, SlotIndex> Mi2IndexMap;
     Mi2IndexMap mi2iMap;
@@ -374,84 +360,18 @@ namespace llvm {
       return entry;
     }
 
-    void initList() {
-      assert(indexListHead == 0 && "Zero entry non-null at initialisation.");
-      indexListHead = createEntry(0, ~0U);
-      indexListHead->setNext(0);
-      indexListHead->setPrev(indexListHead);
-    }
-
-    void clearList() {
-      indexListHead = 0;
-      ileAllocator.Reset();
-    }
-
-    IndexListEntry* getTail() {
-      assert(indexListHead != 0 && "Call to getTail on uninitialized list.");
-      return indexListHead->getPrev();
-    }
-
-    const IndexListEntry* getTail() const {
-      assert(indexListHead != 0 && "Call to getTail on uninitialized list.");
-      return indexListHead->getPrev();
-    }
-
-    // Returns true if the index list is empty.
-    bool empty() const { return (indexListHead == getTail()); }
-
-    IndexListEntry* front() {
-      assert(!empty() && "front() called on empty index list.");
-      return indexListHead;
-    }
-
-    const IndexListEntry* front() const {
-      assert(!empty() && "front() called on empty index list.");
-      return indexListHead;
-    }
-
-    IndexListEntry* back() {
-      assert(!empty() && "back() called on empty index list.");
-      return getTail()->getPrev();
-    }
-
-    const IndexListEntry* back() const {
-      assert(!empty() && "back() called on empty index list.");
-      return getTail()->getPrev();
-    }
-
-    /// Insert a new entry before itr.
-    void insert(IndexListEntry *itr, IndexListEntry *val) {
-      assert(itr != 0 && "itr should not be null.");
-      IndexListEntry *prev = itr->getPrev();
-      val->setNext(itr);
-      val->setPrev(prev);
-      
-      if (itr != indexListHead) {
-        prev->setNext(val);
-      }
-      else {
-        indexListHead = val;
-      }
-      itr->setPrev(val);
-    }
-
-    /// Push a new entry on to the end of the list.
-    void push_back(IndexListEntry *val) {
-      insert(getTail(), val);
-    }
-
-    /// Renumber locally after inserting newEntry.
-    void renumberIndexes(IndexListEntry *newEntry);
+    /// Renumber locally after inserting curItr.
+    void renumberIndexes(IndexList::iterator curItr);
 
   public:
     static char ID;
 
-    SlotIndexes() : MachineFunctionPass(ID), indexListHead(0) {
+    SlotIndexes() : MachineFunctionPass(ID) {
       initializeSlotIndexesPass(*PassRegistry::getPassRegistry());
     }
 
     virtual void getAnalysisUsage(AnalysisUsage &au) const;
-    virtual void releaseMemory(); 
+    virtual void releaseMemory();
 
     virtual bool runOnMachineFunction(MachineFunction &fn);
 
@@ -461,29 +381,20 @@ namespace llvm {
     /// Renumber the index list, providing space for new instructions.
     void renumberIndexes();
 
+    /// Repair indexes after adding and removing instructions.
+    void repairIndexesInRange(MachineBasicBlock *MBB,
+                              MachineBasicBlock::iterator Begin,
+                              MachineBasicBlock::iterator End);
+
     /// Returns the zero index for this analysis.
     SlotIndex getZeroIndex() {
-      assert(front()->getIndex() == 0 && "First index is not 0?");
-      return SlotIndex(front(), 0);
+      assert(indexList.front().getIndex() == 0 && "First index is not 0?");
+      return SlotIndex(&indexList.front(), 0);
     }
 
     /// Returns the base index of the last slot in this analysis.
     SlotIndex getLastIndex() {
-      return SlotIndex(back(), 0);
-    }
-
-    /// Returns the distance between the highest and lowest indexes allocated
-    /// so far.
-    unsigned getIndexesLength() const {
-      assert(front()->getIndex() == 0 &&
-             "Initial index isn't zero?");
-
-      return back()->getIndex();
-    }
-
-    /// Returns the number of instructions in the function.
-    unsigned getFunctionSize() const {
-      return functionSize;
+      return SlotIndex(&indexList.back(), 0);
     }
 
     /// Returns true if the given machine instr is mapped to an index,
@@ -493,8 +404,9 @@ namespace llvm {
     }
 
     /// Returns the base index for the given instruction.
-    SlotIndex getInstructionIndex(const MachineInstr *instr) const {
-      Mi2IndexMap::const_iterator itr = mi2iMap.find(instr);
+    SlotIndex getInstructionIndex(const MachineInstr *MI) const {
+      // Instructions inside a bundle have the same number as the bundle itself.
+      Mi2IndexMap::const_iterator itr = mi2iMap.find(getBundleStart(MI));
       assert(itr != mi2iMap.end() && "Instruction not found in maps.");
       return itr->second;
     }
@@ -502,23 +414,23 @@ namespace llvm {
     /// Returns the instruction for the given index, or null if the given
     /// index has no instruction associated with it.
     MachineInstr* getInstructionFromIndex(SlotIndex index) const {
-      return index.isValid() ? index.entry().getInstr() : 0;
+      return index.isValid() ? index.listEntry()->getInstr() : 0;
     }
 
-    /// Returns the next non-null index.
-    SlotIndex getNextNonNullIndex(SlotIndex index) {
-      SlotIndex nextNonNull = index.getNextIndex();
-
-      while (&nextNonNull.entry() != getTail() &&
-             getInstructionFromIndex(nextNonNull) == 0) {
-        nextNonNull = nextNonNull.getNextIndex();
-      }
-
-      return nextNonNull;
+    /// Returns the next non-null index, if one exists.
+    /// Otherwise returns getLastIndex().
+    SlotIndex getNextNonNullIndex(SlotIndex Index) {
+      IndexList::iterator I = Index.listEntry();
+      IndexList::iterator E = indexList.end();
+      while (++I != E)
+        if (I->getInstr())
+          return SlotIndex(I, Index.getSlot());
+      // We reached the end of the function.
+      return getLastIndex();
     }
 
     /// getIndexBefore - Returns the index of the last indexed instruction
-    /// before MI, or the the start index of its basic block.
+    /// before MI, or the start index of its basic block.
     /// MI is not required to have an index.
     SlotIndex getIndexBefore(const MachineInstr *MI) const {
       const MachineBasicBlock *MBB = MI->getParent();
@@ -658,31 +570,31 @@ namespace llvm {
       assert(mi->getParent() != 0 && "Instr must be added to function.");
 
       // Get the entries where mi should be inserted.
-      IndexListEntry *prevEntry, *nextEntry;
+      IndexList::iterator prevItr, nextItr;
       if (Late) {
         // Insert mi's index immediately before the following instruction.
-        nextEntry = &getIndexAfter(mi).entry();
-        prevEntry = nextEntry->getPrev();
+        nextItr = getIndexAfter(mi).listEntry();
+        prevItr = prior(nextItr);
       } else {
-        // Insert mi's index immediately after the preceeding instruction.
-        prevEntry = &getIndexBefore(mi).entry();
-        nextEntry = prevEntry->getNext();
+        // Insert mi's index immediately after the preceding instruction.
+        prevItr = getIndexBefore(mi).listEntry();
+        nextItr = llvm::next(prevItr);
       }
 
       // Get a number for the new instr, or 0 if there's no room currently.
       // In the latter case we'll force a renumber later.
-      unsigned dist = ((nextEntry->getIndex() - prevEntry->getIndex())/2) & ~3u;
-      unsigned newNumber = prevEntry->getIndex() + dist;
+      unsigned dist = ((nextItr->getIndex() - prevItr->getIndex())/2) & ~3u;
+      unsigned newNumber = prevItr->getIndex() + dist;
 
       // Insert a new list entry for mi.
-      IndexListEntry *newEntry = createEntry(mi, newNumber);
-      insert(nextEntry, newEntry);
+      IndexList::iterator newItr =
+        indexList.insert(nextItr, createEntry(mi, newNumber));
 
       // Renumber locally if we need to.
       if (dist == 0)
-        renumberIndexes(newEntry);
+        renumberIndexes(newItr);
 
-      SlotIndex newIndex(newEntry, SlotIndex::Slot_Block);
+      SlotIndex newIndex(&*newItr, SlotIndex::Slot_Block);
       mi2iMap.insert(std::make_pair(mi, newIndex));
       return newIndex;
     }
@@ -693,7 +605,7 @@ namespace llvm {
       // MachineInstr -> index mappings
       Mi2IndexMap::iterator mi2iItr = mi2iMap.find(mi);
       if (mi2iItr != mi2iMap.end()) {
-        IndexListEntry *miEntry(&mi2iItr->second.entry());        
+        IndexListEntry *miEntry(mi2iItr->second.listEntry());
         assert(miEntry->getInstr() == mi && "Instruction indexes broken.");
         // FIXME: Eventually we want to actually delete these indexes.
         miEntry->setInstr(0);
@@ -708,7 +620,7 @@ namespace llvm {
       if (mi2iItr == mi2iMap.end())
         return;
       SlotIndex replaceBaseIndex = mi2iItr->second;
-      IndexListEntry *miEntry(&replaceBaseIndex.entry());
+      IndexListEntry *miEntry(replaceBaseIndex.listEntry());
       assert(miEntry->getInstr() == mi &&
              "Mismatched instruction in index tables.");
       miEntry->setInstr(newMI);
@@ -720,49 +632,72 @@ namespace llvm {
     void insertMBBInMaps(MachineBasicBlock *mbb) {
       MachineFunction::iterator nextMBB =
         llvm::next(MachineFunction::iterator(mbb));
-      IndexListEntry *startEntry = createEntry(0, 0);
-      IndexListEntry *stopEntry = createEntry(0, 0);
-      IndexListEntry *nextEntry = 0;
 
+      IndexListEntry *startEntry = 0;
+      IndexListEntry *endEntry = 0;
+      IndexList::iterator newItr;
       if (nextMBB == mbb->getParent()->end()) {
-        nextEntry = getTail();
+        startEntry = &indexList.back();
+        endEntry = createEntry(0, 0);
+        newItr = indexList.insertAfter(startEntry, endEntry);
       } else {
-        nextEntry = &getMBBStartIdx(nextMBB).entry();
+        startEntry = createEntry(0, 0);
+        endEntry = getMBBStartIdx(nextMBB).listEntry();
+        newItr = indexList.insert(endEntry, startEntry);
       }
 
-      insert(nextEntry, startEntry);
-      insert(nextEntry, stopEntry);
-
       SlotIndex startIdx(startEntry, SlotIndex::Slot_Block);
-      SlotIndex endIdx(nextEntry, SlotIndex::Slot_Block);
+      SlotIndex endIdx(endEntry, SlotIndex::Slot_Block);
+
+      MachineFunction::iterator prevMBB(mbb);
+      assert(prevMBB != mbb->getParent()->end() &&
+             "Can't insert a new block at the beginning of a function.");
+      --prevMBB;
+      MBBRanges[prevMBB->getNumber()].second = startIdx;
 
       assert(unsigned(mbb->getNumber()) == MBBRanges.size() &&
              "Blocks must be added in order");
       MBBRanges.push_back(std::make_pair(startIdx, endIdx));
-
       idx2MBBMap.push_back(IdxMBBPair(startIdx, mbb));
 
-      renumberIndexes();
+      renumberIndexes(newItr);
       std::sort(idx2MBBMap.begin(), idx2MBBMap.end(), Idx2MBBCompare());
+    }
+
+    /// \brief Free the resources that were required to maintain a SlotIndex.
+    ///
+    /// Once an index is no longer needed (for instance because the instruction
+    /// at that index has been moved), the resources required to maintain the
+    /// index can be relinquished to reduce memory use and improve renumbering
+    /// performance. Any remaining SlotIndex objects that point to the same
+    /// index are left 'dangling' (much the same as a dangling pointer to a
+    /// freed object) and should not be accessed, except to destruct them.
+    /// 
+    /// Like dangling pointers, access to dangling SlotIndexes can cause
+    /// painful-to-track-down bugs, especially if the memory for the index
+    /// previously pointed to has been re-used. To detect dangling SlotIndex
+    /// bugs, build with EXPENSIVE_CHECKS=1. This will cause "erased" indexes to
+    /// be retained in a graveyard instead of being freed. Operations on indexes
+    /// in the graveyard will trigger an assertion.
+    void eraseIndex(SlotIndex index) {
+      IndexListEntry *entry = index.listEntry();
+#ifdef EXPENSIVE_CHECKS
+      indexList.remove(entry);
+      graveyardList.push_back(entry);
+      entry->setPoison();
+#else
+      indexList.erase(entry);
+#endif
     }
 
   };
 
 
   // Specialize IntervalMapInfo for half-open slot index intervals.
-  template <typename> struct IntervalMapInfo;
-  template <> struct IntervalMapInfo<SlotIndex> {
-    static inline bool startLess(const SlotIndex &x, const SlotIndex &a) {
-      return x < a;
-    }
-    static inline bool stopLess(const SlotIndex &b, const SlotIndex &x) {
-      return b <= x;
-    }
-    static inline bool adjacent(const SlotIndex &a, const SlotIndex &b) {
-      return a == b;
-    }
+  template <>
+  struct IntervalMapInfo<SlotIndex> : IntervalMapHalfOpenInfo<SlotIndex> {
   };
 
 }
 
-#endif // LLVM_CODEGEN_LIVEINDEX_H 
+#endif // LLVM_CODEGEN_SLOTINDEXES_H

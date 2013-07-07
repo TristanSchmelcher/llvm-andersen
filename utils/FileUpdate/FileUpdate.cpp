@@ -13,12 +13,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/system_error.h"
 using namespace llvm;
 
@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
 
   // Get the input data.
   OwningPtr<MemoryBuffer> In;
-  if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputFilename.c_str(), In)) {
+  if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputFilename, In)) {
     errs() << argv[0] << ": error: Unable to get input '"
            << InputFilename << "': " << ec.message() << '\n';
     return 1;

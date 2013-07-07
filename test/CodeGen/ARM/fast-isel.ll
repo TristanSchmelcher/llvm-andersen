@@ -1,4 +1,5 @@
 ; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-linux-gnueabi | FileCheck %s --check-prefix=ARM
 ; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=thumbv7-apple-ios | FileCheck %s --check-prefix=THUMB
 
 ; Very basic fast-isel functionality.
@@ -80,12 +81,12 @@ bb1:
 
 ; THUMB: and
 ; THUMB: strb
-; THUMB: uxtb
+; THUMB: and{{.*}}, #255
 ; THUMB: strh
 ; THUMB: uxth
 ; ARM: and
 ; ARM: strb
-; ARM: uxtb
+; ARM: and{{.*}}, #255
 ; ARM: strh
 ; ARM: uxth
 
@@ -121,13 +122,13 @@ bb3:
 
 ; THUMB: ldrb
 ; THUMB: ldrh
-; THUMB: uxtb
+; THUMB: and{{.*}}, #255
 ; THUMB: sxth
 ; THUMB: add
 ; THUMB: sub
 ; ARM: ldrb
 ; ARM: ldrh
-; ARM: uxtb
+; ARM: and{{.*}}, #255
 ; ARM: sxth
 ; ARM: add
 ; ARM: sub
@@ -142,78 +143,42 @@ define void @test4() {
   store i32 %b, i32* @test4g
   ret void
 
-; THUMB: movw r0, :lower16:L_test4g$non_lazy_ptr
-; THUMB: movt r0, :upper16:L_test4g$non_lazy_ptr
+
+; Note that relocations are either movw/movt or constant pool
+; loads. Different platforms will select different approaches.
+
+; THUMB: {{(movw r0, :lower16:L_test4g\$non_lazy_ptr)|(ldr.n r0, .LCPI)}}
+; THUMB: {{(movt r0, :upper16:L_test4g\$non_lazy_ptr)?}}
 ; THUMB: ldr r0, [r0]
 ; THUMB: ldr r1, [r0]
 ; THUMB: adds r1, #1
 ; THUMB: str r1, [r0]
 
-; ARM: movw r0, :lower16:L_test4g$non_lazy_ptr
-; ARM: movt r0, :upper16:L_test4g$non_lazy_ptr
+; ARM: {{(movw r0, :lower16:L_test4g\$non_lazy_ptr)|(ldr r0, .LCPI)}}
+; ARM: {{(movt r0, :upper16:L_test4g\$non_lazy_ptr)?}}
 ; ARM: ldr r0, [r0]
 ; ARM: ldr r1, [r0]
 ; ARM: add r1, r1, #1
 ; ARM: str r1, [r0]
 }
 
-; Check unaligned stores
-%struct.anon = type <{ float }>
-
-@a = common global %struct.anon* null, align 4
-
-define void @unaligned_store(float %x, float %y) nounwind {
-entry:
-; ARM: @unaligned_store
-; ARM: vmov r1, s0
-; ARM: str r1, [r0]
-
-; THUMB: @unaligned_store
-; THUMB: vmov r1, s0
-; THUMB: str r1, [r0]
-
-  %add = fadd float %x, %y
-  %0 = load %struct.anon** @a, align 4
-  %x1 = getelementptr inbounds %struct.anon* %0, i32 0, i32 0
-  store float %add, float* %x1, align 1
-  ret void
+; ARM: @urem_fold
+; THUMB: @urem_fold
+; ARM: and r0, r0, #31
+; THUMB: and r0, r0, #31
+define i32 @urem_fold(i32 %a) nounwind {
+  %rem = urem i32 %a, 32
+  ret i32 %rem
 }
 
-; Doublewords require only word-alignment.
-; rdar://10528060
-%struct.anon.0 = type { double }
-
-@foo_unpacked = common global %struct.anon.0 zeroinitializer, align 4
-
-define void @test5(double %a, double %b) nounwind {
+define i32 @trap_intrinsic() noreturn nounwind  {
 entry:
-; ARM: @test5
-; THUMB: @test5
-  %add = fadd double %a, %b
-  store double %add, double* getelementptr inbounds (%struct.anon.0* @foo_unpacked, i32 0, i32 0), align 4
-; ARM: vstr d16, [r0]
-; THUMB: vstr d16, [r0]
-  ret void
+; ARM: @trap_intrinsic
+; THUMB: @trap_intrinsic
+; ARM: trap
+; THUMB: trap
+  tail call void @llvm.trap( )
+  unreachable
 }
 
-; Check unaligned loads of floats
-%class.TAlignTest = type <{ i16, float }>
-
-define zeroext i1 @test6(%class.TAlignTest* %this) nounwind align 2 {
-entry:
-; ARM: @test6
-; THUMB: @test6
-  %0 = alloca %class.TAlignTest*, align 4
-  store %class.TAlignTest* %this, %class.TAlignTest** %0, align 4
-  %1 = load %class.TAlignTest** %0
-  %2 = getelementptr inbounds %class.TAlignTest* %1, i32 0, i32 1
-  %3 = load float* %2, align 1
-  %4 = fcmp une float %3, 0.000000e+00
-; ARM: ldr r0, [r0, #2]
-; ARM: vmov s0, r0
-; ARM: vcmpe.f32 s0, #0
-; THUMB: ldr.w r0, [r0, #2]
-; THUMB: vmov s0, r0
-; THUMB: vcmpe.f32 s0, #0
-  ret i1 %4
-}
+declare void @llvm.trap() nounwind

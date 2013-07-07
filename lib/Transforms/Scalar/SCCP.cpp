@@ -19,26 +19,26 @@
 
 #define DEBUG_TYPE "sccp"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/IPO.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Instructions.h"
-#include "llvm/Pass.h"
-#include "llvm/Analysis/ConstantFolding.h"
-#include "llvm/Transforms/Utils/Local.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetLibraryInfo.h"
-#include "llvm/Support/CallSite.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/InstVisitor.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/ConstantFolding.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/InstVisitor.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/CallSite.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -153,7 +153,7 @@ namespace {
 /// Constant Propagation.
 ///
 class SCCPSolver : public InstVisitor<SCCPSolver> {
-  const TargetData *TD;
+  const DataLayout *TD;
   const TargetLibraryInfo *TLI;
   SmallPtrSet<BasicBlock*, 8> BBExecutable; // The BBs that are executable.
   DenseMap<Value*, LatticeVal> ValueState;  // The state each value is in.
@@ -205,7 +205,7 @@ class SCCPSolver : public InstVisitor<SCCPSolver> {
   typedef std::pair<BasicBlock*, BasicBlock*> Edge;
   DenseSet<Edge> KnownFeasibleEdges;
 public:
-  SCCPSolver(const TargetData *td, const TargetLibraryInfo *tli)
+  SCCPSolver(const DataLayout *td, const TargetLibraryInfo *tli)
     : TD(td), TLI(tli) {}
 
   /// MarkBlockExecutable - This method can be used by clients to mark all of
@@ -214,7 +214,7 @@ public:
   /// This returns true if the block was not considered live before.
   bool MarkBlockExecutable(BasicBlock *BB) {
     if (!BBExecutable.insert(BB)) return false;
-    DEBUG(dbgs() << "Marking Block Executable: " << BB->getName() << "\n");
+    DEBUG(dbgs() << "Marking Block Executable: " << BB->getName() << '\n');
     BBWorkList.push_back(BB);  // Add the block to the work list!
     return true;
   }
@@ -270,13 +270,6 @@ public:
     assert(I != ValueState.end() && "V is not in valuemap!");
     return I->second;
   }
-
-  /*LatticeVal getStructLatticeValueFor(Value *V, unsigned i) const {
-    DenseMap<std::pair<Value*, unsigned>, LatticeVal>::const_iterator I =
-      StructValueState.find(std::make_pair(V, i));
-    assert(I != StructValueState.end() && "V is not in valuemap!");
-    return I->second;
-  }*/
 
   /// getTrackedRetVals - Get the inferred return value map.
   ///
@@ -409,7 +402,7 @@ private:
 
     if (Constant *C = dyn_cast<Constant>(V)) {
       Constant *Elt = C->getAggregateElement(i);
-      
+
       if (Elt == 0)
         LV.markOverdefined();      // Unknown sort of constant.
       else if (isa<UndefValue>(Elt))
@@ -434,7 +427,7 @@ private:
       // feasible that wasn't before.  Revisit the PHI nodes in the block
       // because they have potentially new operands.
       DEBUG(dbgs() << "Marking Edge Executable: " << Source->getName()
-            << " -> " << Dest->getName() << "\n");
+            << " -> " << Dest->getName() << '\n');
 
       PHINode *PN;
       for (BasicBlock::iterator I = Dest->begin();
@@ -508,7 +501,7 @@ private:
 
   void visitInstruction(Instruction &I) {
     // If a new instruction is added to LLVM that we don't handle.
-    dbgs() << "SCCP: Don't know how to handle: " << I;
+    dbgs() << "SCCP: Don't know how to handle: " << I << '\n';
     markAnythingOverdefined(&I);   // Just in case
   }
 };
@@ -564,7 +557,7 @@ void SCCPSolver::getFeasibleSuccessors(TerminatorInst &TI,
       return;
     }
 
-    Succs[SI->resolveSuccessorIndex(SI->findCaseValue(CI))] = true;
+    Succs[SI->findCaseValue(CI).getSuccessorIndex()] = true;
     return;
   }
 
@@ -623,14 +616,7 @@ bool SCCPSolver::isEdgeFeasible(BasicBlock *From, BasicBlock *To) {
     if (CI == 0)
       return !SCValue.isUndefined();
 
-    // Make sure to skip the "default value" which isn't a value
-    for (unsigned i = 0, E = SI->getNumCases(); i != E; ++i)
-      if (SI->getCaseValue(i) == CI) // Found the taken branch.
-        return SI->getCaseSuccessor(i) == To;
-
-    // If the constant value is not equal to any of the branches, we must
-    // execute default branch.
-    return SI->getDefaultDest() == To;
+    return SI->findCaseValue(CI).getCaseSuccessor() == To;
   }
 
   // Just mark all destinations executable!
@@ -716,9 +702,6 @@ void SCCPSolver::visitPHINode(PHINode &PN) {
   if (OperandVal)
     markConstant(&PN, OperandVal);      // Acquire operand value
 }
-
-
-
 
 void SCCPSolver::visitReturnInst(ReturnInst &I) {
   if (I.getNumOperands() == 0) return;  // ret void
@@ -1192,7 +1175,7 @@ void SCCPSolver::Solve() {
       DEBUG(dbgs() << "\nPopped off OI-WL: " << *I << '\n');
 
       // "I" got into the work list because it either made the transition from
-      // bottom to constant
+      // bottom to constant, or to overdefined.
       //
       // Anything on this worklist that is overdefined need not be visited
       // since all of its users will have already been marked as overdefined
@@ -1495,12 +1478,12 @@ bool SCCPSolver::ResolvedUndefsIn(Function &F) {
       // If the input to SCCP is actually switch on undef, fix the undef to
       // the first constant.
       if (isa<UndefValue>(SI->getCondition())) {
-        SI->setCondition(SI->getCaseValue(0));
-        markEdgeExecutable(BB, SI->getCaseSuccessor(0));
+        SI->setCondition(SI->case_begin().getCaseValue());
+        markEdgeExecutable(BB, SI->case_begin().getCaseSuccessor());
         return true;
       }
 
-      markForcedConstant(SI->getCondition(), SI->getCaseValue(0));
+      markForcedConstant(SI->getCondition(), SI->case_begin().getCaseValue());
       return true;
     }
   }
@@ -1571,7 +1554,7 @@ static void DeleteInstructionInBlock(BasicBlock *BB) {
 //
 bool SCCP::runOnFunction(Function &F) {
   DEBUG(dbgs() << "SCCP on function '" << F.getName() << "'\n");
-  const TargetData *TD = getAnalysisIfAvailable<TargetData>();
+  const DataLayout *TD = getAnalysisIfAvailable<DataLayout>();
   const TargetLibraryInfo *TLI = &getAnalysis<TargetLibraryInfo>();
   SCCPSolver Solver(TD, TLI);
 
@@ -1621,7 +1604,7 @@ bool SCCP::runOnFunction(Function &F) {
 
       Constant *Const = IV.isConstant()
         ? IV.getConstant() : UndefValue::get(Inst->getType());
-      DEBUG(dbgs() << "  Constant: " << *Const << " = " << *Inst);
+      DEBUG(dbgs() << "  Constant: " << *Const << " = " << *Inst << '\n');
 
       // Replaces all of the uses of a variable with uses of the constant.
       Inst->replaceAllUsesWith(Const);
@@ -1700,7 +1683,7 @@ static bool AddressIsTaken(const GlobalValue *GV) {
 }
 
 bool IPSCCP::runOnModule(Module &M) {
-  const TargetData *TD = getAnalysisIfAvailable<TargetData>();
+  const DataLayout *TD = getAnalysisIfAvailable<DataLayout>();
   const TargetLibraryInfo *TLI = &getAnalysis<TargetLibraryInfo>();
   SCCPSolver Solver(TD, TLI);
 
@@ -1829,7 +1812,7 @@ bool IPSCCP::runOnModule(Module &M) {
 
         Constant *Const = IV.isConstant()
           ? IV.getConstant() : UndefValue::get(Inst->getType());
-        DEBUG(dbgs() << "  Constant: " << *Const << " = " << *Inst);
+        DEBUG(dbgs() << "  Constant: " << *Const << " = " << *Inst << '\n');
 
         // Replaces all of the uses of a variable with uses of the
         // constant.
@@ -1932,8 +1915,8 @@ bool IPSCCP::runOnModule(Module &M) {
     ReturnsToZap[i]->setOperand(0, UndefValue::get(F->getReturnType()));
   }
 
-  // If we inferred constant or undef values for globals variables, we can delete
-  // the global and any stores that remain to it.
+  // If we inferred constant or undef values for globals variables, we can
+  // delete the global and any stores that remain to it.
   const DenseMap<GlobalVariable*, LatticeVal> &TG = Solver.getTrackedGlobals();
   for (DenseMap<GlobalVariable*, LatticeVal>::const_iterator I = TG.begin(),
          E = TG.end(); I != E; ++I) {

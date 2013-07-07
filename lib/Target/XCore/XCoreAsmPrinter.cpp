@@ -14,54 +14,50 @@
 
 #define DEBUG_TYPE "asm-printer"
 #include "XCore.h"
+#include "InstPrinter/XCoreInstPrinter.h"
 #include "XCoreInstrInfo.h"
+#include "XCoreMCInstLower.h"
 #include "XCoreSubtarget.h"
 #include "XCoreTargetMachine.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Module.h"
-#include "llvm/Analysis/DebugInfo.h"
-#include "llvm/CodeGen/AsmPrinter.h"
-#include "llvm/CodeGen/MachineModuleInfo.h"
-#include "llvm/CodeGen/MachineFunctionPass.h"
-#include "llvm/CodeGen/MachineConstantPool.h"
-#include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/CodeGen/MachineJumpTableInfo.h"
-#include "llvm/MC/MCAsmInfo.h"
-#include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCSymbol.h"
-#include "llvm/Target/Mangler.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/CommandLine.h"
+#include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/MachineConstantPool.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/CodeGen/MachineJumpTableInfo.h"
+#include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/DebugInfo.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Module.h"
+#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCStreamer.h"
+#include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/Mangler.h"
+#include "llvm/Target/TargetLoweringObjectFile.h"
 #include <algorithm>
 #include <cctype>
 using namespace llvm;
 
-static cl::opt<unsigned> MaxThreads("xcore-max-threads", cl::Optional,
-  cl::desc("Maximum number of threads (for emulation thread-local storage)"),
-  cl::Hidden,
-  cl::value_desc("number"),
-  cl::init(8));
-
 namespace {
   class XCoreAsmPrinter : public AsmPrinter {
     const XCoreSubtarget &Subtarget;
-    void PrintDebugValueComment(const MachineInstr *MI, raw_ostream &OS);
+    XCoreMCInstLower MCInstLowering;
   public:
     explicit XCoreAsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
-      : AsmPrinter(TM, Streamer), Subtarget(TM.getSubtarget<XCoreSubtarget>()){}
+      : AsmPrinter(TM, Streamer), Subtarget(TM.getSubtarget<XCoreSubtarget>()),
+        MCInstLowering(*this) {}
 
     virtual const char *getPassName() const {
       return "XCore Assembly Printer";
     }
 
-    void printMemOperand(const MachineInstr *MI, int opNum, raw_ostream &O);
     void printInlineJT(const MachineInstr *MI, int opNum, raw_ostream &O,
                        const std::string &directive = ".jmptable");
     void printInlineJT32(const MachineInstr *MI, int opNum, raw_ostream &O) {
@@ -75,17 +71,12 @@ namespace {
     void emitArrayBound(MCSymbol *Sym, const GlobalVariable *GV);
     virtual void EmitGlobalVariable(const GlobalVariable *GV);
 
-    void printInstruction(const MachineInstr *MI, raw_ostream &O); // autogen'd.
-    static const char *getRegisterName(unsigned RegNo);
-
     void EmitFunctionEntryLabel();
     void EmitInstruction(const MachineInstr *MI);
+    void EmitFunctionBodyStart();
     void EmitFunctionBodyEnd();
-    virtual MachineLocation getDebugValueLocation(const MachineInstr *MI) const;
   };
 } // end of anonymous namespace
-
-#include "XCoreGenAsmWriter.inc"
 
 void XCoreAsmPrinter::emitArrayBound(MCSymbol *Sym, const GlobalVariable *GV) {
   assert(((GV->hasExternalLinkage() ||
@@ -112,7 +103,7 @@ void XCoreAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
       EmitSpecialLLVMGlobal(GV))
     return;
 
-  const TargetData *TD = TM.getTargetData();
+  const DataLayout *TD = TM.getDataLayout();
   OutStreamer.SwitchSection(getObjFileLowering().SectionForGlobal(GV, Mang,TM));
 
   
@@ -152,10 +143,10 @@ void XCoreAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
 
   EmitAlignment(Align > 2 ? Align : 2, GV);
   
-  unsigned Size = TD->getTypeAllocSize(C->getType());
   if (GV->isThreadLocal()) {
-    Size *= MaxThreads;
+    report_fatal_error("TLS is not supported by this target!");
   }
+  unsigned Size = TD->getTypeAllocSize(C->getType());
   if (MAI->hasDotTypeDotSizeDirective()) {
     OutStreamer.EmitSymbolAttribute(GVSym, MCSA_ELF_TypeObject);
     OutStreamer.EmitRawText("\t.size " + Twine(GVSym->getName()) + "," +
@@ -164,17 +155,17 @@ void XCoreAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
   OutStreamer.EmitLabel(GVSym);
   
   EmitGlobalConstant(C);
-  if (GV->isThreadLocal()) {
-    for (unsigned i = 1; i < MaxThreads; ++i)
-      EmitGlobalConstant(C);
-  }
   // The ABI requires that unsigned scalar types smaller than 32 bits
   // are padded to 32 bits.
   if (Size < 4)
-    OutStreamer.EmitZeros(4 - Size, 0);
+    OutStreamer.EmitZeros(4 - Size);
   
   // Mark the end of the global
   OutStreamer.EmitRawText("\t.cc_bottom " + Twine(GVSym->getName()) + ".data");
+}
+
+void XCoreAsmPrinter::EmitFunctionBodyStart() {
+  MCInstLowering.Initialize(Mang, &MF->getContext());
 }
 
 /// EmitFunctionBodyEnd - Targets can override this to emit stuff after
@@ -190,17 +181,6 @@ void XCoreAsmPrinter::EmitFunctionEntryLabel() {
   OutStreamer.EmitRawText("\t.cc_top " + Twine(CurrentFnSym->getName()) +
                           ".function," + CurrentFnSym->getName());
   OutStreamer.EmitLabel(CurrentFnSym);
-}
-
-void XCoreAsmPrinter::printMemOperand(const MachineInstr *MI, int opNum,
-                                      raw_ostream &O) {
-  printOperand(MI, opNum, O);
-  
-  if (MI->getOperand(opNum+1).isImm() && MI->getOperand(opNum+1).getImm() == 0)
-    return;
-  
-  O << "+";
-  printOperand(MI, opNum+1, O);
 }
 
 void XCoreAsmPrinter::
@@ -225,7 +205,7 @@ void XCoreAsmPrinter::printOperand(const MachineInstr *MI, int opNum,
   const MachineOperand &MO = MI->getOperand(opNum);
   switch (MO.getType()) {
   case MachineOperand::MO_Register:
-    O << getRegisterName(MO.getReg());
+    O << XCoreInstPrinter::getRegisterName(MO.getReg());
     break;
   case MachineOperand::MO_Immediate:
     O << MO.getImm();
@@ -260,35 +240,18 @@ void XCoreAsmPrinter::printOperand(const MachineInstr *MI, int opNum,
 bool XCoreAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                                       unsigned AsmVariant,const char *ExtraCode,
                                       raw_ostream &O) {
+  // Does this asm operand have a single letter operand modifier?
+  if (ExtraCode && ExtraCode[0])
+    if (ExtraCode[1] != 0) return true; // Unknown modifier.
+
+    switch (ExtraCode[0]) {
+    default:
+      // See if this is a generic print operand
+      return AsmPrinter::PrintAsmOperand(MI, OpNo, AsmVariant, ExtraCode, O);
+    }
+
   printOperand(MI, OpNo, O);
   return false;
-}
-
-void XCoreAsmPrinter::PrintDebugValueComment(const MachineInstr *MI,
-                                             raw_ostream &OS) {
-  unsigned NOps = MI->getNumOperands();
-  assert(NOps == 4);
-  OS << '\t' << MAI->getCommentString() << "DEBUG_VALUE: ";
-  // cast away const; DIetc do not take const operands for some reason.
-  DIVariable V(const_cast<MDNode *>(MI->getOperand(NOps-1).getMetadata()));
-  OS << V.getName();
-  OS << " <- ";
-  // Frame address.  Currently handles register +- offset only.
-  assert(MI->getOperand(0).isReg() && MI->getOperand(1).isImm());
-  OS << '['; printOperand(MI, 0, OS); OS << '+'; printOperand(MI, 1, OS);
-  OS << ']';
-  OS << "+";
-  printOperand(MI, NOps-2, OS);
-}
-
-MachineLocation XCoreAsmPrinter::
-getDebugValueLocation(const MachineInstr *MI) const {
-  // Handles frame addresses emitted in XCoreInstrInfo::emitFrameIndexDebugValue.
-  assert(MI->getNumOperands() == 4 && "Invalid no. of machine operands!");
-  assert(MI->getOperand(0).isReg() && MI->getOperand(1).isImm() &&
-         "Unexpected MachineOperand types");
-  return MachineLocation(MI->getOperand(0).getReg(),
-                         MI->getOperand(1).getImm());
 }
 
 void XCoreAsmPrinter::EmitInstruction(const MachineInstr *MI) {
@@ -296,26 +259,34 @@ void XCoreAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   raw_svector_ostream O(Str);
 
   switch (MI->getOpcode()) {
-  case XCore::DBG_VALUE: {
-    if (isVerbose() && OutStreamer.hasRawTextSupport()) {
-      SmallString<128> TmpStr;
-      raw_svector_ostream OS(TmpStr);
-      PrintDebugValueComment(MI, OS);
-      OutStreamer.EmitRawText(StringRef(OS.str()));
-    }
-    return;
-  }
+  case XCore::DBG_VALUE:
+    llvm_unreachable("Should be handled target independently");
   case XCore::ADD_2rus:
     if (MI->getOperand(2).getImm() == 0) {
-      O << "\tmov " << getRegisterName(MI->getOperand(0).getReg()) << ", "
-        << getRegisterName(MI->getOperand(1).getReg());
+      O << "\tmov "
+        << XCoreInstPrinter::getRegisterName(MI->getOperand(0).getReg()) << ", "
+        << XCoreInstPrinter::getRegisterName(MI->getOperand(1).getReg());
       OutStreamer.EmitRawText(O.str());
       return;
     }
     break;
+  case XCore::BR_JT:
+  case XCore::BR_JT32:
+    O << "\tbru "
+      << XCoreInstPrinter::getRegisterName(MI->getOperand(1).getReg()) << '\n';
+    if (MI->getOpcode() == XCore::BR_JT)
+      printInlineJT(MI, 0, O);
+    else
+      printInlineJT32(MI, 0, O);
+    O << '\n';
+    OutStreamer.EmitRawText(O.str());
+    return;
   }
-  printInstruction(MI, O);
-  OutStreamer.EmitRawText(O.str());
+
+  MCInst TmpInst;
+  MCInstLowering.Lower(MI, TmpInst);
+
+  OutStreamer.EmitInstruction(TmpInst);
 }
 
 // Force static initialization.

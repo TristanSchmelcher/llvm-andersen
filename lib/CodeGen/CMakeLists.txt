@@ -2,16 +2,18 @@ add_llvm_library(LLVMCodeGen
   AggressiveAntiDepBreaker.cpp
   AllocationOrder.cpp
   Analysis.cpp
+  BasicTargetTransformInfo.cpp
   BranchFolding.cpp
   CalcSpillWeights.cpp
   CallingConvLower.cpp
   CodeGen.cpp
-  CodePlacementOpt.cpp
   CriticalAntiDepBreaker.cpp
-  DeadMachineInstructionElim.cpp
   DFAPacketizer.cpp
+  DeadMachineInstructionElim.cpp
   DwarfEHPrepare.cpp
+  EarlyIfConversion.cpp
   EdgeBundles.cpp
+  ErlangGC.cpp
   ExecutionDepsFix.cpp
   ExpandISelPseudos.cpp
   ExpandPostRAPseudos.cpp
@@ -30,18 +32,19 @@ add_llvm_library(LLVMCodeGen
   LiveInterval.cpp
   LiveIntervalAnalysis.cpp
   LiveIntervalUnion.cpp
-  LiveStackAnalysis.cpp
-  LiveVariables.cpp
   LiveRangeCalc.cpp
   LiveRangeEdit.cpp
+  LiveRegMatrix.cpp
+  LiveStackAnalysis.cpp
+  LiveVariables.cpp
   LocalStackSlotAllocation.cpp
   MachineBasicBlock.cpp
   MachineBlockFrequencyInfo.cpp
   MachineBlockPlacement.cpp
   MachineBranchProbabilityInfo.cpp
+  MachineCSE.cpp
   MachineCodeEmitter.cpp
   MachineCopyPropagation.cpp
-  MachineCSE.cpp
   MachineDominators.cpp
   MachineFunction.cpp
   MachineFunctionAnalysis.cpp
@@ -51,14 +54,15 @@ add_llvm_library(LLVMCodeGen
   MachineInstrBundle.cpp
   MachineLICM.cpp
   MachineLoopInfo.cpp
-  MachineLoopRanges.cpp
   MachineModuleInfo.cpp
   MachineModuleInfoImpls.cpp
   MachinePassRegistry.cpp
+  MachinePostDominators.cpp
   MachineRegisterInfo.cpp
   MachineSSAUpdater.cpp
   MachineScheduler.cpp
   MachineSink.cpp
+  MachineTraceMetrics.cpp
   MachineVerifier.cpp
   OcamlGC.cpp
   OptimizePHIs.cpp
@@ -77,10 +81,9 @@ add_llvm_library(LLVMCodeGen
   RegAllocPBQP.cpp
   RegisterClassInfo.cpp
   RegisterCoalescer.cpp
+  RegisterPressure.cpp
   RegisterScavenging.cpp
-  RenderMachineFunction.cpp
   ScheduleDAG.cpp
-  ScheduleDAGEmit.cpp
   ScheduleDAGInstrs.cpp
   ScheduleDAGPrinter.cpp
   ScoreboardHazardRecognizer.cpp
@@ -88,21 +91,27 @@ add_llvm_library(LLVMCodeGen
   ShrinkWrapping.cpp
   SjLjEHPrepare.cpp
   SlotIndexes.cpp
-  Spiller.cpp
   SpillPlacement.cpp
+  Spiller.cpp
   SplitKit.cpp
+  StackColoring.cpp
   StackProtector.cpp
   StackSlotColoring.cpp
   StrongPHIElimination.cpp
   TailDuplication.cpp
   TargetFrameLoweringImpl.cpp
-  TargetInstrInfoImpl.cpp
+  TargetInstrInfo.cpp
+  TargetLoweringBase.cpp
   TargetLoweringObjectFileImpl.cpp
   TargetOptionsImpl.cpp
+  TargetRegisterInfo.cpp
+  TargetSchedule.cpp
   TwoAddressInstructionPass.cpp
   UnreachableBlockElim.cpp
   VirtRegMap.cpp
   )
+
+add_dependencies(LLVMCodeGen intrinsics_gen)
 
 add_subdirectory(SelectionDAG)
 add_subdirectory(AsmPrinter)

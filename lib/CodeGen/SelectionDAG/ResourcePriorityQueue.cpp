@@ -21,13 +21,13 @@
 
 #define DEBUG_TYPE "scheduler"
 #include "llvm/CodeGen/ResourcePriorityQueue.h"
+#include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/CodeGen/SelectionDAGNodes.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetLowering.h"
+#include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
 
@@ -42,15 +42,15 @@ static cl::opt<signed> RegPressureThreshold(
 
 ResourcePriorityQueue::ResourcePriorityQueue(SelectionDAGISel *IS) :
   Picker(this),
-  InstrItins(IS->getTargetLowering().getTargetMachine().getInstrItineraryData())
+ InstrItins(IS->getTargetLowering()->getTargetMachine().getInstrItineraryData())
 {
-   TII = IS->getTargetLowering().getTargetMachine().getInstrInfo();
-   TRI = IS->getTargetLowering().getTargetMachine().getRegisterInfo();
-   TLI = &IS->getTargetLowering();
+   TII = IS->getTargetLowering()->getTargetMachine().getInstrInfo();
+   TRI = IS->getTargetLowering()->getTargetMachine().getRegisterInfo();
+   TLI = IS->getTargetLowering();
 
    const TargetMachine &tm = (*IS->MF).getTarget();
    ResourcesModel = tm.getInstrInfo()->CreateTargetScheduleState(&tm,NULL);
-   // This hard requirment could be relaxed, but for now
+   // This hard requirement could be relaxed, but for now
    // do not let it procede.
    assert (ResourcesModel && "Unimplemented CreateTargetScheduleState.");
 
@@ -94,9 +94,9 @@ ResourcePriorityQueue::numberRCValPredInSU(SUnit *SU, unsigned RCId) {
       continue;
 
     for (unsigned i = 0, e = ScegN->getNumValues(); i != e; ++i) {
-      EVT VT = ScegN->getValueType(i);
+      MVT VT = ScegN->getSimpleValueType(i);
       if (TLI->isTypeLegal(VT)
-         && (TLI->getRegClassFor(VT)->getID() == RCId)) {
+          && (TLI->getRegClassFor(VT)->getID() == RCId)) {
         NumberDeps++;
         break;
       }
@@ -132,9 +132,9 @@ unsigned ResourcePriorityQueue::numberRCValSuccInSU(SUnit *SU,
 
     for (unsigned i = 0, e = ScegN->getNumOperands(); i != e; ++i) {
       const SDValue &Op = ScegN->getOperand(i);
-      EVT VT = Op.getNode()->getValueType(Op.getResNo());
+      MVT VT = Op.getNode()->getSimpleValueType(Op.getResNo());
       if (TLI->isTypeLegal(VT)
-         && (TLI->getRegClassFor(VT)->getID() == RCId)) {
+          && (TLI->getRegClassFor(VT)->getID() == RCId)) {
         NumberDeps++;
         break;
       }
@@ -318,7 +318,7 @@ void ResourcePriorityQueue::reserveResources(SUnit *SU) {
 
   // If packet is now full, reset the state so in the next cycle
   // we start fresh.
-  if (Packet.size() >= InstrItins->IssueWidth) {
+  if (Packet.size() >= InstrItins->SchedModel->IssueWidth) {
     ResourcesModel->clearResources();
     Packet.clear();
   }
@@ -332,7 +332,7 @@ signed ResourcePriorityQueue::rawRegPressureDelta(SUnit *SU, unsigned RCId) {
 
   // Gen estimate.
   for (unsigned i = 0, e = SU->getNode()->getNumValues(); i != e; ++i) {
-      EVT VT = SU->getNode()->getValueType(i);
+      MVT VT = SU->getNode()->getSimpleValueType(i);
       if (TLI->isTypeLegal(VT)
           && TLI->getRegClassFor(VT)
           && TLI->getRegClassFor(VT)->getID() == RCId)
@@ -341,7 +341,7 @@ signed ResourcePriorityQueue::rawRegPressureDelta(SUnit *SU, unsigned RCId) {
   // Kill estimate.
   for (unsigned i = 0, e = SU->getNode()->getNumOperands(); i != e; ++i) {
       const SDValue &Op = SU->getNode()->getOperand(i);
-      EVT VT = Op.getNode()->getValueType(Op.getResNo());
+      MVT VT = Op.getNode()->getSimpleValueType(Op.getResNo());
       if (isa<ConstantSDNode>(Op.getNode()))
         continue;
 
@@ -353,7 +353,7 @@ signed ResourcePriorityQueue::rawRegPressureDelta(SUnit *SU, unsigned RCId) {
 }
 
 /// Estimates change in reg pressure from this SU.
-/// It is acheived by trivial tracking of defined
+/// It is achieved by trivial tracking of defined
 /// and used vregs in dependent instructions.
 /// The RawPressure flag makes this function to ignore
 /// existing reg file sizes, and report raw def/use
@@ -470,7 +470,7 @@ signed ResourcePriorityQueue::SUSchedulingCost(SUnit *SU) {
 
 
 /// Main resource tracking point.
-void ResourcePriorityQueue::ScheduledNode(SUnit *SU) {
+void ResourcePriorityQueue::scheduledNode(SUnit *SU) {
   // Use NULL entry as an event marker to reset
   // the DFA state.
   if (!SU) {
@@ -485,7 +485,7 @@ void ResourcePriorityQueue::ScheduledNode(SUnit *SU) {
   if (ScegN->isMachineOpcode()) {
     // Estimate generated regs.
     for (unsigned i = 0, e = ScegN->getNumValues(); i != e; ++i) {
-      EVT VT = ScegN->getValueType(i);
+      MVT VT = ScegN->getSimpleValueType(i);
 
       if (TLI->isTypeLegal(VT)) {
         const TargetRegisterClass *RC = TLI->getRegClassFor(VT);
@@ -496,7 +496,7 @@ void ResourcePriorityQueue::ScheduledNode(SUnit *SU) {
     // Estimate killed regs.
     for (unsigned i = 0, e = ScegN->getNumOperands(); i != e; ++i) {
       const SDValue &Op = ScegN->getOperand(i);
-      EVT VT = Op.getNode()->getValueType(Op.getResNo());
+      MVT VT = Op.getNode()->getSimpleValueType(Op.getResNo());
 
       if (TLI->isTypeLegal(VT)) {
         const TargetRegisterClass *RC = TLI->getRegClassFor(VT);
@@ -604,10 +604,8 @@ SUnit *ResourcePriorityQueue::pop() {
   std::vector<SUnit *>::iterator Best = Queue.begin();
   if (!DisableDFASched) {
     signed BestCost = SUSchedulingCost(*Best);
-    for (std::vector<SUnit *>::iterator I = Queue.begin(),
+    for (std::vector<SUnit *>::iterator I = llvm::next(Queue.begin()),
            E = Queue.end(); I != E; ++I) {
-      if (*I == *Best)
-        continue;
 
       if (SUSchedulingCost(*I) > BestCost) {
         BestCost = SUSchedulingCost(*I);

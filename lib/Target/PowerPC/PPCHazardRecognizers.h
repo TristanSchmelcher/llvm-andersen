@@ -14,23 +14,26 @@
 #ifndef PPCHAZRECS_H
 #define PPCHAZRECS_H
 
+#include "PPCInstrInfo.h"
 #include "llvm/CodeGen/ScheduleHazardRecognizer.h"
 #include "llvm/CodeGen/ScoreboardHazardRecognizer.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
-#include "PPCInstrInfo.h"
 
 namespace llvm {
 
-/// PPCHazardRecognizer440 - This class implements a scoreboard-based
-/// hazard recognizer for the PPC 440 and friends.
-class PPCHazardRecognizer440 : public ScoreboardHazardRecognizer {
+/// PPCScoreboardHazardRecognizer - This class implements a scoreboard-based
+/// hazard recognizer for generic PPC processors.
+class PPCScoreboardHazardRecognizer : public ScoreboardHazardRecognizer {
   const ScheduleDAG *DAG;
 public:
-  PPCHazardRecognizer440(const InstrItineraryData *ItinData,
+  PPCScoreboardHazardRecognizer(const InstrItineraryData *ItinData,
                          const ScheduleDAG *DAG_) :
     ScoreboardHazardRecognizer(ItinData, DAG_), DAG(DAG_) {}
 
+  virtual HazardType getHazardType(SUnit *SU, int Stalls);
   virtual void EmitInstruction(SUnit *SU);
+  virtual void AdvanceCycle();
+  virtual void Reset();
 };
 
 /// PPCHazardRecognizer970 - This class defines a finite state automata that
@@ -40,7 +43,7 @@ public:
 /// setting the CTR register then branching through it within a dispatch group),
 /// or storing then loading from the same address within a dispatch group.
 class PPCHazardRecognizer970 : public ScheduleHazardRecognizer {
-  const TargetInstrInfo &TII;
+  const TargetMachine &TM;
 
   unsigned NumIssued;  // Number of insts issued, including advanced cycles.
 
@@ -48,9 +51,6 @@ class PPCHazardRecognizer970 : public ScheduleHazardRecognizer {
 
   // HasCTRSet - If the CTR register is set in this group, disallow BCTRL.
   bool HasCTRSet;
-
-  // Was the last instruction issued a BL8_ELF
-  bool LastWasBL8_ELF;
 
   // StoredPtr - Keep track of the address of any store.  If we see a load from
   // the same address (or one that aliases it), disallow the store.  We can have
@@ -64,7 +64,7 @@ class PPCHazardRecognizer970 : public ScheduleHazardRecognizer {
   unsigned NumStores;
 
 public:
-  PPCHazardRecognizer970(const TargetInstrInfo &TII);
+  PPCHazardRecognizer970(const TargetMachine &TM);
   virtual HazardType getHazardType(SUnit *SU, int Stalls);
   virtual void EmitInstruction(SUnit *SU);
   virtual void AdvanceCycle();

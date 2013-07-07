@@ -27,7 +27,6 @@ namespace llvm {
 class X86RegisterInfo : public X86GenRegisterInfo {
 public:
   X86TargetMachine &TM;
-  const TargetInstrInfo &TII;
 
 private:
   /// Is64Bit - Is the target 64-bits.
@@ -50,12 +49,13 @@ private:
   ///
   unsigned FramePtr;
 
-public:
-  X86RegisterInfo(X86TargetMachine &tm, const TargetInstrInfo &tii);
+  /// BasePtr - X86 physical register used as a base ptr in complex stack
+  /// frames. I.e., when we need a 3rd base, not just SP and FP, due to
+  /// variable size stack objects.
+  unsigned BasePtr;
 
-  /// getX86RegNum - Returns the native X86 register number for the given LLVM
-  /// register identifier.
-  static unsigned getX86RegNum(unsigned RegNo);
+public:
+  X86RegisterInfo(X86TargetMachine &tm);
 
   // FIXME: This should be tablegen'd like getDwarfRegNum is
   int getSEHRegNum(unsigned i) const;
@@ -65,7 +65,8 @@ public:
   int getCompactUnwindRegNum(unsigned RegNum, bool isEH) const;
 
   /// Code Generation virtual methods...
-  /// 
+  ///
+  virtual bool trackLivenessAfterRegAlloc(const MachineFunction &MF) const;
 
   /// getMatchingSuperRegClass - Return a subclass of the specified register
   /// class A so that each register in it has a sub-register of the
@@ -82,7 +83,8 @@ public:
 
   /// getPointerRegClass - Returns a TargetRegisterClass used for pointer
   /// values.
-  const TargetRegisterClass *getPointerRegClass(unsigned Kind = 0) const;
+  const TargetRegisterClass *
+  getPointerRegClass(const MachineFunction &MF, unsigned Kind = 0) const;
 
   /// getCrossCopyRegClass - Returns a legal register class to copy a register
   /// in the specified class to or from. Returns NULL if it is possible to copy
@@ -95,14 +97,17 @@ public:
 
   /// getCalleeSavedRegs - Return a null-terminated list of all of the
   /// callee-save registers on this target.
-  const unsigned *getCalleeSavedRegs(const MachineFunction* MF = 0) const;
+  const uint16_t *getCalleeSavedRegs(const MachineFunction* MF = 0) const;
   const uint32_t *getCallPreservedMask(CallingConv::ID) const;
+  const uint32_t *getNoPreservedMask() const;
 
   /// getReservedRegs - Returns a bitset indexed by physical register number
   /// indicating if a register is a special register that has particular uses and
   /// should be considered unavailable at all times, e.g. SP, RA. This is used by
   /// register scavenger to determine what registers are free.
   BitVector getReservedRegs(const MachineFunction &MF) const;
+
+  bool hasBasePointer(const MachineFunction &MF) const;
 
   bool canRealignStack(const MachineFunction &MF) const;
 
@@ -111,16 +116,14 @@ public:
   bool hasReservedSpillSlot(const MachineFunction &MF, unsigned Reg,
                             int &FrameIdx) const;
 
-  void eliminateCallFramePseudoInstr(MachineFunction &MF,
-                                     MachineBasicBlock &MBB,
-                                     MachineBasicBlock::iterator MI) const;
-
   void eliminateFrameIndex(MachineBasicBlock::iterator MI,
-                           int SPAdj, RegScavenger *RS = NULL) const;
+                           int SPAdj, unsigned FIOperandNum,
+                           RegScavenger *RS = NULL) const;
 
   // Debug information queries.
   unsigned getFrameRegister(const MachineFunction &MF) const;
   unsigned getStackRegister() const { return StackPtr; }
+  unsigned getBaseRegister() const { return BasePtr; }
   // FIXME: Move to FrameInfok
   unsigned getSlotSize() const { return SlotSize; }
 
@@ -131,8 +134,8 @@ public:
 
 // getX86SubSuperRegister - X86 utility function. It returns the sub or super
 // register of a specific X86 register.
-// e.g. getX86SubSuperRegister(X86::EAX, EVT::i16) return X86:AX
-unsigned getX86SubSuperRegister(unsigned, EVT, bool High=false);
+// e.g. getX86SubSuperRegister(X86::EAX, MVT::i16) return X86:AX
+unsigned getX86SubSuperRegister(unsigned, MVT::SimpleValueType, bool High=false);
 
 } // End llvm namespace
 

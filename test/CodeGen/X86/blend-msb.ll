@@ -1,11 +1,12 @@
-; RUN: llc < %s -mtriple=x86_64-apple-darwin -mcpu=corei7 -promote-elements -mattr=+sse41 | FileCheck %s
+; RUN: llc < %s -mtriple=x86_64-apple-darwin -mcpu=corei7 -mattr=+sse41 | FileCheck %s
 
 
 ; In this test we check that sign-extend of the mask bit is performed by
 ; shifting the needed bit to the MSB, and not using shl+sra.
 
 ;CHECK: vsel_float
-;CHECK: pslld
+;CHECK: movl $-2147483648
+;CHECK-NEXT: movd
 ;CHECK-NEXT: blendvps
 ;CHECK: ret
 define <4 x float> @vsel_float(<4 x float> %v1, <4 x float> %v2) {
@@ -14,7 +15,8 @@ define <4 x float> @vsel_float(<4 x float> %v1, <4 x float> %v2) {
 }
 
 ;CHECK: vsel_4xi8
-;CHECK: pslld
+;CHECK: movl $-2147483648
+;CHECK-NEXT: movd
 ;CHECK-NEXT: blendvps
 ;CHECK: ret
 define <4 x i8> @vsel_4xi8(<4 x i8> %v1, <4 x i8> %v2) {

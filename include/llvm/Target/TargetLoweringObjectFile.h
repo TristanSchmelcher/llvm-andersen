@@ -15,32 +15,30 @@
 #ifndef LLVM_TARGET_TARGETLOWERINGOBJECTFILE_H
 #define LLVM_TARGET_TARGETLOWERINGOBJECTFILE_H
 
-#include "llvm/Module.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/SectionKind.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
 
 namespace llvm {
   class MachineModuleInfo;
   class Mangler;
-  class MCAsmInfo;
   class MCContext;
   class MCExpr;
   class MCSection;
-  class MCSectionMachO;
   class MCSymbol;
+  class MCSymbolRefExpr;
   class MCStreamer;
-  class NamedMDNode;
   class GlobalValue;
   class TargetMachine;
   
 class TargetLoweringObjectFile : public MCObjectFileInfo {
   MCContext *Ctx;
-  
-  TargetLoweringObjectFile(const TargetLoweringObjectFile&); // DO NOT IMPLEMENT
-  void operator=(const TargetLoweringObjectFile&);           // DO NOT IMPLEMENT
-  
+
+  TargetLoweringObjectFile(
+    const TargetLoweringObjectFile&) LLVM_DELETED_FUNCTION;
+  void operator=(const TargetLoweringObjectFile&) LLVM_DELETED_FUNCTION;
+
 public:
   MCContext &getContext() const { return *Ctx; }
 
@@ -111,13 +109,13 @@ public:
     return 0;
   }
   
-  /// getExprForDwarfGlobalReference - Return an MCExpr to use for a reference
+  /// getTTypeGlobalReference - Return an MCExpr to use for a reference
   /// to the specified global variable from exception handling information.
   ///
   virtual const MCExpr *
-  getExprForDwarfGlobalReference(const GlobalValue *GV, Mangler *Mang,
-                                 MachineModuleInfo *MMI, unsigned Encoding,
-                                 MCStreamer &Streamer) const;
+  getTTypeGlobalReference(const GlobalValue *GV, Mangler *Mang,
+                          MachineModuleInfo *MMI, unsigned Encoding,
+                          MCStreamer &Streamer) const;
 
   // getCFIPersonalitySymbol - The symbol that gets passed to .cfi_personality.
   virtual MCSymbol *
@@ -126,8 +124,8 @@ public:
 
   /// 
   const MCExpr *
-  getExprForDwarfReference(const MCSymbol *Sym, unsigned Encoding,
-                           MCStreamer &Streamer) const;
+  getTTypeReference(const MCSymbolRefExpr *Sym, unsigned Encoding,
+                    MCStreamer &Streamer) const;
 
   virtual const MCSection *
   getStaticCtorSection(unsigned Priority = 65535) const {
@@ -139,6 +137,10 @@ public:
     (void)Priority;
     return StaticDtorSection;
   }
+
+  /// \brief Create a symbol reference to describe the given TLS variable when
+  /// emitting the address in debug info.
+  virtual const MCExpr *getDebugThreadLocalSymbol(const MCSymbol *Sym) const;
 
 protected:
   virtual const MCSection *

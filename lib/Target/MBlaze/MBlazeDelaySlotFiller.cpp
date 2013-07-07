@@ -16,14 +16,14 @@
 
 #include "MBlaze.h"
 #include "MBlazeTargetMachine.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/ADT/Statistic.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetInstrInfo.h"
 
 using namespace llvm;
 
@@ -37,13 +37,11 @@ static cl::opt<bool> MBDisableDelaySlotFiller(
 
 namespace {
   struct Filler : public MachineFunctionPass {
-
     TargetMachine &TM;
-    const TargetInstrInfo *TII;
 
     static char ID;
     Filler(TargetMachine &tm)
-      : MachineFunctionPass(ID), TM(tm), TII(tm.getInstrInfo()) { }
+      : MachineFunctionPass(ID), TM(tm) { }
 
     virtual const char *getPassName() const {
       return "MBlaze Delay Slot Filler";
@@ -239,7 +237,7 @@ bool Filler::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
       Changed = true;
 
       if (D == MBB.end())
-        BuildMI(MBB, ++J, I->getDebugLoc(), TII->get(MBlaze::NOP));
+        BuildMI(MBB, ++J, I->getDebugLoc(),TM.getInstrInfo()->get(MBlaze::NOP));
       else
         MBB.splice(++J, &MBB, D);
     }

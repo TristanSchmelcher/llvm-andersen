@@ -1,6 +1,4 @@
-/**************************************
-** Created by Kevin from config.h.in **
-***************************************/
+/* include/llvm/Config/config.h.cmake corresponding to config.h.in. */
 
 #ifndef CONFIG_H
 #define CONFIG_H
@@ -8,23 +6,32 @@
 /* Bug report URL. */
 #define BUG_REPORT_URL "${BUG_REPORT_URL}"
 
+/* Define if we have libxml2 */
+#cmakedefine CLANG_HAVE_LIBXML ${CLANG_HAVE_LIBXML}
+
 /* Relative directory for resource files */
 #define CLANG_RESOURCE_DIR "${CLANG_RESOURCE_DIR}"
-
-/* Directory wherelibstdc++ is installed. */
-#define GCC_INSTALL_PREFIX "${GCC_INSTALL_PREFIX}"
 
 /* Directories clang will search for headers */
 #define C_INCLUDE_DIRS "${C_INCLUDE_DIRS}"
 
-/* Define if CBE is enabled for printf %a output */
-#cmakedefine ENABLE_CBE_PRINTF_A ${ENABLE_CBE_PRINTF_A}
+/* Default <path> to all compiler invocations for --sysroot=<path>. */
+#undef DEFAULT_SYSROOT
+
+/* Define if you want backtraces on crash */
+#cmakedefine ENABLE_BACKTRACES
 
 /* Define if position independent code is enabled */
 #cmakedefine ENABLE_PIC
 
-/* Define if timestamp information (e.g., __DATE___) is allowed */
+/* Define if timestamp information (e.g., __DATE__) is allowed */
 #cmakedefine ENABLE_TIMESTAMPS ${ENABLE_TIMESTAMPS}
+
+/* Directory where gcc is installed. */
+#undef GCC_INSTALL_PREFIX
+
+/* Define to 1 if you have the `arc4random' function. */
+#cmakedefine HAVE_ARC4RANDOM
 
 /* Define to 1 if you have the `argz_append' function. */
 #cmakedefine HAVE_ARGZ_APPEND ${HAVE_ARGZ_APPEND}
@@ -48,7 +55,7 @@
 #cmakedefine HAVE_ASSERT_H ${HAVE_ASSERT_H}
 
 /* Define to 1 if you have the `backtrace' function. */
-#undef HAVE_BACKTRACE
+#cmakedefine HAVE_BACKTRACE ${HAVE_BACKTRACE}
 
 /* Define to 1 if you have the `bcopy' function. */
 #undef HAVE_BCOPY
@@ -62,10 +69,13 @@
 /* Define to 1 if you have the `closedir' function. */
 #cmakedefine HAVE_CLOSEDIR ${HAVE_CLOSEDIR}
 
+/* Define to 1 if you have the <cxxabi.h> header file. */
+#cmakedefine HAVE_CXXABI_H ${HAVE_CXXABI_H}
+
 /* Define to 1 if you have the <CrashReporterClient.h> header file. */
 #undef HAVE_CRASHREPORTERCLIENT_H
 
-/* Define if __crashreporter_info__ exists. */
+/* can use __crashreporter_info__ */
 #undef HAVE_CRASHREPORTER_INFO
 
 /* Define to 1 if you have the <ctype.h> header file. */
@@ -139,8 +149,32 @@
 /* Define to 1 if you have the `floorf' function. */
 #cmakedefine HAVE_FLOORF ${HAVE_FLOORF}
 
+/* Define to 1 if you have the `log' function. */
+#cmakedefine HAVE_LOG ${HAVE_LOG}
+
+/* Define to 1 if you have the `log2' function. */
+#cmakedefine HAVE_LOG2 ${HAVE_LOG2}
+
+/* Define to 1 if you have the `log10' function. */
+#cmakedefine HAVE_LOG10 ${HAVE_LOG10}
+
+/* Define to 1 if you have the `exp' function. */
+#cmakedefine HAVE_EXP ${HAVE_LOG}
+
+/* Define to 1 if you have the `exp2' function. */
+#cmakedefine HAVE_EXP2 ${HAVE_LOG2}
+
+/* Define to 1 if you have the `exp10' function. */
+#cmakedefine HAVE_EXP10 ${HAVE_LOG10}
+
 /* Define to 1 if you have the `fmodf' function. */
 #cmakedefine HAVE_FMODF ${HAVE_FMODF}
+
+/* Define to 1 if you have the `futimes' function. */
+#cmakedefine HAVE_FUTIMES ${HAVE_FUTIMES}
+
+/* Define to 1 if you have the `futimens' function */
+#cmakedefine HAVE_FUTIMENS ${HAVE_FUTIMENS}
 
 /* Define to 1 if you have the `getcwd' function. */
 #cmakedefine HAVE_GETCWD ${HAVE_GETCWD}
@@ -158,7 +192,7 @@
 #cmakedefine HAVE_GETTIMEOFDAY ${HAVE_GETTIMEOFDAY}
 
 /* Define if the Graphviz program is available */
-#undef HAVE_GRAPHVIZ
+#cmakedefine HAVE_GRAPHVIZ ${HAVE_GRAPHVIZ}
 
 /* Define if the gv program is available */
 #cmakedefine HAVE_GV ${HAVE_GV}
@@ -204,6 +238,9 @@
 
 /* Define to 1 if you have the `udis86' library (-ludis86). */
 #undef HAVE_LIBUDIS86
+
+/* Define to 1 if you have the 'z' library (-lz). */
+#cmakedefine HAVE_LIBZ ${HAVE_LIBZ}
 
 /* Define to 1 if you have the <limits.h> header file. */
 #cmakedefine HAVE_LIMITS_H ${HAVE_LIMITS_H}
@@ -473,6 +510,9 @@
 /* Define if the xdot.py program is available */
 #cmakedefine HAVE_XDOT_PY ${HAVE_XDOT_PY}
 
+/* Define to 1 if you have the <zlib.h> header file. */
+#cmakedefine HAVE_ZLIB_H ${HAVE_ZLIB_H}
+
 /* Have host's _alloca */
 #cmakedefine HAVE__ALLOCA ${HAVE__ALLOCA}
 
@@ -545,20 +585,23 @@
 /* Define if threads enabled */
 #cmakedefine01 LLVM_ENABLE_THREADS
 
+/* Define if zlib compression is available */
+#cmakedefine01 LLVM_ENABLE_ZLIB
+
 /* Installation directory for config files */
 #cmakedefine LLVM_ETCDIR "${LLVM_ETCDIR}"
 
 /* Has gcc/MSVC atomic intrinsics */
 #cmakedefine01 LLVM_HAS_ATOMICS
 
+/* Host triple LLVM will be executed on */
+#cmakedefine LLVM_HOST_TRIPLE "${LLVM_HOST_TRIPLE}"
+
 /* Installation directory for include files */
 #cmakedefine LLVM_INCLUDEDIR "${LLVM_INCLUDEDIR}"
 
 /* Installation directory for .info files */
 #cmakedefine LLVM_INFODIR "${LLVM_INFODIR}"
-
-/* Installation directory for libraries */
-#cmakedefine LLVM_LIBDIR "${LLVM_LIBDIR}"
 
 /* Installation directory for man pages */
 #cmakedefine LLVM_MANDIR "${LLVM_MANDIR}"
@@ -571,6 +614,9 @@
 
 /* LLVM name for the native AsmPrinter init function, if available */
 #cmakedefine LLVM_NATIVE_ASMPRINTER LLVMInitialize${LLVM_NATIVE_ARCH}AsmPrinter
+
+/* LLVM name for the native Disassembler init function, if available */
+#cmakedefine LLVM_NATIVE_DISASSEMBLER LLVMInitialize${LLVM_NATIVE_ARCH}Disassembler
 
 /* LLVM name for the native Target init function, if available */
 #cmakedefine LLVM_NATIVE_TARGET LLVMInitialize${LLVM_NATIVE_ARCH}Target
@@ -617,6 +663,12 @@
 /* Installation prefix directory */
 #cmakedefine LLVM_PREFIX "${LLVM_PREFIX}"
 
+/* Define if we have the Intel JIT API runtime support library */
+#cmakedefine LLVM_USE_INTEL_JITEVENTS 1
+
+/* Define if we have the oprofile JIT-support library */
+#cmakedefine LLVM_USE_OPROFILE 1
+
 /* Major version of the LLVM API */
 #cmakedefine LLVM_VERSION_MAJOR ${LLVM_VERSION_MAJOR}
 
@@ -629,10 +681,6 @@
 /* Define to the sub-directory in which libtool stores uninstalled libraries.
    */
 #undef LTDL_OBJDIR
-
-/* Define to the name of the environment variable that determines the dynamic
-   library search path. */
-#cmakedefine LTDL_SHLIBPATH_VAR "${LTDL_SHLIBPATH_VAR}"
 
 /* Define to the extension used for shared libraries, say, ".so". */
 #cmakedefine LTDL_SHLIB_EXT "${LTDL_SHLIB_EXT}"
@@ -676,9 +724,6 @@
 
 /* Define to 1 if your <sys/time.h> declares `struct tm'. */
 #undef TM_IN_SYS_TIME
-
-/* Define if we have the oprofile JIT-support library */
-#undef USE_OPROFILE
 
 /* Define if use udis86 library */
 #undef USE_UDIS86

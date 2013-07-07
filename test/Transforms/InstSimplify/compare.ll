@@ -40,6 +40,171 @@ define i1 @gep2() {
 ; CHECK-NEXT: ret i1 true
 }
 
+; PR11238
+%gept = type { i32, i32 }
+@gepy = global %gept zeroinitializer, align 8
+@gepz = extern_weak global %gept
+
+define i1 @gep3() {
+; CHECK: @gep3
+  %x = alloca %gept, align 8
+  %a = getelementptr %gept* %x, i64 0, i32 0
+  %b = getelementptr %gept* %x, i64 0, i32 1
+  %equal = icmp eq i32* %a, %b
+  ret i1 %equal
+; CHECK-NEXT: ret i1 false
+}
+
+define i1 @gep4() {
+; CHECK: @gep4
+  %x = alloca %gept, align 8
+  %a = getelementptr %gept* @gepy, i64 0, i32 0
+  %b = getelementptr %gept* @gepy, i64 0, i32 1
+  %equal = icmp eq i32* %a, %b
+  ret i1 %equal
+; CHECK-NEXT: ret i1 false
+}
+
+define i1 @gep5() {
+; CHECK: @gep5
+  %x = alloca %gept, align 8
+  %a = getelementptr inbounds %gept* %x, i64 0, i32 1
+  %b = getelementptr %gept* @gepy, i64 0, i32 0
+  %equal = icmp eq i32* %a, %b
+  ret i1 %equal
+; CHECK-NEXT: ret i1 false
+}
+
+define i1 @gep6(%gept* %x) {
+; Same as @gep3 but potentially null.
+; CHECK: @gep6
+  %a = getelementptr %gept* %x, i64 0, i32 0
+  %b = getelementptr %gept* %x, i64 0, i32 1
+  %equal = icmp eq i32* %a, %b
+  ret i1 %equal
+; CHECK-NEXT: ret i1 false
+}
+
+define i1 @gep7(%gept* %x) {
+; CHECK: @gep7
+  %a = getelementptr %gept* %x, i64 0, i32 0
+  %b = getelementptr %gept* @gepz, i64 0, i32 0
+  %equal = icmp eq i32* %a, %b
+  ret i1 %equal
+; CHECK: ret i1 %equal
+}
+
+define i1 @gep8(%gept* %x) {
+; CHECK: @gep8
+  %a = getelementptr %gept* %x, i32 1
+  %b = getelementptr %gept* %x, i32 -1
+  %equal = icmp ugt %gept* %a, %b
+  ret i1 %equal
+; CHECK: ret i1 %equal
+}
+
+define i1 @gep9(i8* %ptr) {
+; CHECK: @gep9
+; CHECK-NOT: ret
+; CHECK: ret i1 true
+
+entry:
+  %first1 = getelementptr inbounds i8* %ptr, i32 0
+  %first2 = getelementptr inbounds i8* %first1, i32 1
+  %first3 = getelementptr inbounds i8* %first2, i32 2
+  %first4 = getelementptr inbounds i8* %first3, i32 4
+  %last1 = getelementptr inbounds i8* %first2, i32 48
+  %last2 = getelementptr inbounds i8* %last1, i32 8
+  %last3 = getelementptr inbounds i8* %last2, i32 -4
+  %last4 = getelementptr inbounds i8* %last3, i32 -4
+  %first.int = ptrtoint i8* %first4 to i32
+  %last.int = ptrtoint i8* %last4 to i32
+  %cmp = icmp ne i32 %last.int, %first.int
+  ret i1 %cmp
+}
+
+define i1 @gep10(i8* %ptr) {
+; CHECK: @gep10
+; CHECK-NOT: ret
+; CHECK: ret i1 true
+
+entry:
+  %first1 = getelementptr inbounds i8* %ptr, i32 -2
+  %first2 = getelementptr inbounds i8* %first1, i32 44
+  %last1 = getelementptr inbounds i8* %ptr, i32 48
+  %last2 = getelementptr inbounds i8* %last1, i32 -6
+  %first.int = ptrtoint i8* %first2 to i32
+  %last.int = ptrtoint i8* %last2 to i32
+  %cmp = icmp eq i32 %last.int, %first.int
+  ret i1 %cmp
+}
+
+define i1 @gep11(i8* %ptr) {
+; CHECK: @gep11
+; CHECK-NOT: ret
+; CHECK: ret i1 true
+
+entry:
+  %first1 = getelementptr inbounds i8* %ptr, i32 -2
+  %last1 = getelementptr inbounds i8* %ptr, i32 48
+  %last2 = getelementptr inbounds i8* %last1, i32 -6
+  %cmp = icmp ult i8* %first1, %last2
+  ret i1 %cmp
+}
+
+define i1 @gep12(i8* %ptr) {
+; CHECK: @gep12
+; CHECK-NOT: ret
+; CHECK: ret i1 %cmp
+
+entry:
+  %first1 = getelementptr inbounds i8* %ptr, i32 -2
+  %last1 = getelementptr inbounds i8* %ptr, i32 48
+  %last2 = getelementptr inbounds i8* %last1, i32 -6
+  %cmp = icmp slt i8* %first1, %last2
+  ret i1 %cmp
+}
+
+define i1 @gep13(i8* %ptr) {
+; CHECK: @gep13
+; We can prove this GEP is non-null because it is inbounds.
+  %x = getelementptr inbounds i8* %ptr, i32 1
+  %cmp = icmp eq i8* %x, null
+  ret i1 %cmp
+; CHECK-NEXT: ret i1 false
+}
+
+define i1 @gep14({ {}, i8 }* %ptr) {
+; CHECK: @gep14
+; We can't simplify this because the offset of one in the GEP actually doesn't
+; move the pointer.
+  %x = getelementptr inbounds { {}, i8 }* %ptr, i32 0, i32 1
+  %cmp = icmp eq i8* %x, null
+  ret i1 %cmp
+; CHECK-NOT: ret i1 false
+}
+
+define i1 @gep15({ {}, [4 x {i8, i8}]}* %ptr, i32 %y) {
+; CHECK: @gep15
+; We can prove this GEP is non-null even though there is a user value, as we
+; would necessarily violate inbounds on one side or the other.
+  %x = getelementptr inbounds { {}, [4 x {i8, i8}]}* %ptr, i32 0, i32 1, i32 %y, i32 1
+  %cmp = icmp eq i8* %x, null
+  ret i1 %cmp
+; CHECK-NEXT: ret i1 false
+}
+
+define i1 @gep16(i8* %ptr, i32 %a) {
+; CHECK: @gep16
+; We can prove this GEP is non-null because it is inbounds and because we know
+; %b is non-zero even though we don't know its value.
+  %b = or i32 %a, 1
+  %x = getelementptr inbounds i8* %ptr, i32 %b
+  %cmp = icmp eq i8* %x, null
+  ret i1 %cmp
+; CHECK-NEXT: ret i1 false
+}
+
 define i1 @zext(i32 %x) {
 ; CHECK: @zext
   %e1 = zext i32 %x to i64
@@ -138,6 +303,15 @@ define i1 @add5(i32 %x, i32 %y) {
   %s2 = add nuw i32 %x, %y
   %c = icmp ugt i32 %s1, %s2
   ret i1 %c
+; CHECK: ret i1 true
+}
+
+define i1 @add6(i64 %A, i64 %B) {
+; CHECK: @add6
+  %s1 = add i64 %A, %B
+  %s2 = add i64 %B, %A
+  %cmp = icmp eq i64 %s1, %s2
+  ret i1 %cmp
 ; CHECK: ret i1 true
 }
 
@@ -446,9 +620,76 @@ define <2 x i1> @vectorselect1(<2 x i1> %cond) {
 ; CHECK: ret <2 x i1> %cond
 }
 
-define <2 x i1> @vectorselectcrash(i32 %arg1) { ; PR11948
+; PR11948
+define <2 x i1> @vectorselectcrash(i32 %arg1) {
   %tobool40 = icmp ne i32 %arg1, 0
   %cond43 = select i1 %tobool40, <2 x i16> <i16 -5, i16 66>, <2 x i16> <i16 46, i16 1>
   %cmp45 = icmp ugt <2 x i16> %cond43, <i16 73, i16 21>
   ret <2 x i1> %cmp45
+}
+
+; PR12013
+define i1 @alloca_compare(i64 %idx) {
+  %sv = alloca { i32, i32, [124 x i32] }
+  %1 = getelementptr inbounds { i32, i32, [124 x i32] }* %sv, i32 0, i32 2, i64 %idx
+  %2 = icmp eq i32* %1, null
+  ret i1 %2
+  ; CHECK: alloca_compare
+  ; CHECK: ret i1 false
+}
+
+; PR12075
+define i1 @infinite_gep() {
+  ret i1 1
+
+unreachableblock:
+  %X = getelementptr i32 *%X, i32 1
+  %Y = icmp eq i32* %X, null
+  ret i1 %Y
+}
+
+; It's not valid to fold a comparison of an argument with an alloca, even though
+; that's tempting. An argument can't *alias* an alloca, however the aliasing rule
+; relies on restrictions against guessing an object's address and dereferencing.
+; There are no restrictions against guessing an object's address and comparing.
+
+define i1 @alloca_argument_compare(i64* %arg) {
+  %alloc = alloca i64
+  %cmp = icmp eq i64* %arg, %alloc
+  ret i1 %cmp
+  ; CHECK: alloca_argument_compare
+  ; CHECK: ret i1 %cmp
+}
+
+; As above, but with the operands reversed.
+
+define i1 @alloca_argument_compare_swapped(i64* %arg) {
+  %alloc = alloca i64
+  %cmp = icmp eq i64* %alloc, %arg
+  ret i1 %cmp
+  ; CHECK: alloca_argument_compare_swapped
+  ; CHECK: ret i1 %cmp
+}
+
+; Don't assume that a noalias argument isn't equal to a global variable's
+; address. This is an example where AliasAnalysis' NoAlias concept is
+; different from actual pointer inequality.
+
+@y = external global i32
+define zeroext i1 @external_compare(i32* noalias %x) {
+  %cmp = icmp eq i32* %x, @y
+  ret i1 %cmp
+  ; CHECK: external_compare
+  ; CHECK: ret i1 %cmp
+}
+
+define i1 @alloca_gep(i64 %a, i64 %b) {
+; CHECK: @alloca_gep
+; We can prove this GEP is non-null because it is inbounds and the pointer
+; is non-null.
+  %strs = alloca [1000 x [1001 x i8]], align 16
+  %x = getelementptr inbounds [1000 x [1001 x i8]]* %strs, i64 0, i64 %a, i64 %b
+  %cmp = icmp eq i8* %x, null
+  ret i1 %cmp
+; CHECK-NEXT: ret i1 false
 }

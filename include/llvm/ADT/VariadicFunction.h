@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_ADT_VARIADIC_FUNCTION_H
-#define LLVM_ADT_VARIADIC_FUNCTION_H
+#ifndef LLVM_ADT_VARIADICFUNCTION_H
+#define LLVM_ADT_VARIADICFUNCTION_H
 
 #include "llvm/ADT/ArrayRef.h"
 
@@ -206,7 +206,7 @@ struct VariadicFunction2 {
   ResultT operator()(Param0T P0, Param1T P1, \
                      LLVM_COMMA_JOIN ## N(const ArgT &A)) const { \
     const ArgT *const Args[] = { LLVM_COMMA_JOIN ## N(&A) }; \
-    return Func(P0, P1, makeAraryRef(Args)); \
+    return Func(P0, P1, makeArrayRef(Args)); \
   }
   LLVM_DEFINE_OVERLOAD(1)
   LLVM_DEFINE_OVERLOAD(2)
@@ -328,4 +328,4 @@ struct VariadicFunction3 {
 
 } // end namespace llvm
 
-#endif  // LLVM_ADT_VARIADIC_FUNCTION_H
+#endif  // LLVM_ADT_VARIADICFUNCTION_H

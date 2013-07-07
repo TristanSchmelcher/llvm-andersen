@@ -14,8 +14,8 @@
 
 #include "llvm/Analysis/ProfileInfoLoader.h"
 #include "llvm/Analysis/ProfileInfoTypes.h"
-#include "llvm/Module.h"
-#include "llvm/InstrTypes.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdio>
 #include <cstdlib>
@@ -83,10 +83,8 @@ const unsigned ProfileInfoLoader::Uncounted = ~0U;
 // program if the file is invalid or broken.
 //
 ProfileInfoLoader::ProfileInfoLoader(const char *ToolName,
-                                     const std::string &Filename,
-                                     Module &TheModule) :
-                                     Filename(Filename), 
-                                     M(TheModule), Warned(false) {
+                                     const std::string &Filename)
+  : Filename(Filename) {
   FILE *F = fopen(Filename.c_str(), "rb");
   if (F == 0) {
     errs() << ToolName << ": Error opening '" << Filename << "': ";

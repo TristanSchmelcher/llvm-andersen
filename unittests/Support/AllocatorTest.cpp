@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/Allocator.h"
-
 #include "gtest/gtest.h"
 #include <cstdlib>
 
@@ -90,6 +89,14 @@ TEST(AllocatorTest, TestOverflow) {
 
   // If we don't allocate a new slab, then we will have overflowed.
   Alloc.Allocate(1, 0);
+  EXPECT_EQ(2U, Alloc.GetNumSlabs());
+}
+
+// Test allocating with a size larger than the initial slab size.
+TEST(AllocatorTest, TestSmallSlabSize) {
+  BumpPtrAllocator Alloc(128);
+
+  Alloc.Allocate(200, 0);
   EXPECT_EQ(2U, Alloc.GetNumSlabs());
 }
 

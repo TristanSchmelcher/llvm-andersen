@@ -10,6 +10,7 @@
 #include "DWARFDebugLine.h"
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 using namespace llvm;
@@ -95,14 +96,46 @@ void DWARFDebugLine::LineTable::dump(raw_ostream &OS) const {
 DWARFDebugLine::State::~State() {}
 
 void DWARFDebugLine::State::appendRowToMatrix(uint32_t offset) {
+  if (Sequence::Empty) {
+    // Record the beginning of instruction sequence.
+    Sequence::Empty = false;
+    Sequence::LowPC = Address;
+    Sequence::FirstRowIndex = row;
+  }
   ++row;  // Increase the row number.
   LineTable::appendRow(*this);
+  if (EndSequence) {
+    // Record the end of instruction sequence.
+    Sequence::HighPC = Address;
+    Sequence::LastRowIndex = row;
+    if (Sequence::isValid())
+      LineTable::appendSequence(*this);
+    Sequence::reset();
+  }
   Row::postAppend();
+}
+
+void DWARFDebugLine::State::finalize() {
+  row = DoneParsingLineTable;
+  if (!Sequence::Empty) {
+    fprintf(stderr, "warning: last sequence in debug line table is not"
+                    "terminated!\n");
+  }
+  // Sort all sequences so that address lookup will work faster.
+  if (!Sequences.empty()) {
+    std::sort(Sequences.begin(), Sequences.end(), Sequence::orderByLowPC);
+    // Note: actually, instruction address ranges of sequences should not
+    // overlap (in shared objects and executables). If they do, the address
+    // lookup would still work, though, but result would be ambiguous.
+    // We don't report warning in this case. For example,
+    // sometimes .so compiled from multiple object files contains a few
+    // rudimentary sequences for address ranges [0x0, 0xsomething).
+  }
 }
 
 DWARFDebugLine::DumpingState::~DumpingState() {}
 
-void DWARFDebugLine::DumpingState::finalize(uint32_t offset) {
+void DWARFDebugLine::DumpingState::finalize() {
   LineTable::dump(OS);
 }
 
@@ -122,7 +155,7 @@ DWARFDebugLine::getOrParseLineTable(DataExtractor debug_line_data,
   if (pos.second) {
     // Parse and cache the line table for at this offset.
     State state;
-    if (!parseStatementTable(debug_line_data, &offset, state))
+    if (!parseStatementTable(debug_line_data, RelocMap, &offset, state))
       return 0;
     pos.first->second = state;
   }
@@ -180,12 +213,14 @@ DWARFDebugLine::parsePrologue(DataExtractor debug_line_data,
     fprintf(stderr, "warning: parsing line table prologue at 0x%8.8x should"
                     " have ended at 0x%8.8x but it ended ad 0x%8.8x\n",
             prologue_offset, end_prologue_offset, *offset_ptr);
+    return false;
   }
-  return end_prologue_offset;
+  return true;
 }
 
 bool
-DWARFDebugLine::parseStatementTable(DataExtractor debug_line_data,
+DWARFDebugLine::parseStatementTable(DataExtractor debug_line_data, 
+                                    const RelocAddrMap *RMap,
                                     uint32_t *offset_ptr, State &state) {
   const uint32_t debug_line_offset = *offset_ptr;
 
@@ -234,7 +269,15 @@ DWARFDebugLine::parseStatementTable(DataExtractor debug_line_data,
         // relocatable address. All of the other statement program opcodes
         // that affect the address register add a delta to it. This instruction
         // stores a relocatable value into it instead.
-        state.Address = debug_line_data.getAddress(offset_ptr);
+        {
+          // If this address is in our relocation map, apply the relocation.
+          RelocAddrMap::const_iterator AI = RMap->find(*offset_ptr);
+          if (AI != RMap->end()) {
+             const std::pair<uint8_t, int64_t> &R = AI->second;
+             state.Address = debug_line_data.getAddress(offset_ptr) + R.second;
+          } else
+            state.Address = debug_line_data.getAddress(offset_ptr);
+        }
         break;
 
       case DW_LNE_define_file:
@@ -430,47 +473,156 @@ DWARFDebugLine::parseStatementTable(DataExtractor debug_line_data,
     }
   }
 
-  state.finalize(*offset_ptr);
+  state.finalize();
 
   return end_offset;
 }
 
-static bool findMatchingAddress(const DWARFDebugLine::Row& row1,
-                                const DWARFDebugLine::Row& row2) {
-  return row1.Address < row2.Address;
+uint32_t
+DWARFDebugLine::LineTable::lookupAddress(uint64_t address) const {
+  uint32_t unknown_index = UINT32_MAX;
+  if (Sequences.empty())
+    return unknown_index;
+  // First, find an instruction sequence containing the given address.
+  DWARFDebugLine::Sequence sequence;
+  sequence.LowPC = address;
+  SequenceIter first_seq = Sequences.begin();
+  SequenceIter last_seq = Sequences.end();
+  SequenceIter seq_pos = std::lower_bound(first_seq, last_seq, sequence,
+      DWARFDebugLine::Sequence::orderByLowPC);
+  DWARFDebugLine::Sequence found_seq;
+  if (seq_pos == last_seq) {
+    found_seq = Sequences.back();
+  } else if (seq_pos->LowPC == address) {
+    found_seq = *seq_pos;
+  } else {
+    if (seq_pos == first_seq)
+      return unknown_index;
+    found_seq = *(seq_pos - 1);
+  }
+  if (!found_seq.containsPC(address))
+    return unknown_index;
+  // Search for instruction address in the rows describing the sequence.
+  // Rows are stored in a vector, so we may use arithmetical operations with
+  // iterators.
+  DWARFDebugLine::Row row;
+  row.Address = address;
+  RowIter first_row = Rows.begin() + found_seq.FirstRowIndex;
+  RowIter last_row = Rows.begin() + found_seq.LastRowIndex;
+  RowIter row_pos = std::lower_bound(first_row, last_row, row,
+      DWARFDebugLine::Row::orderByAddress);
+  if (row_pos == last_row) {
+    return found_seq.LastRowIndex - 1;
+  }
+  uint32_t index = found_seq.FirstRowIndex + (row_pos - first_row);
+  if (row_pos->Address > address) {
+    if (row_pos == first_row)
+      return unknown_index;
+    else
+      index--;
+  }
+  return index;
 }
 
-uint32_t
-DWARFDebugLine::LineTable::lookupAddress(uint64_t address,
-                                         uint64_t cu_high_pc) const {
-  uint32_t index = UINT32_MAX;
-  if (!Rows.empty()) {
-    // Use the lower_bound algorithm to perform a binary search since we know
-    // that our line table data is ordered by address.
-    DWARFDebugLine::Row row;
-    row.Address = address;
-    typedef std::vector<Row>::const_iterator iterator;
-    iterator begin_pos = Rows.begin();
-    iterator end_pos = Rows.end();
-    iterator pos = std::lower_bound(begin_pos, end_pos, row,
-                                    findMatchingAddress);
-    if (pos == end_pos) {
-      if (address < cu_high_pc)
-        return Rows.size()-1;
-    } else {
-      // Rely on fact that we are using a std::vector and we can do
-      // pointer arithmetic to find the row index (which will be one less
-      // that what we found since it will find the first position after
-      // the current address) since std::vector iterators are just
-      // pointers to the container type.
-      index = pos - begin_pos;
-      if (pos->Address > address) {
-        if (index > 0)
-          --index;
-        else
-          index = UINT32_MAX;
-      }
-    }
+bool
+DWARFDebugLine::LineTable::lookupAddressRange(uint64_t address,
+                                       uint64_t size, 
+                                       std::vector<uint32_t>& result) const {
+  if (Sequences.empty())
+    return false;
+  uint64_t end_addr = address + size;
+  // First, find an instruction sequence containing the given address.
+  DWARFDebugLine::Sequence sequence;
+  sequence.LowPC = address;
+  SequenceIter first_seq = Sequences.begin();
+  SequenceIter last_seq = Sequences.end();
+  SequenceIter seq_pos = std::lower_bound(first_seq, last_seq, sequence,
+      DWARFDebugLine::Sequence::orderByLowPC);
+  if (seq_pos == last_seq || seq_pos->LowPC != address) {
+    if (seq_pos == first_seq)
+      return false;
+    seq_pos--;
   }
-  return index; // Failed to find address.
+  if (!seq_pos->containsPC(address))
+    return false;
+
+  SequenceIter start_pos = seq_pos;
+
+  // Add the rows from the first sequence to the vector, starting with the
+  // index we just calculated
+
+  while (seq_pos != last_seq && seq_pos->LowPC < end_addr) {
+    DWARFDebugLine::Sequence cur_seq = *seq_pos;
+    uint32_t first_row_index;
+    uint32_t last_row_index;
+    if (seq_pos == start_pos) {
+      // For the first sequence, we need to find which row in the sequence is the
+      // first in our range. Rows are stored in a vector, so we may use
+      // arithmetical operations with iterators.
+      DWARFDebugLine::Row row;
+      row.Address = address;
+      RowIter first_row = Rows.begin() + cur_seq.FirstRowIndex;
+      RowIter last_row = Rows.begin() + cur_seq.LastRowIndex;
+      RowIter row_pos = std::upper_bound(first_row, last_row, row,
+                                         DWARFDebugLine::Row::orderByAddress);
+      // The 'row_pos' iterator references the first row that is greater than
+      // our start address. Unless that's the first row, we want to start at
+      // the row before that.
+      first_row_index = cur_seq.FirstRowIndex + (row_pos - first_row);
+      if (row_pos != first_row)
+        --first_row_index;
+    } else
+      first_row_index = cur_seq.FirstRowIndex;
+
+    // For the last sequence in our range, we need to figure out the last row in
+    // range.  For all other sequences we can go to the end of the sequence.
+    if (cur_seq.HighPC > end_addr) {
+      DWARFDebugLine::Row row;
+      row.Address = end_addr;
+      RowIter first_row = Rows.begin() + cur_seq.FirstRowIndex;
+      RowIter last_row = Rows.begin() + cur_seq.LastRowIndex;
+      RowIter row_pos = std::upper_bound(first_row, last_row, row,
+                                         DWARFDebugLine::Row::orderByAddress);
+      // The 'row_pos' iterator references the first row that is greater than
+      // our end address.  The row before that is the last row we want.
+      last_row_index = cur_seq.FirstRowIndex + (row_pos - first_row) - 1;
+    } else
+      // Contrary to what you might expect, DWARFDebugLine::SequenceLastRowIndex
+      // isn't a valid index within the current sequence.  It's that plus one.
+      last_row_index = cur_seq.LastRowIndex - 1;
+
+    for (uint32_t i = first_row_index; i <= last_row_index; ++i) {
+      result.push_back(i);
+    }
+
+    ++seq_pos;
+  }
+
+  return true;
+}
+
+bool
+DWARFDebugLine::LineTable::getFileNameByIndex(uint64_t FileIndex,
+                                              bool NeedsAbsoluteFilePath,
+                                              std::string &Result) const {
+  if (FileIndex == 0 || FileIndex > Prologue.FileNames.size())
+    return false;
+  const FileNameEntry &Entry = Prologue.FileNames[FileIndex - 1];
+  const char *FileName = Entry.Name;
+  if (!NeedsAbsoluteFilePath ||
+      sys::path::is_absolute(FileName)) {
+    Result = FileName;
+    return true;
+  }
+  SmallString<16> FilePath;
+  uint64_t IncludeDirIndex = Entry.DirIdx;
+  // Be defensive about the contents of Entry.
+  if (IncludeDirIndex > 0 &&
+      IncludeDirIndex <= Prologue.IncludeDirectories.size()) {
+    const char *IncludeDir = Prologue.IncludeDirectories[IncludeDirIndex - 1];
+    sys::path::append(FilePath, IncludeDir);
+  }
+  sys::path::append(FilePath, FileName);
+  Result = FilePath.str();
+  return true;
 }

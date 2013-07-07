@@ -15,10 +15,10 @@
 #include "PPCJITInfo.h"
 #include "PPCRelocations.h"
 #include "PPCTargetMachine.h"
-#include "llvm/Function.h"
-#include "llvm/Support/Memory.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Memory.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -115,7 +115,7 @@ asm(
     "lwz  r2, 208(r1)\n" // stub's frame
     "lwz  r4, 8(r2)\n" // stub's lr
     "li   r5, 0\n"       // 0 == 32 bit
-    "bl _PPCCompilationCallbackC\n"
+    "bl _LLVMPPCCompilationCallback\n"
     "mtctr r3\n"
     // Restore all int arg registers
     "lwz r10, 204(r1)\n"    "lwz r9,  200(r1)\n"
@@ -178,7 +178,7 @@ asm(
     "lwz  5, 104(1)\n" // stub's frame
     "lwz  4, 4(5)\n" // stub's lr
     "li   5, 0\n"       // 0 == 32 bit
-    "bl PPCCompilationCallbackC\n"
+    "bl LLVMPPCCompilationCallback\n"
     "mtctr 3\n"
     // Restore all int arg registers
     "lwz 10, 100(1)\n"   "lwz 9,  96(1)\n"
@@ -210,7 +210,7 @@ asm(
     ".text\n"
     ".align 2\n"
     ".globl PPC64CompilationCallback\n"
-    ".section \".opd\",\"aw\"\n"
+    ".section \".opd\",\"aw\",@progbits\n"
     ".align 3\n"
 "PPC64CompilationCallback:\n"
     ".quad .L.PPC64CompilationCallback,.TOC.@tocbase,0\n"
@@ -259,10 +259,10 @@ asm(
     "ld   4, 16(5)\n"  // stub's lr
     "li   5, 1\n"      // 1 == 64 bit
 #ifdef __ELF__
-    "bl PPCCompilationCallbackC\n"
+    "bl LLVMPPCCompilationCallback\n"
     "nop\n"
 #else
-    "bl _PPCCompilationCallbackC\n"
+    "bl _LLVMPPCCompilationCallback\n"
 #endif
     "mtctr 3\n"
     // Restore all int arg registers
@@ -291,9 +291,11 @@ void PPC64CompilationCallback() {
 }
 #endif
 
-extern "C" void *PPCCompilationCallbackC(unsigned *StubCallAddrPlus4,
-                                         unsigned *OrigCallAddrPlus4,
-                                         bool is64Bit) {
+extern "C" {
+LLVM_LIBRARY_VISIBILITY void *
+LLVMPPCCompilationCallback(unsigned *StubCallAddrPlus4,
+                           unsigned *OrigCallAddrPlus4,
+                           bool is64Bit) {
   // Adjust the pointer to the address of the call instruction in the stub
   // emitted by emitFunctionStub, rather than the instruction after it.
   unsigned *StubCallAddr = StubCallAddrPlus4 - 1;
@@ -336,6 +338,7 @@ extern "C" void *PPCCompilationCallbackC(unsigned *StubCallAddrPlus4,
   // after calling the target function in a place that is easy to get on the
   // stack after we restore all regs.
   return Target;
+}
 }
 
 

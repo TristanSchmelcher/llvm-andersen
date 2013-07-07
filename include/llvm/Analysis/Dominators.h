@@ -15,13 +15,13 @@
 #ifndef LLVM_ANALYSIS_DOMINATORS_H
 #define LLVM_ANALYSIS_DOMINATORS_H
 
-#include "llvm/Pass.h"
-#include "llvm/Function.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/GraphTraits.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/CFG.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
@@ -101,18 +101,18 @@ public:
     Children.clear();
   }
 
-  bool compare(DomTreeNodeBase<NodeT> *Other) {
+  bool compare(const DomTreeNodeBase<NodeT> *Other) const {
     if (getNumChildren() != Other->getNumChildren())
       return true;
 
-    SmallPtrSet<NodeT *, 4> OtherChildren;
-    for (iterator I = Other->begin(), E = Other->end(); I != E; ++I) {
-      NodeT *Nd = (*I)->getBlock();
+    SmallPtrSet<const NodeT *, 4> OtherChildren;
+    for (const_iterator I = Other->begin(), E = Other->end(); I != E; ++I) {
+      const NodeT *Nd = (*I)->getBlock();
       OtherChildren.insert(Nd);
     }
 
-    for (iterator I = begin(), E = end(); I != E; ++I) {
-      NodeT *N = (*I)->getBlock();
+    for (const_iterator I = begin(), E = end(); I != E; ++I) {
+      const NodeT *N = (*I)->getBlock();
       if (OtherChildren.count(N) == 0)
         return true;
     }
@@ -152,7 +152,7 @@ EXTERN_TEMPLATE_INSTANTIATION(class DomTreeNodeBase<BasicBlock>);
 EXTERN_TEMPLATE_INSTANTIATION(class DomTreeNodeBase<MachineBasicBlock>);
 
 template<class NodeT>
-static raw_ostream &operator<<(raw_ostream &o,
+inline raw_ostream &operator<<(raw_ostream &o,
                                const DomTreeNodeBase<NodeT> *Node) {
   if (Node->getBlock())
     WriteAsOperand(o, Node->getBlock(), false);
@@ -165,7 +165,7 @@ static raw_ostream &operator<<(raw_ostream &o,
 }
 
 template<class NodeT>
-static void PrintDomTree(const DomTreeNodeBase<NodeT> *N, raw_ostream &o,
+inline void PrintDomTree(const DomTreeNodeBase<NodeT> *N, raw_ostream &o,
                          unsigned Lev) {
   o.indent(2*Lev) << "[" << Lev << "] " << N;
   for (typename DomTreeNodeBase<NodeT>::const_iterator I = N->begin(),
@@ -185,6 +185,18 @@ void Calculate(DominatorTreeBase<typename GraphTraits<N>::NodeType>& DT,
 
 template<class NodeT>
 class DominatorTreeBase : public DominatorBase<NodeT> {
+  bool dominatedBySlowTreeWalk(const DomTreeNodeBase<NodeT> *A,
+                               const DomTreeNodeBase<NodeT> *B) const {
+    assert(A != B);
+    assert(isReachableFromEntry(B));
+    assert(isReachableFromEntry(A));
+
+    const DomTreeNodeBase<NodeT> *IDom;
+    while ((IDom = B->getIDom()) != 0 && IDom != A && IDom != B)
+      B = IDom;   // Walk up the tree
+    return IDom != 0;
+  }
+
 protected:
   typedef DenseMap<NodeT*, DomTreeNodeBase<NodeT>*> DomTreeNodeMapType;
   DomTreeNodeMapType DomTreeNodes;
@@ -334,42 +346,30 @@ public:
   DomTreeNodeBase<NodeT> *getRootNode() { return RootNode; }
   const DomTreeNodeBase<NodeT> *getRootNode() const { return RootNode; }
 
-  /// properlyDominates - Returns true iff this dominates N and this != N.
+  /// properlyDominates - Returns true iff A dominates B and A != B.
   /// Note that this is not a constant time operation!
   ///
   bool properlyDominates(const DomTreeNodeBase<NodeT> *A,
-                         const DomTreeNodeBase<NodeT> *B) const {
-    if (A == 0 || B == 0) return false;
-    return dominatedBySlowTreeWalk(A, B);
-  }
-
-  inline bool properlyDominates(const NodeT *A, const NodeT *B) {
+                         const DomTreeNodeBase<NodeT> *B) {
+    if (A == 0 || B == 0)
+      return false;
     if (A == B)
       return false;
-
-    // Cast away the const qualifiers here. This is ok since
-    // this function doesn't actually return the values returned
-    // from getNode.
-    return properlyDominates(getNode(const_cast<NodeT *>(A)),
-                             getNode(const_cast<NodeT *>(B)));
+    return dominates(A, B);
   }
 
-  bool dominatedBySlowTreeWalk(const DomTreeNodeBase<NodeT> *A,
-                               const DomTreeNodeBase<NodeT> *B) const {
-    const DomTreeNodeBase<NodeT> *IDom;
-    if (A == 0 || B == 0) return false;
-    while ((IDom = B->getIDom()) != 0 && IDom != A && IDom != B)
-      B = IDom;   // Walk up the tree
-    return IDom != 0;
-  }
-
+  bool properlyDominates(const NodeT *A, const NodeT *B);
 
   /// isReachableFromEntry - Return true if A is dominated by the entry
   /// block of the function containing it.
-  bool isReachableFromEntry(const NodeT* A) {
+  bool isReachableFromEntry(const NodeT* A) const {
     assert(!this->isPostDominator() &&
            "This is not implemented for post dominators");
-    return dominates(&A->getParent()->front(), A);
+    return isReachableFromEntry(getNode(const_cast<NodeT *>(A)));
+  }
+
+  inline bool isReachableFromEntry(const DomTreeNodeBase<NodeT> *A) const {
+    return A;
   }
 
   /// dominates - Returns true iff A dominates B.  Note that this is not a
@@ -377,10 +377,16 @@ public:
   ///
   inline bool dominates(const DomTreeNodeBase<NodeT> *A,
                         const DomTreeNodeBase<NodeT> *B) {
+    // A node trivially dominates itself.
     if (B == A)
-      return true;  // A node trivially dominates itself.
+      return true;
 
-    if (A == 0 || B == 0)
+    // An unreachable node is dominated by anything.
+    if (!isReachableFromEntry(B))
+      return true;
+
+    // And dominates nothing.
+    if (!isReachableFromEntry(A))
       return false;
 
     // Compare the result of the tree walk and the dfs numbers, if expensive
@@ -405,16 +411,7 @@ public:
     return dominatedBySlowTreeWalk(A, B);
   }
 
-  inline bool dominates(const NodeT *A, const NodeT *B) {
-    if (A == B)
-      return true;
-
-    // Cast away the const qualifiers here. This is ok since
-    // this function doesn't actually return the values returned
-    // from getNode.
-    return dominates(getNode(const_cast<NodeT *>(A)),
-                     getNode(const_cast<NodeT *>(B)));
-  }
+  bool dominates(const NodeT *A, const NodeT *B);
 
   NodeT *getRoot() const {
     assert(this->Roots.size() == 1 && "Should always have entry node!");
@@ -666,8 +663,7 @@ public:
       // Initialize the roots list
       for (typename TraitsTy::nodes_iterator I = TraitsTy::nodes_begin(&F),
                                         E = TraitsTy::nodes_end(&F); I != E; ++I) {
-        if (std::distance(TraitsTy::child_begin(I),
-                          TraitsTy::child_end(I)) == 0)
+        if (TraitsTy::child_begin(I) == TraitsTy::child_end(I))
           addRoot(I);
 
         // Prepopulate maps so that we don't get iterator invalidation issues later.
@@ -680,7 +676,48 @@ public:
   }
 };
 
+// These two functions are declared out of line as a workaround for building
+// with old (< r147295) versions of clang because of pr11642.
+template<class NodeT>
+bool DominatorTreeBase<NodeT>::dominates(const NodeT *A, const NodeT *B) {
+  if (A == B)
+    return true;
+
+  // Cast away the const qualifiers here. This is ok since
+  // this function doesn't actually return the values returned
+  // from getNode.
+  return dominates(getNode(const_cast<NodeT *>(A)),
+                   getNode(const_cast<NodeT *>(B)));
+}
+template<class NodeT>
+bool
+DominatorTreeBase<NodeT>::properlyDominates(const NodeT *A, const NodeT *B) {
+  if (A == B)
+    return false;
+
+  // Cast away the const qualifiers here. This is ok since
+  // this function doesn't actually return the values returned
+  // from getNode.
+  return dominates(getNode(const_cast<NodeT *>(A)),
+                   getNode(const_cast<NodeT *>(B)));
+}
+
 EXTERN_TEMPLATE_INSTANTIATION(class DominatorTreeBase<BasicBlock>);
+
+class BasicBlockEdge {
+  const BasicBlock *Start;
+  const BasicBlock *End;
+public:
+  BasicBlockEdge(const BasicBlock *Start_, const BasicBlock *End_) :
+    Start(Start_), End(End_) { }
+  const BasicBlock *getStart() const {
+    return Start;
+  }
+  const BasicBlock *getEnd() const {
+    return End;
+  }
+  bool isSingleEdge() const;
+};
 
 //===-------------------------------------
 /// DominatorTree Class - Concrete subclass of DominatorTreeBase that is used to
@@ -749,15 +786,14 @@ public:
     return DT->dominates(A, B);
   }
 
-  // dominates - Return true if A dominates B. This performs the
-  // special checks necessary if A and B are in the same basic block.
-  bool dominates(const Instruction *A, const Instruction *B) const;
-
-  /// properlyDominates - Use this instead of dominates() to determine whether a
-  /// user of A can be hoisted above B.
-  bool properlyDominates(const Instruction *A, const Instruction *B) const {
-    return A != B && dominates(A, B);
-  }
+  // dominates - Return true if Def dominates a use in User. This performs
+  // the special checks necessary if Def and User are in the same basic block.
+  // Note that Def doesn't dominate a use in Def itself!
+  bool dominates(const Instruction *Def, const Use &U) const;
+  bool dominates(const Instruction *Def, const Instruction *User) const;
+  bool dominates(const Instruction *Def, const BasicBlock *BB) const;
+  bool dominates(const BasicBlockEdge &BBE, const Use &U) const;
+  bool dominates(const BasicBlockEdge &BBE, const BasicBlock *BB) const;
 
   bool properlyDominates(const DomTreeNode *A, const DomTreeNode *B) const {
     return DT->properlyDominates(A, B);
@@ -820,9 +856,11 @@ public:
     DT->splitBlock(NewBB);
   }
 
-  bool isReachableFromEntry(const BasicBlock* A) {
+  bool isReachableFromEntry(const BasicBlock* A) const {
     return DT->isReachableFromEntry(A);
   }
+
+  bool isReachableFromEntry(const Use &U) const;
 
 
   virtual void releaseMemory() {

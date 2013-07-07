@@ -28,9 +28,9 @@ def SDT_MBCallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
 //===----------------------------------------------------------------------===//
 
 def MBlazeRet     : SDNode<"MBlazeISD::Ret", SDT_MBlazeRet,
-                           [SDNPHasChain, SDNPOptInGlue]>;
+                           [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 def MBlazeIRet    : SDNode<"MBlazeISD::IRet", SDT_MBlazeIRet,
-                           [SDNPHasChain, SDNPOptInGlue]>;
+                           [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
 def MBlazeJmpLink : SDNode<"MBlazeISD::JmpLink",SDT_MBlazeJmpLink,
                            [SDNPHasChain,SDNPOptInGlue,SDNPOutGlue,
@@ -295,7 +295,7 @@ class BranchI<bits<6> op, bits<5> br, string instr_asm> :
 // Branch and Link Instructions
 //===----------------------------------------------------------------------===//
 class BranchL<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
-              TA<op, flags, (outs), (ins GPR:$link, GPR:$target, variable_ops),
+              TA<op, flags, (outs), (ins GPR:$link, GPR:$target),
                  !strconcat(instr_asm, "   $link, $target"),
                  [], IIC_BRl> {
   let ra = br;
@@ -303,7 +303,7 @@ class BranchL<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
 }
 
 class BranchLI<bits<6> op, bits<5> br, string instr_asm> :
-               TB<op, (outs), (ins GPR:$link, calltarget:$target, variable_ops),
+               TB<op, (outs), (ins GPR:$link, calltarget:$target),
                   !strconcat(instr_asm, "   $link, $target"),
                   [], IIC_BRl> {
   let ra = br;
@@ -724,8 +724,7 @@ let usesCustomInserter=1 in {
     [(set GPR:$dst, (atomic_load_nand_32 GPR:$ptr, GPR:$val))]>;
 
   def MEMBARRIER : MBlazePseudo<(outs), (ins),
-    "# memory barrier",
-    [(membarrier (i32 imm), (i32 imm), (i32 imm), (i32 imm), (i32 imm))]>;
+    "# memory barrier", []>;
 }
 
 //===----------------------------------------------------------------------===//

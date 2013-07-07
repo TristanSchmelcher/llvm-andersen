@@ -17,8 +17,9 @@ using namespace llvm;
 void PPCMCAsmInfoDarwin::anchor() { }
 
 PPCMCAsmInfoDarwin::PPCMCAsmInfoDarwin(bool is64Bit) {
-  if (is64Bit)
-    PointerSize = 8;
+  if (is64Bit) {
+    PointerSize = CalleeSaveStackSlotSize = 8;
+  }
   IsLittleEndian = false;
 
   PCSymbol = ".";
@@ -35,8 +36,9 @@ PPCMCAsmInfoDarwin::PPCMCAsmInfoDarwin(bool is64Bit) {
 void PPCLinuxMCAsmInfo::anchor() { }
 
 PPCLinuxMCAsmInfo::PPCLinuxMCAsmInfo(bool is64Bit) {
-  if (is64Bit)
-    PointerSize = 8;
+  if (is64Bit) {
+    PointerSize = CalleeSaveStackSlotSize = 8;
+  }
   IsLittleEndian = false;
 
   // ".comm align is in bytes but .align is pow-2."
@@ -57,14 +59,13 @@ PPCLinuxMCAsmInfo::PPCLinuxMCAsmInfo(bool is64Bit) {
 
   // Set up DWARF directives
   HasLEB128 = true;  // Target asm supports leb128 directives (little-endian)
+  MinInstAlignment = 4;
 
   // Exceptions handling
-  if (!is64Bit)
-    ExceptionsType = ExceptionHandling::DwarfCFI;
+  ExceptionsType = ExceptionHandling::DwarfCFI;
     
   ZeroDirective = "\t.space\t";
   Data64bitsDirective = is64Bit ? "\t.quad\t" : 0;
-  LCOMMDirectiveType = LCOMM::NoAlignment;
   AssemblerDialect = 0;           // Old-Style mnemonics.
 }
 

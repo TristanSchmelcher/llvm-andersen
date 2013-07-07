@@ -23,49 +23,16 @@ kUseCloseFDs = not kIsWindows
 # Use temporary files to replace /dev/null on Windows.
 kAvoidDevNull = kIsWindows
 
-def RemoveForce(f):
-    try:
-        os.remove(f)
-    except OSError:
-        pass
-
-def WinRename(f_o, f_n):
-    import time
-    retry_cnt = 256
-    while (True):
-        try:
-            os.rename(f_o, f_n)
-            break
-        except WindowsError, (winerror, strerror):
-            retry_cnt = retry_cnt - 1
-            if retry_cnt <= 0:
-                raise
-            elif winerror == 32: # ERROR_SHARING_VIOLATION
-                time.sleep(0.01)
-            else:
-                raise
-
-def WinWaitReleased(f):
-    import random
-    t = "%s%06d" % (f, random.randint(0, 999999))
-    RemoveForce(t)
-    try:
-        WinRename(f, t) # rename
-        WinRename(t, f) # restore
-    except WindowsError, (winerror, strerror):
-        if winerror in (2, 3):
-            # 2: ERROR_FILE_NOT_FOUND
-            # 3: ERROR_PATH_NOT_FOUND
-            pass
-        else:
-            raise
-
 def executeCommand(command, cwd=None, env=None):
+    # Close extra file handles on UNIX (on Windows this cannot be done while
+    # also redirecting input).
+    close_fds = not kIsWindows
+
     p = subprocess.Popen(command, cwd=cwd,
                          stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE,
-                         env=env)
+                         env=env, close_fds=close_fds)
     out,err = p.communicate()
     exitCode = p.wait()
 
@@ -82,13 +49,14 @@ def executeShCmd(cmd, cfg, cwd, results):
             return executeShCmd(cmd.rhs, cfg, cwd, results)
 
         if cmd.op == '&':
-            raise NotImplementedError,"unsupported test command: '&'"
+            raise InternalShellError(cmd,"unsupported shell operator: '&'")
 
         if cmd.op == '||':
             res = executeShCmd(cmd.lhs, cfg, cwd, results)
             if res != 0:
                 res = executeShCmd(cmd.rhs, cfg, cwd, results)
             return res
+
         if cmd.op == '&&':
             res = executeShCmd(cmd.lhs, cfg, cwd, results)
             if res is None:
@@ -105,13 +73,12 @@ def executeShCmd(cmd, cfg, cwd, results):
     input = subprocess.PIPE
     stderrTempFiles = []
     opened_files = []
-    written_files = []
     named_temp_files = []
     # To avoid deadlock, we use a single stderr stream for piped
     # output. This is null until we have seen some output using
     # stderr.
     for i,j in enumerate(cmd.commands):
-        # Apply the redirections, we use (N,) as a sentinal to indicate stdin,
+        # Apply the redirections, we use (N,) as a sentinel to indicate stdin,
         # stdout, stderr for N equal to 0, 1, or 2 respectively. Redirects to or
         # from a file are represented with a list [file, mode, file-object]
         # where file-object is initially None.
@@ -132,7 +99,7 @@ def executeShCmd(cmd, cfg, cwd, results):
             elif r[0] == ('<',):
                 redirects[0] = [r[1], 'r', None]
             else:
-                raise NotImplementedError,"Unsupported redirect: %r" % (r,)
+                raise InternalShellError(j,"Unsupported redirect: %r" % (r,))
 
         # Map from the final redirections to something subprocess can handle.
         final_redirects = []
@@ -141,14 +108,14 @@ def executeShCmd(cmd, cfg, cwd, results):
                 result = input
             elif r == (1,):
                 if index == 0:
-                    raise NotImplementedError,"Unsupported redirect for stdin"
+                    raise InternalShellError(j,"Unsupported redirect for stdin")
                 elif index == 1:
                     result = subprocess.PIPE
                 else:
                     result = subprocess.STDOUT
             elif r == (2,):
                 if index != 2:
-                    raise NotImplementedError,"Unsupported redirect on stdout"
+                    raise InternalShellError(j,"Unsupported redirect on stdout")
                 result = subprocess.PIPE
             else:
                 if r[2] is None:
@@ -162,8 +129,6 @@ def executeShCmd(cmd, cfg, cwd, results):
                     if r[1] == 'a':
                         r[2].seek(0, 2)
                     opened_files.append(r[2])
-                    if r[1] in 'aw':
-                        written_files.append(r[0])
                 result = r[2]
             final_redirects.append(result)
 
@@ -264,14 +229,12 @@ def executeShCmd(cmd, cfg, cwd, results):
         else:
             exitCode = res
 
-    # Make sure written_files is released by other (child) processes.
-    if (kIsWindows):
-        for f in written_files:
-            WinWaitReleased(f)
-
     # Remove any named temporary files we created.
     for f in named_temp_files:
-        RemoveForce(f)
+        try:
+            os.remove(f)
+        except OSError:
+            pass
 
     if cmd.negate:
         exitCode = not exitCode
@@ -279,98 +242,26 @@ def executeShCmd(cmd, cfg, cwd, results):
     return exitCode
 
 def executeScriptInternal(test, litConfig, tmpBase, commands, cwd):
-    ln = ' &&\n'.join(commands)
-    try:
-        cmd = ShUtil.ShParser(ln, litConfig.isWindows).parse()
-    except:
-        return (Test.FAIL, "shell parser error on: %r" % ln)
-
-    results = []
-    try:
-        exitCode = executeShCmd(cmd, test.config, cwd, results)
-    except InternalShellError,e:
-        out = ''
-        err = e.message
-        exitCode = 255
-
-    out = err = ''
-    for i,(cmd, cmd_out,cmd_err,res) in enumerate(results):
-        out += 'Command %d: %s\n' % (i, ' '.join('"%s"' % s for s in cmd.args))
-        out += 'Command %d Result: %r\n' % (i, res)
-        out += 'Command %d Output:\n%s\n\n' % (i, cmd_out)
-        out += 'Command %d Stderr:\n%s\n\n' % (i, cmd_err)
-
-    return out, err, exitCode
-
-def executeTclScriptInternal(test, litConfig, tmpBase, commands, cwd):
-    import TclUtil
     cmds = []
     for ln in commands:
-        # Given the unfortunate way LLVM's test are written, the line gets
-        # backslash substitution done twice.
-        ln = TclUtil.TclLexer(ln).lex_unquoted(process_all = True)
-
         try:
-            tokens = list(TclUtil.TclLexer(ln).lex())
+            cmds.append(ShUtil.ShParser(ln, litConfig.isWindows).parse())
         except:
-            return (Test.FAIL, "Tcl lexer error on: %r" % ln)
-
-        # Validate there are no control tokens.
-        for t in tokens:
-            if not isinstance(t, str):
-                return (Test.FAIL,
-                        "Invalid test line: %r containing %r" % (ln, t))
-
-        try:
-            cmds.append(TclUtil.TclExecCommand(tokens).parse_pipeline())
-        except:
-            return (Test.FAIL, "Tcl 'exec' parse error on: %r" % ln)
-
-    if litConfig.useValgrind:
-        for pipeline in cmds:
-            if pipeline.commands:
-                # Only valgrind the first command in each pipeline, to avoid
-                # valgrinding things like grep, not, and FileCheck.
-                cmd = pipeline.commands[0]
-                cmd.args = litConfig.valgrindArgs + cmd.args
+            return (Test.FAIL, "shell parser error on: %r" % ln)
 
     cmd = cmds[0]
     for c in cmds[1:]:
         cmd = ShUtil.Seq(cmd, '&&', c)
 
-    # FIXME: This is lame, we shouldn't need bash. See PR5240.
-    bashPath = litConfig.getBashPath()
-    if litConfig.useTclAsSh and bashPath:
-        script = tmpBase + '.script'
-
-        # Write script file
-        f = open(script,'w')
-        print >>f, 'set -o pipefail'
-        cmd.toShell(f, pipefail = True)
-        f.close()
-
-        if 0:
-            print >>sys.stdout, cmd
-            print >>sys.stdout, open(script).read()
-            print >>sys.stdout
-            return '', '', 0
-
-        command = [litConfig.getBashPath(), script]
-        out,err,exitCode = executeCommand(command, cwd=cwd,
-                                          env=test.config.environment)
-
-        return out,err,exitCode
-    else:
-        results = []
-        try:
-            exitCode = executeShCmd(cmd, test.config, cwd, results)
-        except InternalShellError,e:
-            results.append((e.command, '', e.message + '\n', 255))
-            exitCode = 255
+    results = []
+    try:
+        exitCode = executeShCmd(cmd, test.config, cwd, results)
+    except InternalShellError,e:
+        exitCode = 127
+        results.append((e.command, '', e.message, exitCode))
 
     out = err = ''
-
-    for i,(cmd, cmd_out, cmd_err, res) in enumerate(results):
+    for i,(cmd, cmd_out,cmd_err,res) in enumerate(results):
         out += 'Command %d: %s\n' % (i, ' '.join('"%s"' % s for s in cmd.args))
         out += 'Command %d Result: %r\n' % (i, res)
         out += 'Command %d Output:\n%s\n\n' % (i, cmd_out)
@@ -386,11 +277,14 @@ def executeScript(test, litConfig, tmpBase, commands, cwd):
         script += '.bat'
 
     # Write script file
-    f = open(script,'w')
+    mode = 'w'
+    if litConfig.isWindows and not isWin32CMDEXE:
+      mode += 'b'  # Avoid CRLFs when writing bash scripts.
+    f = open(script, mode)
     if isWin32CMDEXE:
         f.write('\nif %ERRORLEVEL% NEQ 0 EXIT\n'.join(commands))
     else:
-        f.write(' &&\n'.join(commands))
+        f.write('{ ' + '; } &&\n{ '.join(commands) + '; }')
     f.write('\n')
     f.close()
 
@@ -408,27 +302,27 @@ def executeScript(test, litConfig, tmpBase, commands, cwd):
 
     return executeCommand(command, cwd=cwd, env=test.config.environment)
 
-def isExpectedFail(xfails, xtargets, target_triple):
-    # Check if any xfail matches this target.
+def isExpectedFail(test, xfails):
+    # Check if any of the xfails match an available feature or the target.
     for item in xfails:
-        if item == '*' or item in target_triple:
-            break
-    else:
-        return False
+        # If this is the wildcard, it always fails.
+        if item == '*':
+            return True
 
-    # If so, see if it is expected to pass on this target.
-    #
-    # FIXME: Rename XTARGET to something that makes sense, like XPASS.
-    for item in xtargets:
-        if item == '*' or item in target_triple:
-            return False
+        # If this is an exact match for one of the features, it fails.
+        if item in test.config.available_features:
+            return True
 
-    return True
+        # If this is a part of the target triple, it fails.
+        if item in test.suite.config.target_triple:
+            return True
+
+    return False
 
 def parseIntegratedTestScript(test, normalize_slashes=False,
                               extra_substitutions=[]):
     """parseIntegratedTestScript - Scan an LLVM/Clang style integrated test
-    script and extract the lines to 'RUN' as well as 'XFAIL' and 'XTARGET'
+    script and extract the lines to 'RUN' as well as 'XFAIL' and 'REQUIRES'
     information. The RUN lines also will have variable substitution performed.
     """
 
@@ -459,18 +353,18 @@ def parseIntegratedTestScript(test, normalize_slashes=False,
     substitutions.extend([('%s', sourcepath),
                           ('%S', sourcedir),
                           ('%p', sourcedir),
+                          ('%{pathsep}', os.pathsep),
                           ('%t', tmpBase + '.tmp'),
                           ('%T', tmpDir),
-                          # FIXME: Remove this once we kill DejaGNU.
-                          ('%abs_tmp', tmpBase + '.tmp'),
                           ('#_MARKER_#', '%')])
 
     # Collect the test lines from the script.
     script = []
     xfails = []
-    xtargets = []
     requires = []
+    line_number = 0
     for ln in open(sourcepath):
+        line_number += 1
         if 'RUN:' in ln:
             # Isolate the command to run.
             index = ln.index('RUN:')
@@ -478,6 +372,15 @@ def parseIntegratedTestScript(test, normalize_slashes=False,
 
             # Trim trailing whitespace.
             ln = ln.rstrip()
+
+            # Substitute line number expressions
+            ln = re.sub('%\(line\)', str(line_number), ln)
+            def replace_line_number(match):
+                if match.group(1) == '+':
+                    return str(line_number + int(match.group(2)))
+                if match.group(1) == '-':
+                    return str(line_number - int(match.group(2)))
+            ln = re.sub('%\(line *([\+-]) *(\d+)\)', replace_line_number, ln)
 
             # Collapse lines with trailing '\\'.
             if script and script[-1][-1] == '\\':
@@ -487,9 +390,6 @@ def parseIntegratedTestScript(test, normalize_slashes=False,
         elif 'XFAIL:' in ln:
             items = ln[ln.index('XFAIL:') + 6:].split(',')
             xfails.extend([s.strip() for s in items])
-        elif 'XTARGET:' in ln:
-            items = ln[ln.index('XTARGET:') + 8:].split(',')
-            xtargets.extend([s.strip() for s in items])
         elif 'REQUIRES:' in ln:
             items = ln[ln.index('REQUIRES:') + 9:].split(',')
             requires.extend([s.strip() for s in items])
@@ -528,20 +428,17 @@ def parseIntegratedTestScript(test, normalize_slashes=False,
         return (Test.UNSUPPORTED,
                 "Test requires the following features: %s" % msg)
 
-    isXFail = isExpectedFail(xfails, xtargets, test.suite.config.target_triple)
+    isXFail = isExpectedFail(test, xfails)
     return script,isXFail,tmpBase,execdir
 
-def formatTestOutput(status, out, err, exitCode, failDueToStderr, script):
+def formatTestOutput(status, out, err, exitCode, script):
     output = StringIO.StringIO()
     print >>output, "Script:"
     print >>output, "--"
     print >>output, '\n'.join(script)
     print >>output, "--"
     print >>output, "Exit Code: %r" % exitCode,
-    if failDueToStderr:
-        print >>output, "(but there was output on stderr)"
-    else:
-        print >>output
+    print >>output
     if out:
         print >>output, "Command Output (stdout):"
         print >>output, "--"
@@ -553,53 +450,6 @@ def formatTestOutput(status, out, err, exitCode, failDueToStderr, script):
         output.write(err)
         print >>output, "--"
     return (status, output.getvalue())
-
-def executeTclTest(test, litConfig):
-    if test.config.unsupported:
-        return (Test.UNSUPPORTED, 'Test is unsupported')
-
-    # Parse the test script, normalizing slashes in substitutions on Windows
-    # (since otherwise Tcl style lexing will treat them as escapes).
-    res = parseIntegratedTestScript(test, normalize_slashes=kIsWindows)
-    if len(res) == 2:
-        return res
-
-    script, isXFail, tmpBase, execdir = res
-
-    if litConfig.noExecute:
-        return (Test.PASS, '')
-
-    # Create the output directory if it does not already exist.
-    Util.mkdir_p(os.path.dirname(tmpBase))
-
-    res = executeTclScriptInternal(test, litConfig, tmpBase, script, execdir)
-    if len(res) == 2:
-        return res
-
-    # Test for failure. In addition to the exit code, Tcl commands are
-    # considered to fail if there is any standard error output.
-    out,err,exitCode = res
-    if isXFail:
-        ok = exitCode != 0 or err and not litConfig.ignoreStdErr
-        if ok:
-            status = Test.XFAIL
-        else:
-            status = Test.XPASS
-    else:
-        ok = exitCode == 0 and (not err or litConfig.ignoreStdErr)
-        if ok:
-            status = Test.PASS
-        else:
-            status = Test.FAIL
-
-    if ok:
-        return (status,'')
-
-    # Set a flag for formatTestOutput so it can explain why the test was
-    # considered to have failed, despite having an exit code of 0.
-    failDueToStderr = exitCode == 0 and err and not litConfig.ignoreStdErr
-
-    return formatTestOutput(status, out, err, exitCode, failDueToStderr, script)
 
 def executeShTest(test, litConfig, useExternalSh,
                   extra_substitutions=[]):
@@ -642,7 +492,4 @@ def executeShTest(test, litConfig, useExternalSh,
     if ok:
         return (status,'')
 
-    # Sh tests are not considered to fail just from stderr output.
-    failDueToStderr = False
-
-    return formatTestOutput(status, out, err, exitCode, failDueToStderr, script)
+    return formatTestOutput(status, out, err, exitCode, script)

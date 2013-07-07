@@ -12,20 +12,20 @@
 //
 //===----------------------------------------------------------------------===//
 #define DEBUG_TYPE "profile-loader"
-#include "llvm/BasicBlock.h"
-#include "llvm/InstrTypes.h"
-#include "llvm/Module.h"
-#include "llvm/Pass.h"
 #include "llvm/Analysis/Passes.h"
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ProfileInfo.h"
 #include "llvm/Analysis/ProfileInfoLoader.h"
-#include "llvm/Support/CommandLine.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/CFG.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Format.h"
-#include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/SmallSet.h"
+#include "llvm/Support/raw_ostream.h"
 #include <set>
 using namespace llvm;
 
@@ -152,7 +152,7 @@ void LoaderPass::readEdge(ProfileInfo::Edge e,
 }
 
 bool LoaderPass::runOnModule(Module &M) {
-  ProfileInfoLoader PIL("profile-loader", Filename, M);
+  ProfileInfoLoader PIL("profile-loader", Filename);
 
   EdgeInformation.clear();
   std::vector<unsigned> Counters = PIL.getRawEdgeCounts();

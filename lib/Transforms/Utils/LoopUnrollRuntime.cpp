@@ -23,12 +23,12 @@
 
 #define DEBUG_TYPE "loop-unroll"
 #include "llvm/Transforms/Utils/UnrollLoop.h"
-#include "llvm/BasicBlock.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/LoopIterator.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpander.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -131,7 +131,7 @@ static void ConnectProlog(Loop *L, Value *TripCount, unsigned Count,
 /// There are two value maps that are defined and used.  VMap is
 /// for the values in the current loop instance.  LVMap contains
 /// the values from the last loop instance.  We need the LVMap values
-/// to update the inital values for the current loop instance.
+/// to update the initial values for the current loop instance.
 ///
 static void CloneLoopBlocks(Loop *L,
                             bool FirstCopy,
@@ -237,6 +237,8 @@ bool llvm::UnrollRuntimeLoopProlog(Loop *L, unsigned Count, LoopInfo *LI,
 
   // Use Scalar Evolution to compute the trip count.  This allows more
   // loops to be unrolled than relying on induction var simplification
+  if (!LPM)
+    return false;
   ScalarEvolution *SE = LPM->getAnalysisIfAvailable<ScalarEvolution>();
   if (SE == 0)
     return false;

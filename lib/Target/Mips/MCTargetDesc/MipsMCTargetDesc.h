@@ -22,6 +22,7 @@ class MCCodeEmitter;
 class MCContext;
 class MCInstrInfo;
 class MCObjectWriter;
+class MCRegisterInfo;
 class MCSubtargetInfo;
 class StringRef;
 class Target;
@@ -32,16 +33,28 @@ extern Target TheMipselTarget;
 extern Target TheMips64Target;
 extern Target TheMips64elTarget;
 
-MCCodeEmitter *createMipsMCCodeEmitter(const MCInstrInfo &MCII,
-                                       const MCSubtargetInfo &STI,
-                                       MCContext &Ctx);
+MCCodeEmitter *createMipsMCCodeEmitterEB(const MCInstrInfo &MCII,
+                                         const MCRegisterInfo &MRI,
+                                         const MCSubtargetInfo &STI,
+                                         MCContext &Ctx);
+MCCodeEmitter *createMipsMCCodeEmitterEL(const MCInstrInfo &MCII,
+                                         const MCRegisterInfo &MRI,
+                                         const MCSubtargetInfo &STI,
+                                         MCContext &Ctx);
 
-MCAsmBackend *createMipsBEAsmBackend(const Target &T, StringRef TT);
-MCAsmBackend *createMipsLEAsmBackend(const Target &T, StringRef TT);
+MCAsmBackend *createMipsAsmBackendEB32(const Target &T, StringRef TT,
+                                       StringRef CPU);
+MCAsmBackend *createMipsAsmBackendEL32(const Target &T, StringRef TT,
+                                       StringRef CPU);
+MCAsmBackend *createMipsAsmBackendEB64(const Target &T, StringRef TT,
+                                       StringRef CPU);
+MCAsmBackend *createMipsAsmBackendEL64(const Target &T, StringRef TT,
+                                       StringRef CPU);
 
 MCObjectWriter *createMipsELFObjectWriter(raw_ostream &OS,
+                                          uint8_t OSABI,
                                           bool IsLittleEndian,
-                                          uint8_t OSABI);
+                                          bool Is64Bit);
 } // End llvm namespace
 
 // Defines symbolic names for Mips registers.  This defines a mapping from

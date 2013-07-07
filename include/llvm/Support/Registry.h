@@ -14,6 +14,8 @@
 #ifndef LLVM_SUPPORT_REGISTRY_H
 #define LLVM_SUPPORT_REGISTRY_H
 
+#include "llvm/Support/Compiler.h"
+
 namespace llvm {
   /// A simple registry entry which provides only a name, description, and
   /// no-argument constructor.
@@ -37,7 +39,7 @@ namespace llvm {
   /// is necessary to define an alternate traits class.
   template <typename T>
   class RegistryTraits {
-    RegistryTraits(); // Do not implement.
+    RegistryTraits() LLVM_DELETED_FUNCTION;
 
   public:
     typedef SimpleRegistryEntry<T> entry;
@@ -63,7 +65,7 @@ namespace llvm {
     class iterator;
 
   private:
-    Registry(); // Do not implement.
+    Registry() LLVM_DELETED_FUNCTION;
 
     static void Announce(const entry &E) {
       for (listener *Cur = ListenerHead; Cur; Cur = Cur->Next)
@@ -120,6 +122,7 @@ namespace llvm {
     /// Abstract base class for registry listeners, which are informed when new
     /// entries are added to the registry. Simply subclass and instantiate:
     ///
+    /// \code
     ///   class CollectorPrinter : public Registry<Collector>::listener {
     ///   protected:
     ///     void registered(const Registry<Collector>::entry &e) {
@@ -131,7 +134,7 @@ namespace llvm {
     ///   };
     ///
     ///   CollectorPrinter Printer;
-    ///
+    /// \endcode
     class listener {
       listener *Prev, *Next;
 

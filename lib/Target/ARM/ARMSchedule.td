@@ -6,6 +6,95 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
+// Instruction scheduling annotations for out-of-order CPUs.
+// These annotations are independent of the itinerary class defined below.
+// Here we define the subtarget independent read/write per-operand resources.
+// The subtarget schedule definitions will then map these to the subtarget's
+// resource usages.
+// For example:
+// The instruction cycle timings table might contain an entry for an operation
+// like the following:
+// Rd <- ADD Rn, Rm, <shift> Rs
+//  Uops | Latency from register | Uops - resource requirements - latency
+//  2    | Rn: 1 Rm: 4 Rs: 4     | uop T0, Rm, Rs - P01 - 3
+//       |                       | uopc Rd, Rn, T0 -  P01 - 1
+// This is telling us that the result will be available in destination register
+// Rd after a minimum of three cycles after the result in Rm and Rs is available
+// and one cycle after the result in Rn is available. The micro-ops can execute
+// on resource P01.
+// To model this, we need to express that we need to dispatch two micro-ops,
+// that the resource P01 is needed and that the latency to Rn is different than
+// the latency to Rm and Rs. The scheduler can decrease Rn's producer latency by
+// two.
+// We will do this by assigning (abstract) resources to register defs/uses.
+// ARMSchedule.td:
+//   def WriteALUsr : SchedWrite;
+//   def ReadAdvanceALUsr : ScheRead;
+//
+// ARMInstrInfo.td:
+//   def ADDrs : I<>, Sched<[WriteALUsr, ReadAdvanceALUsr, ReadDefault,
+//                           ReadDefault]> { ...}
+// ReadAdvance read resources allow us to define "pipeline by-passes" or
+// shorter latencies to certain registers as needed in the example above.
+// The "ReadDefault" can be omitted.
+// Next, the subtarget td file assigns resources to the abstract resources
+// defined here.
+// ARMScheduleSubtarget.td:
+//  // Resources.
+//  def P01 : ProcResource<3>; // ALU unit (3 of it).
+//  ...
+//  // Resource usages.
+//  def : WriteRes<WriteALUsr, [P01, P01]> {
+//    Latency = 4; // Latency of 4.
+//    NumMicroOps = 2; // Dispatch 2 micro-ops.
+//    // The two instances of resource P01 are occupied for one cycle. It is one
+//    // cycle because these resources happen to be pipelined.
+//    ResourceCycles = [1, 1];
+//  }
+//  def : ReadAdvance<ReadAdvanceALUsr, 3>;
+
+// Basic ALU operation.
+def WriteALU : SchedWrite;
+def ReadALU : SchedRead;
+
+// Basic ALU with shifts.
+def WriteALUsi : SchedWrite; // Shift by immediate.
+def WriteALUsr : SchedWrite; // Shift by register.
+def WriteALUSsr : SchedWrite; // Shift by register (flag setting).
+def ReadALUsr : SchedRead; // Some operands are read later.
+
+// Compares.
+def WriteCMP : SchedWrite;
+def WriteCMPsi : SchedWrite;
+def WriteCMPsr : SchedWrite;
+
+// Division.
+def WriteDiv : SchedWrite;
+
+// Loads.
+def WriteLd : SchedWrite;
+def WritePreLd : SchedWrite;
+
+// Branches.
+def WriteBr : SchedWrite;
+def WriteBrL : SchedWrite;
+def WriteBrTbl : SchedWrite;
+
+// Fixpoint conversions.
+def WriteCvtFP : SchedWrite;
+
+// Noop.
+def WriteNoop : SchedWrite;
+
+// Define TII for use in SchedVariant Predicates.
+def : PredicateProlog<[{
+  const ARMBaseInstrInfo *TII =
+    static_cast<const ARMBaseInstrInfo*>(SchedModel->getInstrInfo());
+  (void)TII;
+}]>;
+
+def IsPredicatedPred : SchedPredicate<[{TII->isPredicated(MI)}]>;
 
 //===----------------------------------------------------------------------===//
 // Instruction Itinerary classes used for ARM
@@ -55,6 +144,7 @@ def IIC_iMUL32     : InstrItinClass;
 def IIC_iMAC32     : InstrItinClass;
 def IIC_iMUL64     : InstrItinClass;
 def IIC_iMAC64     : InstrItinClass;
+def IIC_iDIV     : InstrItinClass;
 def IIC_iLoad_i    : InstrItinClass;
 def IIC_iLoad_r    : InstrItinClass;
 def IIC_iLoad_si   : InstrItinClass;
@@ -70,11 +160,11 @@ def IIC_iLoad_bh_siu : InstrItinClass;
 def IIC_iLoad_d_i  : InstrItinClass;
 def IIC_iLoad_d_r  : InstrItinClass;
 def IIC_iLoad_d_ru : InstrItinClass;
-def IIC_iLoad_m    : InstrItinClass<0>;  // micro-coded
-def IIC_iLoad_mu   : InstrItinClass<0>;  // micro-coded
-def IIC_iLoad_mBr  : InstrItinClass<0>;  // micro-coded
-def IIC_iPop       : InstrItinClass<0>;  // micro-coded
-def IIC_iPop_Br    : InstrItinClass<0>;  // micro-coded
+def IIC_iLoad_m    : InstrItinClass;
+def IIC_iLoad_mu   : InstrItinClass;
+def IIC_iLoad_mBr  : InstrItinClass;
+def IIC_iPop       : InstrItinClass;
+def IIC_iPop_Br    : InstrItinClass;
 def IIC_iLoadiALU  : InstrItinClass;
 def IIC_iStore_i   : InstrItinClass;
 def IIC_iStore_r   : InstrItinClass;
@@ -91,8 +181,8 @@ def IIC_iStore_bh_siu : InstrItinClass;
 def IIC_iStore_d_i   : InstrItinClass;
 def IIC_iStore_d_r   : InstrItinClass;
 def IIC_iStore_d_ru  : InstrItinClass;
-def IIC_iStore_m   : InstrItinClass<0>;  // micro-coded
-def IIC_iStore_mu  : InstrItinClass<0>;  // micro-coded
+def IIC_iStore_m   : InstrItinClass;
+def IIC_iStore_mu  : InstrItinClass;
 def IIC_Preload    : InstrItinClass;
 def IIC_Br         : InstrItinClass;
 def IIC_fpSTAT     : InstrItinClass;
@@ -126,12 +216,12 @@ def IIC_fpSQRT32   : InstrItinClass;
 def IIC_fpSQRT64   : InstrItinClass;
 def IIC_fpLoad32   : InstrItinClass;
 def IIC_fpLoad64   : InstrItinClass;
-def IIC_fpLoad_m   : InstrItinClass<0>;  // micro-coded
-def IIC_fpLoad_mu  : InstrItinClass<0>;  // micro-coded
+def IIC_fpLoad_m   : InstrItinClass;
+def IIC_fpLoad_mu  : InstrItinClass;
 def IIC_fpStore32  : InstrItinClass;
 def IIC_fpStore64  : InstrItinClass;
-def IIC_fpStore_m  : InstrItinClass<0>;  // micro-coded
-def IIC_fpStore_mu : InstrItinClass<0>;  // micro-coded
+def IIC_fpStore_m  : InstrItinClass;
+def IIC_fpStore_mu : InstrItinClass;
 def IIC_VLD1       : InstrItinClass;
 def IIC_VLD1x2     : InstrItinClass;
 def IIC_VLD1x3     : InstrItinClass;
@@ -258,8 +348,7 @@ def IIC_VTBX4      : InstrItinClass;
 //===----------------------------------------------------------------------===//
 // Processor instruction itineraries.
 
-def GenericItineraries : ProcessorItineraries<[], [], []>;
-
 include "ARMScheduleV6.td"
 include "ARMScheduleA8.td"
 include "ARMScheduleA9.td"
+include "ARMScheduleSwift.td"

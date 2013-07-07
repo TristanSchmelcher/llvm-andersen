@@ -14,8 +14,8 @@
 #ifndef X86JITINFO_H
 #define X86JITINFO_H
 
-#include "llvm/Function.h"
 #include "llvm/CodeGen/JITCodeEmitter.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Target/TargetJITInfo.h"
 
 namespace llvm {
@@ -65,7 +65,7 @@ namespace llvm {
     /// referenced global symbols.
     virtual void relocate(void *Function, MachineRelocation *MR,
                           unsigned NumRelocs, unsigned char* GOTBase);
-    
+
     /// allocateThreadLocalMemory - Each target has its own way of
     /// handling thread local variables. This method returns a value only
     /// meaningful to the target.

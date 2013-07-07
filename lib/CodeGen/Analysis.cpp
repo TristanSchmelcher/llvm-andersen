@@ -13,19 +13,17 @@
 
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/SelectionDAG.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetLowering.h"
-#include "llvm/Target/TargetOptions.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Target/TargetLowering.h"
 using namespace llvm;
 
 /// ComputeLinearIndex - Given an LLVM IR aggregate type and a sequence
@@ -79,7 +77,7 @@ void llvm::ComputeValueVTs(const TargetLowering &TLI, Type *Ty,
                            uint64_t StartingOffset) {
   // Given a struct type, recursively traverse the elements.
   if (StructType *STy = dyn_cast<StructType>(Ty)) {
-    const StructLayout *SL = TLI.getTargetData()->getStructLayout(STy);
+    const StructLayout *SL = TLI.getDataLayout()->getStructLayout(STy);
     for (StructType::element_iterator EB = STy->element_begin(),
                                       EI = EB,
                                       EE = STy->element_end();
@@ -91,7 +89,7 @@ void llvm::ComputeValueVTs(const TargetLowering &TLI, Type *Ty,
   // Given an array type, recursively traverse the elements.
   if (ArrayType *ATy = dyn_cast<ArrayType>(Ty)) {
     Type *EltTy = ATy->getElementType();
-    uint64_t EltSize = TLI.getTargetData()->getTypeAllocSize(EltTy);
+    uint64_t EltSize = TLI.getDataLayout()->getTypeAllocSize(EltTy);
     for (unsigned i = 0, e = ATy->getNumElements(); i != e; ++i)
       ComputeValueVTs(TLI, EltTy, ValueVTs, Offsets,
                       StartingOffset + i * EltSize);
@@ -203,13 +201,169 @@ ISD::CondCode llvm::getICmpCondCode(ICmpInst::Predicate Pred) {
   }
 }
 
+static bool isNoopBitcast(Type *T1, Type *T2,
+                          const TargetLowering& TLI) {
+  return T1 == T2 || (T1->isPointerTy() && T2->isPointerTy()) ||
+         (isa<VectorType>(T1) && isa<VectorType>(T2) &&
+          TLI.isTypeLegal(EVT::getEVT(T1)) && TLI.isTypeLegal(EVT::getEVT(T2)));
+}
+
+/// sameNoopInput - Return true if V1 == V2, else if either V1 or V2 is a noop
+/// (i.e., lowers to no machine code), look through it (and any transitive noop
+/// operands to it) and check if it has the same noop input value.  This is
+/// used to determine if a tail call can be formed.
+static bool sameNoopInput(const Value *V1, const Value *V2,
+                          SmallVectorImpl<unsigned> &Els1,
+                          SmallVectorImpl<unsigned> &Els2,
+                          const TargetLowering &TLI) {
+  using std::swap;
+  bool swapParity = false;
+  bool equalEls = Els1 == Els2;
+  while (true) {
+    if ((equalEls && V1 == V2) || isa<UndefValue>(V1) || isa<UndefValue>(V2)) {
+      if (swapParity)
+        // Revert to original Els1 and Els2 to avoid confusing recursive calls
+        swap(Els1, Els2);
+      return true;
+    }
+
+    // Try to look through V1; if V1 is not an instruction, it can't be looked
+    // through.
+    const Instruction *I = dyn_cast<Instruction>(V1);
+    const Value *NoopInput = 0;
+    if (I != 0 && I->getNumOperands() > 0) {
+     Value *Op = I->getOperand(0);
+      if (isa<TruncInst>(I)) {
+        // Look through truly no-op truncates.
+        if (TLI.isTruncateFree(Op->getType(), I->getType()))
+          NoopInput = Op;
+      } else if (isa<BitCastInst>(I)) {
+        // Look through truly no-op bitcasts.
+        if (isNoopBitcast(Op->getType(), I->getType(), TLI))
+          NoopInput = Op;
+      } else if (isa<GetElementPtrInst>(I)) {
+        // Look through getelementptr
+        if (cast<GetElementPtrInst>(I)->hasAllZeroIndices())
+          NoopInput = Op;
+      } else if (isa<IntToPtrInst>(I)) {
+        // Look through inttoptr.
+        // Make sure this isn't a truncating or extending cast.  We could
+        // support this eventually, but don't bother for now.
+        if (!isa<VectorType>(I->getType()) &&
+            TLI.getPointerTy().getSizeInBits() == 
+              cast<IntegerType>(Op->getType())->getBitWidth())
+          NoopInput = Op;
+      } else if (isa<PtrToIntInst>(I)) {
+        // Look through ptrtoint.
+        // Make sure this isn't a truncating or extending cast.  We could
+        // support this eventually, but don't bother for now.
+        if (!isa<VectorType>(I->getType()) &&
+            TLI.getPointerTy().getSizeInBits() == 
+              cast<IntegerType>(I->getType())->getBitWidth())
+          NoopInput = Op;
+      } else if (isa<CallInst>(I)) {
+        // Look through call
+        for (User::const_op_iterator i = I->op_begin(),
+                                     // Skip Callee
+                                     e = I->op_end() - 1;
+             i != e; ++i) {
+          unsigned attrInd = i - I->op_begin() + 1;
+          if (cast<CallInst>(I)->paramHasAttr(attrInd, Attribute::Returned) &&
+              isNoopBitcast((*i)->getType(), I->getType(), TLI)) {
+            NoopInput = *i;
+            break;
+          }
+        }
+      } else if (isa<InvokeInst>(I)) {
+        // Look through invoke
+        for (User::const_op_iterator i = I->op_begin(),
+                                     // Skip BB, BB, Callee
+                                     e = I->op_end() - 3;
+             i != e; ++i) {
+          unsigned attrInd = i - I->op_begin() + 1;
+          if (cast<InvokeInst>(I)->paramHasAttr(attrInd, Attribute::Returned) &&
+              isNoopBitcast((*i)->getType(), I->getType(), TLI)) {
+            NoopInput = *i;
+            break;
+          }
+        }
+      }
+    }
+
+    if (NoopInput) {
+      V1 = NoopInput;
+      continue;
+    }
+
+    // If we already swapped, avoid infinite loop
+    if (swapParity)
+      break;
+
+    // Otherwise, swap V1<->V2, Els1<->Els2
+    swap(V1, V2);
+    swap(Els1, Els2);
+    swapParity = !swapParity;
+  }
+
+  for (unsigned n = 0; n < 2; ++n) {
+    if (isa<InsertValueInst>(V1)) {
+      if (isa<StructType>(V1->getType())) {
+        // Look through insertvalue
+        unsigned i, e;
+        for (i = 0, e = cast<StructType>(V1->getType())->getNumElements();
+             i != e; ++i) {
+          const Value *InScalar = FindInsertedValue(const_cast<Value*>(V1), i);
+          if (InScalar == 0)
+            break;
+          Els1.push_back(i);
+          if (!sameNoopInput(InScalar, V2, Els1, Els2, TLI)) {
+            Els1.pop_back();
+            break;
+          }
+          Els1.pop_back();
+        }
+        if (i == e) {
+          if (swapParity)
+            swap(Els1, Els2);
+          return true;
+        }
+      }
+    } else if (!Els1.empty() && isa<ExtractValueInst>(V1)) {
+      const ExtractValueInst *EVI = cast<ExtractValueInst>(V1);
+      unsigned i = Els1.back();
+      // If the scalar value being inserted is an extractvalue of the right
+      // index from the call, then everything is good.
+      if (isa<StructType>(EVI->getOperand(0)->getType()) &&
+          EVI->getNumIndices() == 1 && EVI->getIndices()[0] == i) {
+        // Look through extractvalue
+        Els1.pop_back();
+        if (sameNoopInput(EVI->getOperand(0), V2, Els1, Els2, TLI)) {
+          Els1.push_back(i);
+          if (swapParity)
+            swap(Els1, Els2);
+          return true;
+        }
+        Els1.push_back(i);
+      }
+    }
+
+    swap(V1, V2);
+    swap(Els1, Els2);
+    swapParity = !swapParity;
+  }
+
+  if (swapParity)
+    swap(Els1, Els2);
+  return false;
+}
+
 /// Test if the given instruction is in a position to be optimized
 /// with a tail-call. This roughly means that it's in a block with
 /// a return and there's nothing that needs to be scheduled
 /// between it and the return.
 ///
 /// This function only tests target-independent requirements.
-bool llvm::isInTailCallPosition(ImmutableCallSite CS, Attributes CalleeRetAttr,
+bool llvm::isInTailCallPosition(ImmutableCallSite CS,
                                 const TargetLowering &TLI) {
   const Instruction *I = CS.getInstruction();
   const BasicBlock *ExitBB = I->getParent();
@@ -226,7 +380,8 @@ bool llvm::isInTailCallPosition(ImmutableCallSite CS, Attributes CalleeRetAttr,
   // been fully understood.
   if (!Ret &&
       (!TLI.getTargetMachine().Options.GuaranteedTailCallOpt ||
-       !isa<UnreachableInst>(Term))) return false;
+       !isa<UnreachableInst>(Term)))
+    return false;
 
   // If I will have a chain, make sure no other instruction that will have a
   // chain interposes between I and the return.
@@ -255,54 +410,19 @@ bool llvm::isInTailCallPosition(ImmutableCallSite CS, Attributes CalleeRetAttr,
   // Conservatively require the attributes of the call to match those of
   // the return. Ignore noalias because it doesn't affect the call sequence.
   const Function *F = ExitBB->getParent();
-  Attributes CallerRetAttr = F->getAttributes().getRetAttributes();
-  if ((CalleeRetAttr ^ CallerRetAttr) & ~Attribute::NoAlias)
+  AttributeSet CallerAttrs = F->getAttributes();
+  if (AttrBuilder(CallerAttrs, AttributeSet::ReturnIndex).
+        removeAttribute(Attribute::NoAlias) !=
+      AttrBuilder(CallerAttrs, AttributeSet::ReturnIndex).
+        removeAttribute(Attribute::NoAlias))
     return false;
 
   // It's not safe to eliminate the sign / zero extension of the return value.
-  if ((CallerRetAttr & Attribute::ZExt) || (CallerRetAttr & Attribute::SExt))
+  if (CallerAttrs.hasAttribute(AttributeSet::ReturnIndex, Attribute::ZExt) ||
+      CallerAttrs.hasAttribute(AttributeSet::ReturnIndex, Attribute::SExt))
     return false;
 
-  // Otherwise, make sure the unmodified return value of I is the return value.
-  for (const Instruction *U = dyn_cast<Instruction>(Ret->getOperand(0)); ;
-       U = dyn_cast<Instruction>(U->getOperand(0))) {
-    if (!U)
-      return false;
-    if (!U->hasOneUse())
-      return false;
-    if (U == I)
-      break;
-    // Check for a truly no-op truncate.
-    if (isa<TruncInst>(U) &&
-        TLI.isTruncateFree(U->getOperand(0)->getType(), U->getType()))
-      continue;
-    // Check for a truly no-op bitcast.
-    if (isa<BitCastInst>(U) &&
-        (U->getOperand(0)->getType() == U->getType() ||
-         (U->getOperand(0)->getType()->isPointerTy() &&
-          U->getType()->isPointerTy())))
-      continue;
-    // Otherwise it's not a true no-op.
-    return false;
-  }
-
-  return true;
-}
-
-bool llvm::isInTailCallPosition(SelectionDAG &DAG, SDNode *Node,
-                                const TargetLowering &TLI) {
-  const Function *F = DAG.getMachineFunction().getFunction();
-
-  // Conservatively require the attributes of the call to match those of
-  // the return. Ignore noalias because it doesn't affect the call sequence.
-  Attributes CallerRetAttr = F->getAttributes().getRetAttributes();
-  if (CallerRetAttr & ~Attribute::NoAlias)
-    return false;
-
-  // It's not safe to eliminate the sign / zero extension of the return value.
-  if ((CallerRetAttr & Attribute::ZExt) || (CallerRetAttr & Attribute::SExt))
-    return false;
-
-  // Check if the only use is a function return node.
-  return TLI.isUsedByReturnOnly(Node);
+  // Otherwise, make sure the return value and I have the same value
+  SmallVector<unsigned, 4> Els1, Els2;
+  return sameNoopInput(Ret->getOperand(0), I, Els1, Els2, TLI);
 }

@@ -14,14 +14,14 @@
 
 #define DEBUG_TYPE "partialinlining"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Instructions.h"
-#include "llvm/Module.h"
-#include "llvm/Pass.h"
-#include "llvm/Analysis/Dominators.h"
-#include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Transforms/Utils/FunctionUtils.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/Dominators.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/CFG.h"
+#include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Transforms/Utils/CodeExtractor.h"
 using namespace llvm;
 
 STATISTIC(NumPartialInlined, "Number of functions partially inlined");
@@ -122,7 +122,8 @@ Function* PartialInliner::unswitchFunction(Function* F) {
   DT.runOnFunction(*duplicateFunction);
   
   // Extract the body of the if.
-  Function* extractedFunction = ExtractCodeRegion(DT, toExtract);
+  Function* extractedFunction
+    = CodeExtractor(toExtract, &DT).extractCodeRegion();
   
   InlineFunctionInfo IFI;
   

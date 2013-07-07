@@ -1,4 +1,5 @@
-; RUN: opt < %s -tailduplicate -taildup-threshold=3 -stats -disable-output |& not grep tailduplicate
+; REQUIRES: asserts
+; RUN: opt < %s -tailduplicate -taildup-threshold=3 -stats -disable-output 2>&1 | not grep tailduplicate
 ; XFAIL: *
 
 define i32 @foo(i32 %l) nounwind  {

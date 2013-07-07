@@ -11,13 +11,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "XCoreMachineFunctionInfo.h"
 #include "XCoreInstrInfo.h"
 #include "XCore.h"
-#include "llvm/MC/MCContext.h"
-#include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineFrameInfo.h"
+#include "XCoreMachineFunctionInfo.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/MC/MCContext.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -41,7 +41,7 @@ using namespace llvm;
 
 XCoreInstrInfo::XCoreInstrInfo()
   : XCoreGenInstrInfo(XCore::ADJCALLSTACKDOWN, XCore::ADJCALLSTACKUP),
-    RI(*this) {
+    RI() {
 }
 
 static bool isZeroImm(const MachineOperand &op) {
@@ -384,15 +384,6 @@ void XCoreInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
   BuildMI(MBB, I, DL, get(XCore::LDWFI), DestReg)
     .addFrameIndex(FrameIndex)
     .addImm(0);
-}
-
-MachineInstr*
-XCoreInstrInfo::emitFrameIndexDebugValue(MachineFunction &MF, int FrameIx,
-                                         uint64_t Offset, const MDNode *MDPtr,
-                                         DebugLoc DL) const {
-  MachineInstrBuilder MIB = BuildMI(MF, DL, get(XCore::DBG_VALUE))
-    .addFrameIndex(FrameIx).addImm(0).addImm(Offset).addMetadata(MDPtr);
-  return &*MIB;
 }
 
 /// ReverseBranchCondition - Return the inverse opcode of the 

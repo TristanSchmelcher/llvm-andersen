@@ -109,8 +109,8 @@ allocas:
 ; rdar://10566486
 ; CHECK: fneg
 ; CHECK: vxorps
-define <16 x float> @fneg(<16 x float> addrspace(1)* nocapture %out) nounwind {
-  %1 = fsub <16 x float> <float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00>, <float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00>
+define <16 x float> @fneg(<16 x float> %a) nounwind {
+  %1 = fsub <16 x float> <float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00, float -0.000000e+00>, %a
   ret <16 x float> %1
 }
 
@@ -120,4 +120,14 @@ define <16 x float> @fneg(<16 x float> addrspace(1)* nocapture %out) nounwind {
 define <16 x i16> @build_vec_16x16(i16 %a) nounwind readonly {
   %res = insertelement <16 x i16> <i16 undef, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0, i16 0>, i16 %a, i32 0
   ret <16 x i16> %res
+}
+
+;;; Check that VMOVPQIto64rr generates the assembly string "vmovd".  Previously
+;;; an incorrect mnemonic of "movd" was printed for this instruction.
+; CHECK: VMOVPQIto64rr
+; CHECK: vmovd
+define i64 @VMOVPQIto64rr(<2 x i64> %a) {
+entry:
+  %vecext.i = extractelement <2 x i64> %a, i32 0
+  ret i64 %vecext.i
 }

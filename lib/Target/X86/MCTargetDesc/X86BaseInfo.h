@@ -20,6 +20,7 @@
 #include "X86MCTargetDesc.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/MC/MCInstrInfo.h"
 
 namespace llvm {
 
@@ -41,7 +42,6 @@ namespace X86 {
     AddrNumOperands = 5
   };
 } // end namespace X86;
- 
 
 /// X86II - This namespace holds all of the target specific flags that
 /// instruction info tracks.
@@ -94,39 +94,82 @@ namespace X86II {
     MO_PLT,
 
     /// MO_TLSGD - On a symbol operand this indicates that the immediate is
-    /// some TLS offset.
+    /// the offset of the GOT entry with the TLS index structure that contains
+    /// the module number and variable offset for the symbol. Used in the
+    /// general dynamic TLS access model.
     ///
     /// See 'ELF Handling for Thread-Local Storage' for more details.
     ///    SYMBOL_LABEL @TLSGD
     MO_TLSGD,
 
+    /// MO_TLSLD - On a symbol operand this indicates that the immediate is
+    /// the offset of the GOT entry with the TLS index for the module that
+    /// contains the symbol. When this index is passed to a call to
+    /// __tls_get_addr, the function will return the base address of the TLS
+    /// block for the symbol. Used in the x86-64 local dynamic TLS access model.
+    ///
+    /// See 'ELF Handling for Thread-Local Storage' for more details.
+    ///    SYMBOL_LABEL @TLSLD
+    MO_TLSLD,
+
+    /// MO_TLSLDM - On a symbol operand this indicates that the immediate is
+    /// the offset of the GOT entry with the TLS index for the module that
+    /// contains the symbol. When this index is passed to a call to
+    /// ___tls_get_addr, the function will return the base address of the TLS
+    /// block for the symbol. Used in the IA32 local dynamic TLS access model.
+    ///
+    /// See 'ELF Handling for Thread-Local Storage' for more details.
+    ///    SYMBOL_LABEL @TLSLDM
+    MO_TLSLDM,
+
     /// MO_GOTTPOFF - On a symbol operand this indicates that the immediate is
-    /// some TLS offset.
+    /// the offset of the GOT entry with the thread-pointer offset for the
+    /// symbol. Used in the x86-64 initial exec TLS access model.
     ///
     /// See 'ELF Handling for Thread-Local Storage' for more details.
     ///    SYMBOL_LABEL @GOTTPOFF
     MO_GOTTPOFF,
 
     /// MO_INDNTPOFF - On a symbol operand this indicates that the immediate is
-    /// some TLS offset.
+    /// the absolute address of the GOT entry with the negative thread-pointer
+    /// offset for the symbol. Used in the non-PIC IA32 initial exec TLS access
+    /// model.
     ///
     /// See 'ELF Handling for Thread-Local Storage' for more details.
     ///    SYMBOL_LABEL @INDNTPOFF
     MO_INDNTPOFF,
 
     /// MO_TPOFF - On a symbol operand this indicates that the immediate is
-    /// some TLS offset.
+    /// the thread-pointer offset for the symbol. Used in the x86-64 local
+    /// exec TLS access model.
     ///
     /// See 'ELF Handling for Thread-Local Storage' for more details.
     ///    SYMBOL_LABEL @TPOFF
     MO_TPOFF,
 
+    /// MO_DTPOFF - On a symbol operand this indicates that the immediate is
+    /// the offset of the GOT entry with the TLS offset of the symbol. Used
+    /// in the local dynamic TLS access model.
+    ///
+    /// See 'ELF Handling for Thread-Local Storage' for more details.
+    ///    SYMBOL_LABEL @DTPOFF
+    MO_DTPOFF,
+
     /// MO_NTPOFF - On a symbol operand this indicates that the immediate is
-    /// some TLS offset.
+    /// the negative thread-pointer offset for the symbol. Used in the IA32
+    /// local exec TLS access model.
     ///
     /// See 'ELF Handling for Thread-Local Storage' for more details.
     ///    SYMBOL_LABEL @NTPOFF
     MO_NTPOFF,
+
+    /// MO_GOTNTPOFF - On a symbol operand this indicates that the immediate is
+    /// the offset of the GOT entry with the negative thread-pointer offset for
+    /// the symbol. Used in the PIC IA32 initial exec TLS access model.
+    ///
+    /// See 'ELF Handling for Thread-Local Storage' for more details.
+    ///    SYMBOL_LABEL @GOTNTPOFF
+    MO_GOTNTPOFF,
 
     /// MO_DLLIMPORT - On a symbol operand "FOO", this indicates that the
     /// reference is actually to the "__imp_FOO" symbol.  This is used for
@@ -231,11 +274,12 @@ namespace X86II {
 
     //// MRM_XX - A mod/rm byte of exactly 0xXX.
     MRM_C1 = 33, MRM_C2 = 34, MRM_C3 = 35, MRM_C4 = 36,
-    MRM_C8 = 37, MRM_C9 = 38, MRM_E8 = 39, MRM_F0 = 40,
-    MRM_F8 = 41, MRM_F9 = 42, MRM_D0 = 45, MRM_D1 = 46,
-    MRM_D4 = 47, MRM_D8 = 48, MRM_D9 = 49, MRM_DA = 50,
-    MRM_DB = 51, MRM_DC = 52, MRM_DD = 53, MRM_DE = 54,
-    MRM_DF = 55,
+    MRM_C8 = 37, MRM_C9 = 38, MRM_CA = 39, MRM_CB = 40,
+    MRM_E8 = 41, MRM_F0 = 42, MRM_F8 = 45, MRM_F9 = 46,
+    MRM_D0 = 47, MRM_D1 = 48, MRM_D4 = 49, MRM_D5 = 50,
+    MRM_D6 = 51, MRM_D8 = 52, MRM_D9 = 53, MRM_DA = 54,
+    MRM_DB = 55, MRM_DC = 56, MRM_DD = 57, MRM_DE = 58,
+    MRM_DF = 59,
 
     /// RawFrmImm8 - This is used for the ENTER instruction, which has two
     /// immediates, the first of which is a 16-bit immediate (specified by
@@ -438,17 +482,17 @@ namespace X86II {
   // getBaseOpcodeFor - This function returns the "base" X86 opcode for the
   // specified machine instruction.
   //
-  static inline unsigned char getBaseOpcodeFor(uint64_t TSFlags) {
+  inline unsigned char getBaseOpcodeFor(uint64_t TSFlags) {
     return TSFlags >> X86II::OpcodeShift;
   }
 
-  static inline bool hasImm(uint64_t TSFlags) {
+  inline bool hasImm(uint64_t TSFlags) {
     return (TSFlags & X86II::ImmMask) != 0;
   }
 
   /// getSizeOfImm - Decode the "size of immediate" field from the TSFlags field
   /// of the specified instruction.
-  static inline unsigned getSizeOfImm(uint64_t TSFlags) {
+  inline unsigned getSizeOfImm(uint64_t TSFlags) {
     switch (TSFlags & X86II::ImmMask) {
     default: llvm_unreachable("Unknown immediate size");
     case X86II::Imm8:
@@ -463,7 +507,7 @@ namespace X86II {
 
   /// isImmPCRel - Return true if the immediate of the specified instruction's
   /// TSFlags indicates that it is pc relative.
-  static inline unsigned isImmPCRel(uint64_t TSFlags) {
+  inline unsigned isImmPCRel(uint64_t TSFlags) {
     switch (TSFlags & X86II::ImmMask) {
     default: llvm_unreachable("Unknown immediate size");
     case X86II::Imm8PCRel:
@@ -478,6 +522,26 @@ namespace X86II {
     }
   }
 
+  /// getOperandBias - compute any additional adjustment needed to
+  ///                  the offset to the start of the memory operand
+  ///                  in this instruction.
+  /// If this is a two-address instruction,skip one of the register operands.
+  /// FIXME: This should be handled during MCInst lowering.
+  inline int getOperandBias(const MCInstrDesc& Desc)
+  {
+    unsigned NumOps = Desc.getNumOperands();
+    unsigned CurOp = 0;
+    if (NumOps > 1 && Desc.getOperandConstraint(1, MCOI::TIED_TO) == 0)
+      ++CurOp;
+    else if (NumOps > 3 && Desc.getOperandConstraint(2, MCOI::TIED_TO) == 0) {
+      assert(Desc.getOperandConstraint(NumOps - 1, MCOI::TIED_TO) == 1);
+      // Special case for GATHER with 2 TIED_TO operands
+      // Skip the first 2 operands: dst, mask_wb
+      CurOp += 2;
+    }
+    return CurOp;
+  }
+
   /// getMemoryOperandNo - The function returns the MCInst operand # for the
   /// first field of the memory operand.  If the instruction doesn't have a
   /// memory operand, this returns -1.
@@ -486,9 +550,11 @@ namespace X86II {
   /// is duplicated in the MCInst (e.g. "EAX = addl EAX, [mem]") it is only
   /// counted as one operand.
   ///
-  static inline int getMemoryOperandNo(uint64_t TSFlags, unsigned Opcode) {
+  inline int getMemoryOperandNo(uint64_t TSFlags, unsigned Opcode) {
     switch (TSFlags & X86II::FormMask) {
-    case X86II::MRMInitReg:  llvm_unreachable("FIXME: Remove this form");
+    case X86II::MRMInitReg:
+        // FIXME: Remove this form.
+        return -1;
     default: llvm_unreachable("Unknown FormMask value in getMemoryOperandNo!");
     case X86II::Pseudo:
     case X86II::RawFrm:
@@ -529,16 +595,14 @@ namespace X86II {
         ++FirstMemOp;// Skip the register dest (which is encoded in VEX_VVVV).
       return FirstMemOp;
     }
-    case X86II::MRM_C1: case X86II::MRM_C2:
-    case X86II::MRM_C3: case X86II::MRM_C4:
-    case X86II::MRM_C8: case X86II::MRM_C9:
-    case X86II::MRM_E8: case X86II::MRM_F0:
-    case X86II::MRM_F8: case X86II::MRM_F9:
-    case X86II::MRM_D0: case X86II::MRM_D1:
-    case X86II::MRM_D4: case X86II::MRM_D8:
-    case X86II::MRM_D9: case X86II::MRM_DA:
-    case X86II::MRM_DB: case X86II::MRM_DC:
-    case X86II::MRM_DD: case X86II::MRM_DE:
+    case X86II::MRM_C1: case X86II::MRM_C2: case X86II::MRM_C3:
+    case X86II::MRM_C4: case X86II::MRM_C8: case X86II::MRM_C9:
+    case X86II::MRM_CA: case X86II::MRM_CB: case X86II::MRM_E8:
+    case X86II::MRM_F0: case X86II::MRM_F8: case X86II::MRM_F9:
+    case X86II::MRM_D0: case X86II::MRM_D1: case X86II::MRM_D4:
+    case X86II::MRM_D5: case X86II::MRM_D6: case X86II::MRM_D8:
+    case X86II::MRM_D9: case X86II::MRM_DA: case X86II::MRM_DB:
+    case X86II::MRM_DC: case X86II::MRM_DD: case X86II::MRM_DE:
     case X86II::MRM_DF:
       return -1;
     }
@@ -546,7 +610,7 @@ namespace X86II {
 
   /// isX86_64ExtendedReg - Is the MachineOperand a x86-64 extended (r8 or
   /// higher) register?  e.g. r8, xmm8, xmm13, etc.
-  static inline bool isX86_64ExtendedReg(unsigned RegNo) {
+  inline bool isX86_64ExtendedReg(unsigned RegNo) {
     switch (RegNo) {
     default: break;
     case X86::R8:    case X86::R9:    case X86::R10:   case X86::R11:
@@ -568,7 +632,7 @@ namespace X86II {
     return false;
   }
   
-  static inline bool isX86_64NonExtLowByteReg(unsigned reg) {
+  inline bool isX86_64NonExtLowByteReg(unsigned reg) {
     return (reg == X86::SPL || reg == X86::BPL ||
             reg == X86::SIL || reg == X86::DIL);
   }

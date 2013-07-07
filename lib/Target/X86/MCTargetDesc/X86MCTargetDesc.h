@@ -25,6 +25,7 @@ class MCInstrInfo;
 class MCObjectWriter;
 class MCRegisterInfo;
 class MCSubtargetInfo;
+class MCRelocationInfo;
 class Target;
 class StringRef;
 class raw_ostream;
@@ -64,8 +65,6 @@ namespace X86_MC {
 
   unsigned getDwarfRegFlavour(StringRef TT, bool isEH);
 
-  unsigned getX86RegNum(unsigned RegNo);
-
   void InitLLVM2SEHRegisterMapping(MCRegisterInfo *MRI);
 
   /// createX86MCSubtargetInfo - Create a X86 MCSubtargetInfo instance.
@@ -76,11 +75,12 @@ namespace X86_MC {
 }
 
 MCCodeEmitter *createX86MCCodeEmitter(const MCInstrInfo &MCII,
+                                      const MCRegisterInfo &MRI,
                                       const MCSubtargetInfo &STI,
                                       MCContext &Ctx);
 
-MCAsmBackend *createX86_32AsmBackend(const Target &T, StringRef TT);
-MCAsmBackend *createX86_64AsmBackend(const Target &T, StringRef TT);
+MCAsmBackend *createX86_32AsmBackend(const Target &T, StringRef TT, StringRef CPU);
+MCAsmBackend *createX86_64AsmBackend(const Target &T, StringRef TT, StringRef CPU);
 
 /// createX86MachObjectWriter - Construct an X86 Mach-O object writer.
 MCObjectWriter *createX86MachObjectWriter(raw_ostream &OS,
@@ -90,10 +90,17 @@ MCObjectWriter *createX86MachObjectWriter(raw_ostream &OS,
 
 /// createX86ELFObjectWriter - Construct an X86 ELF object writer.
 MCObjectWriter *createX86ELFObjectWriter(raw_ostream &OS,
-                                         bool Is64Bit,
-                                         uint8_t OSABI);
+                                         bool IsELF64,
+                                         uint8_t OSABI,
+                                         uint16_t EMachine);
 /// createX86WinCOFFObjectWriter - Construct an X86 Win COFF object writer.
 MCObjectWriter *createX86WinCOFFObjectWriter(raw_ostream &OS, bool Is64Bit);
+
+/// createX86_64MachORelocationInfo - Construct X86-64 Mach-O relocation info.
+MCRelocationInfo *createX86_64MachORelocationInfo(MCContext &Ctx);
+
+/// createX86_64ELFORelocationInfo - Construct X86-64 ELF relocation info.
+MCRelocationInfo *createX86_64ELFRelocationInfo(MCContext &Ctx);
 } // End llvm namespace
 
 

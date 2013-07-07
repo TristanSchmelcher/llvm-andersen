@@ -14,21 +14,21 @@
 #define DEBUG_TYPE "mblaze-frame-lowering"
 
 #include "MBlazeFrameLowering.h"
+#include "InstPrinter/MBlazeInstPrinter.h"
 #include "MBlazeInstrInfo.h"
 #include "MBlazeMachineFunction.h"
-#include "InstPrinter/MBlazeInstPrinter.h"
-#include "llvm/Function.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetOptions.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetOptions.h"
 
 using namespace llvm;
 
@@ -42,10 +42,10 @@ static void replaceFrameIndexes(MachineFunction &MF,
                                 SmallVector<std::pair<int,int64_t>, 16> &FR) {
   MachineFrameInfo *MFI = MF.getFrameInfo();
   MBlazeFunctionInfo *MBlazeFI = MF.getInfo<MBlazeFunctionInfo>();
-  const SmallVector<std::pair<int,int64_t>, 16>::iterator FRB = FR.begin();
-  const SmallVector<std::pair<int,int64_t>, 16>::iterator FRE = FR.end();
+  const SmallVectorImpl<std::pair<int,int64_t> >::iterator FRB = FR.begin();
+  const SmallVectorImpl<std::pair<int,int64_t> >::iterator FRE = FR.end();
 
-  SmallVector<std::pair<int,int64_t>, 16>::iterator FRI = FRB;
+  SmallVectorImpl<std::pair<int,int64_t> >::iterator FRI = FRB;
   for (; FRI != FRE; ++FRI) {
     MFI->RemoveStackObject(FRI->first);
     int NFI = MFI->CreateFixedObject(4, FRI->second, true);
@@ -91,7 +91,7 @@ static void analyzeFrameIndexes(MachineFunction &MF) {
 
   MachineRegisterInfo::livein_iterator LII = MRI.livein_begin();
   MachineRegisterInfo::livein_iterator LIE = MRI.livein_end();
-  const SmallVector<int, 16> &LiveInFI = MBlazeFI->getLiveIn();
+  const SmallVectorImpl<int> &LiveInFI = MBlazeFI->getLiveIn();
   SmallVector<MachineInstr*, 16> EraseInstr;
   SmallVector<std::pair<int,int64_t>, 16> FrameRelocate;
 
@@ -211,13 +211,13 @@ static void analyzeFrameIndexes(MachineFunction &MF) {
 
 static void interruptFrameLayout(MachineFunction &MF) {
   const Function *F = MF.getFunction();
-  llvm::CallingConv::ID CallConv = F->getCallingConv();
+  CallingConv::ID CallConv = F->getCallingConv();
 
   // If this function is not using either the interrupt_handler
   // calling convention or the save_volatiles calling convention
   // then we don't need to do any additional frame layout.
-  if (CallConv != llvm::CallingConv::MBLAZE_INTR &&
-      CallConv != llvm::CallingConv::MBLAZE_SVOL)
+  if (CallConv != CallingConv::MBLAZE_INTR &&
+      CallConv != CallingConv::MBLAZE_SVOL)
       return;
 
   MachineFrameInfo *MFI = MF.getFrameInfo();
@@ -228,7 +228,7 @@ static void interruptFrameLayout(MachineFunction &MF) {
   // Determine if the calling convention is the interrupt_handler
   // calling convention. Some pieces of the prologue and epilogue
   // only need to be emitted if we are lowering and interrupt handler.
-  bool isIntr = CallConv == llvm::CallingConv::MBLAZE_INTR;
+  bool isIntr = CallConv == CallingConv::MBLAZE_INTR;
 
   // Determine where to put prologue and epilogue additions
   MachineBasicBlock &MENT   = MF.front();
@@ -347,8 +347,8 @@ void MBlazeFrameLowering::emitPrologue(MachineFunction &MF) const {
   MachineBasicBlock::iterator MBBI = MBB.begin();
   DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
 
-  llvm::CallingConv::ID CallConv = MF.getFunction()->getCallingConv();
-  bool requiresRA = CallConv == llvm::CallingConv::MBLAZE_INTR;
+  CallingConv::ID CallConv = MF.getFunction()->getCallingConv();
+  bool requiresRA = CallConv == CallingConv::MBLAZE_INTR;
 
   // Determine the correct frame layout
   determineFrameLayout(MF);
@@ -393,8 +393,8 @@ void MBlazeFrameLowering::emitEpilogue(MachineFunction &MF,
 
   DebugLoc dl = MBBI->getDebugLoc();
 
-  llvm::CallingConv::ID CallConv = MF.getFunction()->getCallingConv();
-  bool requiresRA = CallConv == llvm::CallingConv::MBLAZE_INTR;
+  CallingConv::ID CallConv = MF.getFunction()->getCallingConv();
+  bool requiresRA = CallConv == CallingConv::MBLAZE_INTR;
 
   // Get the FI's where RA and FP are saved.
   int FPOffset = MBlazeFI->getFPStackOffset();
@@ -426,13 +426,52 @@ void MBlazeFrameLowering::emitEpilogue(MachineFunction &MF,
   }
 }
 
+// Eliminate ADJCALLSTACKDOWN/ADJCALLSTACKUP pseudo instructions
+void MBlazeFrameLowering::
+eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator I) const {
+  const MBlazeInstrInfo &TII =
+    *static_cast<const MBlazeInstrInfo*>(MF.getTarget().getInstrInfo());
+  if (!hasReservedCallFrame(MF)) {
+    // If we have a frame pointer, turn the adjcallstackup instruction into a
+    // 'addi r1, r1, -<amt>' and the adjcallstackdown instruction into
+    // 'addi r1, r1, <amt>'
+    MachineInstr *Old = I;
+    int Amount = Old->getOperand(0).getImm() + 4;
+    if (Amount != 0) {
+      // We need to keep the stack aligned properly.  To do this, we round the
+      // amount of space needed for the outgoing arguments up to the next
+      // alignment boundary.
+      unsigned Align = getStackAlignment();
+      Amount = (Amount+Align-1)/Align*Align;
+
+      MachineInstr *New;
+      if (Old->getOpcode() == MBlaze::ADJCALLSTACKDOWN) {
+        New = BuildMI(MF,Old->getDebugLoc(), TII.get(MBlaze::ADDIK),MBlaze::R1)
+                .addReg(MBlaze::R1).addImm(-Amount);
+      } else {
+        assert(Old->getOpcode() == MBlaze::ADJCALLSTACKUP);
+        New = BuildMI(MF,Old->getDebugLoc(), TII.get(MBlaze::ADDIK),MBlaze::R1)
+                .addReg(MBlaze::R1).addImm(Amount);
+      }
+
+      // Replace the pseudo instruction with a new instruction...
+      MBB.insert(I, New);
+    }
+  }
+
+  // Simply discard ADJCALLSTACKDOWN, ADJCALLSTACKUP instructions.
+  MBB.erase(I);
+}
+
+
 void MBlazeFrameLowering::
 processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                      RegScavenger *RS) const {
   MachineFrameInfo *MFI = MF.getFrameInfo();
   MBlazeFunctionInfo *MBlazeFI = MF.getInfo<MBlazeFunctionInfo>();
-  llvm::CallingConv::ID CallConv = MF.getFunction()->getCallingConv();
-  bool requiresRA = CallConv == llvm::CallingConv::MBLAZE_INTR;
+  CallingConv::ID CallConv = MF.getFunction()->getCallingConv();
+  bool requiresRA = CallConv == CallingConv::MBLAZE_INTR;
 
   if (MFI->adjustsStack() || requiresRA) {
     MBlazeFI->setRAStackOffset(0);

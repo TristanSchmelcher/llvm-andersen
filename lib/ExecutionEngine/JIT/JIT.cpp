@@ -13,25 +13,26 @@
 //===----------------------------------------------------------------------===//
 
 #include "JIT.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/Instructions.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/CodeGen/JITCodeEmitter.h"
 #include "llvm/CodeGen/MachineCodeInfo.h"
+#include "llvm/Config/config.h"
 #include "llvm/ExecutionEngine/GenericValue.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetJITInfo.h"
+#include "llvm/ExecutionEngine/JITMemoryManager.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Support/Dwarf.h"
+#include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MutexGuard.h"
-#include "llvm/Support/DynamicLibrary.h"
-#include "llvm/Config/config.h"
+#include "llvm/Target/TargetJITInfo.h"
+#include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
 
@@ -267,10 +268,11 @@ extern "C" {
 }
 
 JIT::JIT(Module *M, TargetMachine &tm, TargetJITInfo &tji,
-         JITMemoryManager *JMM, bool GVsWithCode)
-  : ExecutionEngine(M), TM(tm), TJI(tji), AllocateGVsWithCode(GVsWithCode),
-    isAlreadyCodeGenerating(false) {
-  setTargetData(TM.getTargetData());
+         JITMemoryManager *jmm, bool GVsWithCode)
+  : ExecutionEngine(M), TM(tm), TJI(tji),
+    JMM(jmm ? jmm : JITMemoryManager::CreateDefaultMemManager()),
+    AllocateGVsWithCode(GVsWithCode), isAlreadyCodeGenerating(false) {
+  setDataLayout(TM.getDataLayout());
 
   jitstate = new JITState(M);
 
@@ -283,7 +285,7 @@ JIT::JIT(Module *M, TargetMachine &tm, TargetJITInfo &tji,
   // Add target data
   MutexGuard locked(lock);
   FunctionPassManager &PM = jitstate->getPM(locked);
-  PM.add(new TargetData(*TM.getTargetData()));
+  PM.add(new DataLayout(*TM.getDataLayout()));
 
   // Turn the machine code intermediate representation into bytes in memory that
   // may be executed.
@@ -322,6 +324,7 @@ JIT::~JIT() {
   AllJits->Remove(this);
   delete jitstate;
   delete JCE;
+  // JMM is a ownership of JCE, so we no need delete JMM here.
   delete &TM;
 }
 
@@ -336,7 +339,7 @@ void JIT::addModule(Module *M) {
     jitstate = new JITState(M);
 
     FunctionPassManager &PM = jitstate->getPM(locked);
-    PM.add(new TargetData(*TM.getTargetData()));
+    PM.add(new DataLayout(*TM.getDataLayout()));
 
     // Turn the machine code intermediate representation into bytes in memory
     // that may be executed.
@@ -358,7 +361,7 @@ bool JIT::removeModule(Module *M) {
 
   MutexGuard locked(lock);
 
-  if (jitstate->getModule() == M) {
+  if (jitstate && jitstate->getModule() == M) {
     delete jitstate;
     jitstate = 0;
   }
@@ -367,7 +370,7 @@ bool JIT::removeModule(Module *M) {
     jitstate = new JITState(Modules[0]);
 
     FunctionPassManager &PM = jitstate->getPM(locked);
-    PM.add(new TargetData(*TM.getTargetData()));
+    PM.add(new DataLayout(*TM.getDataLayout()));
 
     // Turn the machine code intermediate representation into bytes in memory
     // that may be executed.
@@ -430,11 +433,16 @@ GenericValue JIT::runFunction(Function *F,
       }
       break;
     case 1:
-      if (FTy->getNumParams() == 1 &&
-          FTy->getParamType(0)->isIntegerTy(32)) {
+      if (FTy->getParamType(0)->isIntegerTy(32)) {
         GenericValue rv;
         int (*PF)(int) = (int(*)(int))(intptr_t)FPtr;
         rv.IntVal = APInt(32, PF(ArgValues[0].IntVal.getZExtValue()));
+        return rv;
+      }
+      if (FTy->getParamType(0)->isPointerTy()) {
+        GenericValue rv;
+        int (*PF)(char *) = (int(*)(char *))(intptr_t)FPtr;
+        rv.IntVal = APInt(32, PF((char*)GVTOP(ArgValues[0])));
         return rv;
       }
       break;
@@ -514,7 +522,8 @@ GenericValue JIT::runFunction(Function *F,
     case Type::PPC_FP128TyID:
     case Type::X86_FP80TyID:
     case Type::FP128TyID:
-        C = ConstantFP::get(F->getContext(), APFloat(AV.IntVal));
+        C = ConstantFP::get(F->getContext(), APFloat(ArgTy->getFltSemantics(),
+                                                     AV.IntVal));
         break;
     case Type::PointerTyID:
       void *ArgPtr = GVTOP(AV);
@@ -711,6 +720,27 @@ void *JIT::getPointerToBasicBlock(BasicBlock *BB) {
   }
 }
 
+void *JIT::getPointerToNamedFunction(const std::string &Name,
+                                     bool AbortOnFailure){
+  if (!isSymbolSearchingDisabled()) {
+    void *ptr = JMM->getPointerToNamedFunction(Name, false);
+    if (ptr)
+      return ptr;
+  }
+
+  /// If a LazyFunctionCreator is installed, use it to get/create the function.
+  if (LazyFunctionCreator)
+    if (void *RP = LazyFunctionCreator(Name))
+      return RP;
+
+  if (AbortOnFailure) {
+    report_fatal_error("Program used external function '"+Name+
+                      "' which could not be resolved!");
+  }
+  return 0;
+}
+
+
 /// getOrEmitGlobalVariable - Return the address of the specified global
 /// variable, possibly emitting it to memory if needed.  This is used by the
 /// Emitter.
@@ -786,8 +816,8 @@ char* JIT::getMemoryForGV(const GlobalVariable* GV) {
   // through the memory manager which puts them near the code but not in the
   // same buffer.
   Type *GlobalType = GV->getType()->getElementType();
-  size_t S = getTargetData()->getTypeAllocSize(GlobalType);
-  size_t A = getTargetData()->getPreferredAlignment(GV);
+  size_t S = getDataLayout()->getTypeAllocSize(GlobalType);
+  size_t A = getDataLayout()->getPreferredAlignment(GV);
   if (GV->isThreadLocal()) {
     MutexGuard locked(lock);
     Ptr = TJI.allocateThreadLocalMemory(S);

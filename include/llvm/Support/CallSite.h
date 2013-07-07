@@ -26,11 +26,10 @@
 #ifndef LLVM_SUPPORT_CALLSITE_H
 #define LLVM_SUPPORT_CALLSITE_H
 
-#include "llvm/Attributes.h"
 #include "llvm/ADT/PointerIntPair.h"
-#include "llvm/BasicBlock.h"
-#include "llvm/CallingConv.h"
-#include "llvm/Instructions.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Instructions.h"
 
 namespace llvm {
 
@@ -79,9 +78,9 @@ public:
 
   InstrTy *getInstruction() const { return I.getPointer(); }
   InstrTy *operator->() const { return I.getPointer(); }
-  operator bool() const { return I.getPointer(); }
+  LLVM_EXPLICIT operator bool() const { return I.getPointer(); }
 
-  /// getCalledValue - Return the pointer to function that is being called...
+  /// getCalledValue - Return the pointer to function that is being called.
   ///
   ValTy *getCalledValue() const {
     assert(getInstruction() && "Not a call or invoke instruction!");
@@ -95,7 +94,7 @@ public:
     return dyn_cast<FunTy>(getCalledValue());
   }
 
-  /// setCalledFunction - Set the callee to the specified value...
+  /// setCalledFunction - Set the callee to the specified value.
   ///
   void setCalledFunction(Value *V) {
     assert(getInstruction() && "Not a call or invoke instruction!");
@@ -130,7 +129,7 @@ public:
   }
 
   /// arg_iterator - The type of iterator to use when looping over actual
-  /// arguments at this call site...
+  /// arguments at this call site.
   typedef IterTy arg_iterator;
 
   /// arg_begin/arg_end - Return iterators corresponding to the actual argument
@@ -177,21 +176,32 @@ public:
 
   /// getAttributes/setAttributes - get or set the parameter attributes of
   /// the call.
-  const AttrListPtr &getAttributes() const {
+  const AttributeSet &getAttributes() const {
     CALLSITE_DELEGATE_GETTER(getAttributes());
   }
-  void setAttributes(const AttrListPtr &PAL) {
+  void setAttributes(const AttributeSet &PAL) {
     CALLSITE_DELEGATE_SETTER(setAttributes(PAL));
   }
 
-  /// paramHasAttr - whether the call or the callee has the given attribute.
-  bool paramHasAttr(uint16_t i, Attributes attr) const {
-    CALLSITE_DELEGATE_GETTER(paramHasAttr(i, attr));
+  /// \brief Return true if this function has the given attribute.
+  bool hasFnAttr(Attribute::AttrKind A) const {
+    CALLSITE_DELEGATE_GETTER(hasFnAttr(A));
+  }
+
+  /// \brief Return true if the call or the callee has the given attribute.
+  bool paramHasAttr(unsigned i, Attribute::AttrKind A) const {
+    CALLSITE_DELEGATE_GETTER(paramHasAttr(i, A));
   }
 
   /// @brief Extract the alignment for a call or parameter (0=unknown).
   uint16_t getParamAlignment(uint16_t i) const {
     CALLSITE_DELEGATE_GETTER(getParamAlignment(i));
+  }
+
+  /// \brief Return true if the call should not be treated as a call to a
+  /// builtin.
+  bool isNoBuiltin() const {
+    CALLSITE_DELEGATE_GETTER(isNoBuiltin());
   }
 
   /// @brief Return true if the call should not be inlined.
@@ -206,32 +216,32 @@ public:
   bool doesNotAccessMemory() const {
     CALLSITE_DELEGATE_GETTER(doesNotAccessMemory());
   }
-  void setDoesNotAccessMemory(bool doesNotAccessMemory = true) {
-    CALLSITE_DELEGATE_SETTER(setDoesNotAccessMemory(doesNotAccessMemory));
+  void setDoesNotAccessMemory() {
+    CALLSITE_DELEGATE_SETTER(setDoesNotAccessMemory());
   }
 
   /// @brief Determine if the call does not access or only reads memory.
   bool onlyReadsMemory() const {
     CALLSITE_DELEGATE_GETTER(onlyReadsMemory());
   }
-  void setOnlyReadsMemory(bool onlyReadsMemory = true) {
-    CALLSITE_DELEGATE_SETTER(setOnlyReadsMemory(onlyReadsMemory));
+  void setOnlyReadsMemory() {
+    CALLSITE_DELEGATE_SETTER(setOnlyReadsMemory());
   }
 
   /// @brief Determine if the call cannot return.
   bool doesNotReturn() const {
     CALLSITE_DELEGATE_GETTER(doesNotReturn());
   }
-  void setDoesNotReturn(bool doesNotReturn = true) {
-    CALLSITE_DELEGATE_SETTER(setDoesNotReturn(doesNotReturn));
+  void setDoesNotReturn() {
+    CALLSITE_DELEGATE_SETTER(setDoesNotReturn());
   }
 
   /// @brief Determine if the call cannot unwind.
   bool doesNotThrow() const {
     CALLSITE_DELEGATE_GETTER(doesNotThrow());
   }
-  void setDoesNotThrow(bool doesNotThrow = true) {
-    CALLSITE_DELEGATE_SETTER(setDoesNotThrow(doesNotThrow));
+  void setDoesNotThrow() {
+    CALLSITE_DELEGATE_SETTER(setDoesNotThrow());
   }
 
 #undef CALLSITE_DELEGATE_GETTER
@@ -245,6 +255,15 @@ public:
   /// @brief Determine whether this argument is passed by value.
   bool isByValArgument(unsigned ArgNo) const {
     return paramHasAttr(ArgNo + 1, Attribute::ByVal);
+  }
+
+  bool doesNotAccessMemory(unsigned ArgNo) const {
+    return paramHasAttr(ArgNo + 1, Attribute::ReadNone);
+  }
+
+  bool onlyReadsMemory(unsigned ArgNo) const {
+    return paramHasAttr(ArgNo + 1, Attribute::ReadOnly) ||
+           paramHasAttr(ArgNo + 1, Attribute::ReadNone);
   }
 
   /// hasArgument - Returns true if this CallSite passes the given Value* as an

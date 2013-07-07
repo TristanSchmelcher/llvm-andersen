@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MEMORYOBJECT_H
-#define MEMORYOBJECT_H
+#ifndef LLVM_SUPPORT_MEMORYOBJECT_H
+#define LLVM_SUPPORT_MEMORYOBJECT_H
 
 #include "llvm/Support/DataTypes.h"
 
@@ -23,27 +23,27 @@ class MemoryObject {
 public:
   /// Destructor      - Override as necessary.
   virtual ~MemoryObject();
-  
+
   /// getBase         - Returns the lowest valid address in the region.
   ///
   /// @result         - The lowest valid address.
   virtual uint64_t getBase() const = 0;
-  
+
   /// getExtent       - Returns the size of the region in bytes.  (The region is
-  ///                   contiguous, so the highest valid address of the region 
+  ///                   contiguous, so the highest valid address of the region
   ///                   is getBase() + getExtent() - 1).
   ///
   /// @result         - The size of the region.
-  virtual uint64_t getExtent() = 0;
-  
+  virtual uint64_t getExtent() const = 0;
+
   /// readByte        - Tries to read a single byte from the region.
   ///
   /// @param address  - The address of the byte, in the same space as getBase().
   /// @param ptr      - A pointer to a byte to be filled in.  Must be non-NULL.
   /// @result         - 0 if successful; -1 if not.  Failure may be due to a
   ///                   bounds violation or an implementation-specific error.
-  virtual int readByte(uint64_t address, uint8_t* ptr) = 0;
-  
+  virtual int readByte(uint64_t address, uint8_t *ptr) const = 0;
+
   /// readBytes       - Tries to read a contiguous range of bytes from the
   ///                   region, up to the end of the region.
   ///                   You should override this function if there is a quicker
@@ -51,20 +51,14 @@ public:
   ///
   /// @param address  - The address of the first byte, in the same space as 
   ///                   getBase().
-  /// @param size     - The maximum number of bytes to copy.
+  /// @param size     - The number of bytes to copy.
   /// @param buf      - A pointer to a buffer to be filled in.  Must be non-NULL
   ///                   and large enough to hold size bytes.
-  /// @param copied   - A pointer to a nunber that is filled in with the number
-  ///                   of bytes actually read.  May be NULL.
   /// @result         - 0 if successful; -1 if not.  Failure may be due to a
   ///                   bounds violation or an implementation-specific error.
-  virtual int readBytes(uint64_t address,
-                        uint64_t size,
-                        uint8_t* buf,
-                        uint64_t* copied);
+  virtual int readBytes(uint64_t address, uint64_t size, uint8_t *buf) const;
 };
 
 }
 
 #endif
-

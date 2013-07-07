@@ -15,23 +15,21 @@
 #define PPC_TARGETMACHINE_H
 
 #include "PPCFrameLowering.h"
-#include "PPCSubtarget.h"
-#include "PPCJITInfo.h"
-#include "PPCInstrInfo.h"
 #include "PPCISelLowering.h"
+#include "PPCInstrInfo.h"
+#include "PPCJITInfo.h"
 #include "PPCSelectionDAGInfo.h"
+#include "PPCSubtarget.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetData.h"
 
 namespace llvm {
-class PassManager;
-class GlobalValue;
 
 /// PPCTargetMachine - Common code between 32-bit and 64-bit PowerPC targets.
 ///
 class PPCTargetMachine : public LLVMTargetMachine {
   PPCSubtarget        Subtarget;
-  const TargetData    DataLayout;       // Calculates type size & alignment
+  const DataLayout    DL;       // Calculates type size & alignment
   PPCInstrInfo        InstrInfo;
   PPCFrameLowering    FrameLowering;
   PPCJITInfo          JITInfo;
@@ -60,7 +58,7 @@ public:
     return &InstrInfo.getRegisterInfo();
   }
 
-  virtual const TargetData    *getTargetData() const    { return &DataLayout; }
+  virtual const DataLayout    *getDataLayout() const    { return &DL; }
   virtual const PPCSubtarget  *getSubtargetImpl() const { return &Subtarget; }
   virtual const InstrItineraryData *getInstrItineraryData() const {
     return &InstrItins;
@@ -70,6 +68,9 @@ public:
   virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);
   virtual bool addCodeEmitter(PassManagerBase &PM,
                               JITCodeEmitter &JCE);
+
+  /// \brief Register PPC analysis passes with a pass manager.
+  virtual void addAnalysisPasses(PassManagerBase &PM);
 };
 
 /// PPC32TargetMachine - PowerPC 32-bit target machine.

@@ -2,14 +2,6 @@
 # three small executables. This is done to minimize memory load in parallel
 # builds.  Please retain this ordering.
 
-# If polly exists and is not disabled compile it and add it to the LLVM tools.
-option(LLVM_BUILD_POLLY "Compile polly" ON)
-if( EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/polly/CMakeLists.txt )
-  if (LLVM_BUILD_POLLY)
-    add_subdirectory( ${CMAKE_CURRENT_SOURCE_DIR}/polly)
-  endif (LLVM_BUILD_POLLY)
-endif( EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/polly/CMakeLists.txt )
-
 if( NOT WIN32 OR MSYS OR CYGWIN )
   # We currently require 'sed' to build llvm-config, so don't try to build it
   # on pure Win32.
@@ -22,12 +14,10 @@ add_subdirectory(llvm-dis)
 add_subdirectory(llvm-mc)
 
 add_subdirectory(llc)
-add_subdirectory(llvm-ranlib)
 add_subdirectory(llvm-ar)
 add_subdirectory(llvm-nm)
 add_subdirectory(llvm-size)
 
-add_subdirectory(llvm-ld)
 add_subdirectory(llvm-cov)
 add_subdirectory(llvm-prof)
 add_subdirectory(llvm-link)
@@ -37,13 +27,23 @@ add_subdirectory(llvm-extract)
 add_subdirectory(llvm-diff)
 add_subdirectory(macho-dump)
 add_subdirectory(llvm-objdump)
+add_subdirectory(llvm-readobj)
 add_subdirectory(llvm-rtdyld)
 add_subdirectory(llvm-dwarfdump)
+if( LLVM_USE_INTEL_JITEVENTS )
+  add_subdirectory(llvm-jitlistener)
+endif( LLVM_USE_INTEL_JITEVENTS )
 
 add_subdirectory(bugpoint)
 add_subdirectory(bugpoint-passes)
 add_subdirectory(llvm-bcanalyzer)
-add_subdirectory(llvm-stub)
+add_subdirectory(llvm-stress)
+add_subdirectory(llvm-mcmarkup)
+
+add_subdirectory(llvm-symbolizer)
+
+add_subdirectory(obj2yaml)
+add_subdirectory(yaml2obj)
 
 if( NOT WIN32 )
   add_subdirectory(lto)
@@ -51,19 +51,18 @@ endif()
 
 if( LLVM_ENABLE_PIC )
   # TODO: support other systems:
-  if( CMAKE_SYSTEM_NAME STREQUAL "Linux" )
+  if( (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      OR (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD") )
     add_subdirectory(gold)
   endif()
 endif()
 
-set(LLVM_CLANG_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/clang" CACHE PATH "Path to Clang source directory")
+add_llvm_external_project(clang)
 
-if (NOT ${LLVM_CLANG_SOURCE_DIR} STREQUAL ""
-    AND EXISTS ${LLVM_CLANG_SOURCE_DIR}/CMakeLists.txt)
-  option(LLVM_BUILD_CLANG "Whether to build Clang as part of LLVM" ON)
-  if (${LLVM_BUILD_CLANG})
-    add_subdirectory(${LLVM_CLANG_SOURCE_DIR} clang)
-  endif()
-endif ()
+if( NOT LLVM_INCLUDE_TOOLS STREQUAL "bootstrap-only" )
+  add_llvm_external_project(lld)
+  add_llvm_external_project(lldb)
+  add_llvm_external_project(polly)
+endif()
 
 set(LLVM_COMMON_DEPENDS ${LLVM_COMMON_DEPENDS} PARENT_SCOPE)

@@ -1,4 +1,4 @@
-; RUN: llc < %s | FileCheck %s
+; RUN: llc < %s -mcpu=nehalem | FileCheck %s
 target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64-S128"
 target triple = "x86_64-apple-macosx10.7"
 
@@ -55,10 +55,10 @@ while.end:
 ; instructions, they are still dependent on themselves.
 ; CHECK: xorps [[XMM1:%xmm[0-9]+]]
 ; CHECK: , [[XMM1]]
-; CHECK: cvtsi2ss %{{.*}}, [[XMM1]]
+; CHECK: cvtsi2ssl %{{.*}}, [[XMM1]]
 ; CHECK: xorps [[XMM2:%xmm[0-9]+]]
 ; CHECK: , [[XMM2]]
-; CHECK: cvtsi2ss %{{.*}}, [[XMM2]]
+; CHECK: cvtsi2ssl %{{.*}}, [[XMM2]]
 ;
 define float @f2(i32 %m) nounwind uwtable readnone ssp {
 entry:

@@ -9,23 +9,23 @@
 //
 // This file implements the Aggressive Dead Code Elimination pass.  This pass
 // optimistically assumes that all instructions are dead until proven otherwise,
-// allowing it to eliminate dead computations that other DCE passes do not 
+// allowing it to eliminate dead computations that other DCE passes do not
 // catch, particularly involving loop computations.
 //
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "adce"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/BasicBlock.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Pass.h"
-#include "llvm/Support/CFG.h"
-#include "llvm/Support/InstIterator.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/CFG.h"
+#include "llvm/Support/InstIterator.h"
 using namespace llvm;
 
 STATISTIC(NumRemoved, "Number of instructions removed");
@@ -36,13 +36,13 @@ namespace {
     ADCE() : FunctionPass(ID) {
       initializeADCEPass(*PassRegistry::getPassRegistry());
     }
-    
+
     virtual bool runOnFunction(Function& F);
-    
+
     virtual void getAnalysisUsage(AnalysisUsage& AU) const {
       AU.setPreservesCFG();
     }
-    
+
   };
 }
 
@@ -52,7 +52,7 @@ INITIALIZE_PASS(ADCE, "adce", "Aggressive Dead Code Elimination", false, false)
 bool ADCE::runOnFunction(Function& F) {
   SmallPtrSet<Instruction*, 128> alive;
   SmallVector<Instruction*, 128> worklist;
-  
+
   // Collect the set of "root" instructions that are known live.
   for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I)
     if (isa<TerminatorInst>(I.getInstructionIterator()) ||
@@ -62,7 +62,7 @@ bool ADCE::runOnFunction(Function& F) {
       alive.insert(I.getInstructionIterator());
       worklist.push_back(I.getInstructionIterator());
     }
-  
+
   // Propagate liveness backwards to operands.
   while (!worklist.empty()) {
     Instruction* curr = worklist.pop_back_val();
@@ -72,7 +72,7 @@ bool ADCE::runOnFunction(Function& F) {
         if (alive.insert(Inst))
           worklist.push_back(Inst);
   }
-  
+
   // The inverse of the live set is the dead set.  These are those instructions
   // which have no side effects and do not influence the control flow or return
   // value of the function, and may therefore be deleted safely.
@@ -82,8 +82,8 @@ bool ADCE::runOnFunction(Function& F) {
       worklist.push_back(I.getInstructionIterator());
       I->dropAllReferences();
     }
-  
-  for (SmallVector<Instruction*, 1024>::iterator I = worklist.begin(),
+
+  for (SmallVectorImpl<Instruction *>::iterator I = worklist.begin(),
        E = worklist.end(); I != E; ++I) {
     ++NumRemoved;
     (*I)->eraseFromParent();

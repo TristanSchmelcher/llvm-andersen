@@ -23,6 +23,7 @@ class GetElementPtrInst;
 class PassInfo;
 class TerminatorInst;
 class TargetLowering;
+class TargetMachine;
 
 //===----------------------------------------------------------------------===//
 //
@@ -70,11 +71,20 @@ FunctionPass *createAggressiveDCEPass();
 
 //===----------------------------------------------------------------------===//
 //
+// SROA - Replace aggregates or pieces of aggregates with scalar SSA values.
+//
+FunctionPass *createSROAPass(bool RequiresDomTree = true);
+
+//===----------------------------------------------------------------------===//
+//
 // ScalarReplAggregates - Break up alloca's of aggregates into multiple allocas
 // if possible.
 //
 FunctionPass *createScalarReplAggregatesPass(signed Threshold = -1,
-                                             bool UseDomTree = true);
+                                             bool UseDomTree = true,
+                                             signed StructMemberThreshold = -1,
+                                             signed ArrayElementThreshold = -1,
+                                             signed ScalarLoadThreshold = -1);
 
 //===----------------------------------------------------------------------===//
 //
@@ -106,13 +116,11 @@ Pass *createLICMPass();
 //===----------------------------------------------------------------------===//
 //
 // LoopStrengthReduce - This pass is strength reduces GEP instructions that use
-// a loop's canonical induction variable as one of their indices.  It takes an
-// optional parameter used to consult the target machine whether certain
-// transformations are profitable.
+// a loop's canonical induction variable as one of their indices.
 //
-Pass *createLoopStrengthReducePass(const TargetLowering *TLI = 0);
+Pass *createLoopStrengthReducePass();
 
-Pass *createGlobalMergePass(const TargetLowering *TLI = 0);
+Pass *createGlobalMergePass(const TargetMachine *TM = 0);
 
 //===----------------------------------------------------------------------===//
 //
@@ -192,6 +200,12 @@ FunctionPass *createCFGSimplificationPass();
 
 //===----------------------------------------------------------------------===//
 //
+// CFG Structurization - Remove irreducible control flow
+//
+Pass *createStructurizeCFGPass();
+
+//===----------------------------------------------------------------------===//
+//
 // BreakCriticalEdges - Break all of the critical edges in the CFG by inserting
 // a dummy basic block. This pass may be "required" by passes that cannot deal
 // with critical edges. For this usage, a pass must call:
@@ -240,9 +254,8 @@ extern char &LowerSwitchID;
 // purpose "my LLVM-to-LLVM pass doesn't support the invoke instruction yet"
 // lowering pass.
 //
-FunctionPass *createLowerInvokePass(const TargetLowering *TLI = 0);
-FunctionPass *createLowerInvokePass(const TargetLowering *TLI,
-                                    bool useExpensiveEHSupport);
+FunctionPass *createLowerInvokePass(const TargetMachine *TM = 0,
+                                    bool useExpensiveEHSupport = false);
 extern char &LowerInvokePassID;
 
 //===----------------------------------------------------------------------===//
@@ -290,15 +303,9 @@ Pass *createLoopDeletionPass();
   
 //===----------------------------------------------------------------------===//
 //
-/// createSimplifyLibCallsPass - This pass optimizes specific calls to
-/// specific well-known (library) functions.
-FunctionPass *createSimplifyLibCallsPass();
-
-//===----------------------------------------------------------------------===//
-//
 // CodeGenPrepare - This pass prepares a function for instruction selection.
 //
-FunctionPass *createCodeGenPreparePass(const TargetLowering *TLI = 0);
+FunctionPass *createCodeGenPreparePass(const TargetMachine *TM = 0);
 
 //===----------------------------------------------------------------------===//
 //
@@ -327,30 +334,6 @@ Pass *createCorrelatedValuePropagationPass();
 
 //===----------------------------------------------------------------------===//
 //
-// ObjCARCAPElim - ObjC ARC autorelease pool elimination.
-//
-Pass *createObjCARCAPElimPass();
-
-//===----------------------------------------------------------------------===//
-//
-// ObjCARCExpand - ObjC ARC preliminary simplifications.
-//
-Pass *createObjCARCExpandPass();
-
-//===----------------------------------------------------------------------===//
-//
-// ObjCARCContract - Late ObjC ARC cleanups.
-//
-Pass *createObjCARCContractPass();
-
-//===----------------------------------------------------------------------===//
-//
-// ObjCARCOpt - ObjC ARC optimization.
-//
-Pass *createObjCARCOptPass();
-
-//===----------------------------------------------------------------------===//
-//
 // InstructionSimplifier - Remove redundant instructions.
 //
 FunctionPass *createInstructionSimplifierPass();
@@ -359,7 +342,7 @@ extern char &InstructionSimplifierID;
 
 //===----------------------------------------------------------------------===//
 //
-// LowerExpectIntriniscs - Removes llvm.expect intrinsics and creates
+// LowerExpectIntrinsics - Removes llvm.expect intrinsics and creates
 // "block_weights" metadata.
 FunctionPass *createLowerExpectIntrinsicPass();
 

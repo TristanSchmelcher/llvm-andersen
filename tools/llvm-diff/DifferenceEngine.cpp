@@ -13,22 +13,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "DifferenceEngine.h"
-
-#include "llvm/Constants.h"
-#include "llvm/Function.h"
-#include "llvm/Instructions.h"
-#include "llvm/Module.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
-#include "llvm/Support/CallSite.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CFG.h"
+#include "llvm/Support/CallSite.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/type_traits.h"
-
 #include <utility>
 
 using namespace llvm;
@@ -318,14 +316,18 @@ class FunctionDifferenceEngine {
 
       bool Difference = false;
 
-      DenseMap<ConstantInt*,BasicBlock*> LCases;
-      for (unsigned I = 0, E = LI->getNumCases(); I != E; ++I)
-        LCases[LI->getCaseValue(I)] = LI->getCaseSuccessor(I);
-      for (unsigned I = 0, E = RI->getNumCases(); I != E; ++I) {
-        ConstantInt *CaseValue = RI->getCaseValue(I);
+      DenseMap<Constant*, BasicBlock*> LCases;
+      
+      for (SwitchInst::CaseIt I = LI->case_begin(), E = LI->case_end();
+           I != E; ++I)
+        LCases[I.getCaseValueEx()] = I.getCaseSuccessor();
+        
+      for (SwitchInst::CaseIt I = RI->case_begin(), E = RI->case_end();
+           I != E; ++I) {
+        IntegersSubset CaseValue = I.getCaseValueEx();
         BasicBlock *LCase = LCases[CaseValue];
         if (LCase) {
-          if (TryUnify) tryUnify(LCase, RI->getCaseSuccessor(I));
+          if (TryUnify) tryUnify(LCase, I.getCaseSuccessor());
           LCases.erase(CaseValue);
         } else if (Complain || !Difference) {
           if (Complain)
@@ -334,7 +336,7 @@ class FunctionDifferenceEngine {
         }
       }
       if (!Difference)
-        for (DenseMap<ConstantInt*,BasicBlock*>::iterator
+        for (DenseMap<Constant*, BasicBlock*>::iterator
                I = LCases.begin(), E = LCases.end(); I != E; ++I) {
           if (Complain)
             Engine.logf("left switch has extra case %l") << I->first;

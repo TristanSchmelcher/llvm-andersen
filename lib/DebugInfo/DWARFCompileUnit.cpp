@@ -9,7 +9,7 @@
 
 #include "DWARFCompileUnit.h"
 #include "DWARFContext.h"
-#include "DWARFFormValue.h"
+#include "llvm/DebugInfo/DWARFFormValue.h"
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
@@ -17,8 +17,7 @@ using namespace llvm;
 using namespace dwarf;
 
 DataExtractor DWARFCompileUnit::getDebugInfoExtractor() const {
-  return DataExtractor(Context.getInfoSection(),
-                       Context.isLittleEndian(), getAddressByteSize());
+  return DataExtractor(InfoSection, isLittleEndian, AddrSize);
 }
 
 bool DWARFCompileUnit::extract(DataExtractor debug_info, uint32_t *offset_ptr) {
@@ -28,7 +27,6 @@ bool DWARFCompileUnit::extract(DataExtractor debug_info, uint32_t *offset_ptr) {
 
   if (debug_info.isValidOffset(*offset_ptr)) {
     uint64_t abbrOffset;
-    const DWARFDebugAbbrev *abbr = Context.getDebugAbbrev();
     Length = debug_info.getU32(offset_ptr);
     Version = debug_info.getU16(offset_ptr);
     abbrOffset = debug_info.getU32(offset_ptr);
@@ -36,11 +34,11 @@ bool DWARFCompileUnit::extract(DataExtractor debug_info, uint32_t *offset_ptr) {
 
     bool lengthOK = debug_info.isValidOffset(getNextCompileUnitOffset()-1);
     bool versionOK = DWARFContext::isSupportedVersion(Version);
-    bool abbrOffsetOK = Context.getAbbrevSection().size() > abbrOffset;
+    bool abbrOffsetOK = AbbrevSection.size() > abbrOffset;
     bool addrSizeOK = AddrSize == 4 || AddrSize == 8;
 
-    if (lengthOK && versionOK && addrSizeOK && abbrOffsetOK && abbr != NULL) {
-      Abbrevs = abbr->getAbbreviationDeclarationSet(abbrOffset);
+    if (lengthOK && versionOK && addrSizeOK && abbrOffsetOK && Abbrev != NULL) {
+      Abbrevs = Abbrev->getAbbreviationDeclarationSet(abbrOffset);
       return true;
     }
 
@@ -63,7 +61,7 @@ DWARFCompileUnit::extract(uint32_t offset, DataExtractor debug_info_data,
     Version = debug_info_data.getU16(&offset);
     bool abbrevsOK = debug_info_data.getU32(&offset) == abbrevs->getOffset();
     Abbrevs = abbrevs;
-    AddrSize = debug_info_data.getU8 (&offset);
+    AddrSize = debug_info_data.getU8(&offset);
 
     bool versionOK = DWARFContext::isSupportedVersion(Version);
     bool addrSizeOK = AddrSize == 4 || AddrSize == 8;
@@ -75,6 +73,14 @@ DWARFCompileUnit::extract(uint32_t offset, DataExtractor debug_info_data,
   return 0;
 }
 
+bool DWARFCompileUnit::extractRangeList(uint32_t RangeListOffset,
+                                        DWARFDebugRangeList &RangeList) const {
+  // Require that compile unit is extracted.
+  assert(DieArray.size() > 0);
+  DataExtractor RangesData(RangeSection, isLittleEndian, AddrSize);
+  return RangeList.extract(RangesData, &RangeListOffset);
+}
+
 void DWARFCompileUnit::clear() {
   Offset = 0;
   Length = 0;
@@ -82,7 +88,7 @@ void DWARFCompileUnit::clear() {
   Abbrevs = 0;
   AddrSize = 0;
   BaseAddr = 0;
-  DieArray.clear();
+  clearDIEs(false);
 }
 
 void DWARFCompileUnit::dump(raw_ostream &OS) {
@@ -94,7 +100,16 @@ void DWARFCompileUnit::dump(raw_ostream &OS) {
      << " (next CU at " << format("0x%08x", getNextCompileUnitOffset())
      << ")\n";
 
-  getCompileUnitDIE(false)->dump(OS, this, -1U);
+  const DWARFDebugInfoEntryMinimal *CU = getCompileUnitDIE(false);
+  assert(CU && "Null Compile Unit?");
+  CU->dump(OS, this, -1U);
+}
+
+const char *DWARFCompileUnit::getCompilationDir() {
+  extractDIEsIfNeeded(true);
+  if (DieArray.empty())
+    return 0;
+  return DieArray[0].getAttributeValueAsString(this, DW_AT_comp_dir, 0);
 }
 
 void DWARFCompileUnit::setDIERelations() {
@@ -150,7 +165,7 @@ size_t DWARFCompileUnit::extractDIEsIfNeeded(bool cu_die_only) {
   // we were told to parse
 
   const uint8_t *fixed_form_sizes =
-    DWARFFormValue::getFixedFormSizesForAddressSize(getAddressByteSize());
+    DWARFFormValue::getFixedFormSizes(getAddressByteSize(), getVersion());
 
   while (offset < next_cu_offset &&
          die.extractFast(this, fixed_form_sizes, &offset)) {
@@ -167,11 +182,11 @@ size_t DWARFCompileUnit::extractDIEsIfNeeded(bool cu_die_only) {
       addDIE(die);
       return 1;
     }
-    else if (depth == 0 && initial_die_array_size == 1) {
+    else if (depth == 0 && initial_die_array_size == 1)
       // Don't append the CU die as we already did that
-    } else {
-      addDIE (die);
-    }
+      ;
+    else
+      addDIE(die);
 
     const DWARFAbbreviationDeclaration *abbrDecl =
       die.getAbbreviationDeclarationPtr();
@@ -192,16 +207,16 @@ size_t DWARFCompileUnit::extractDIEsIfNeeded(bool cu_die_only) {
   // Give a little bit of info if we encounter corrupt DWARF (our offset
   // should always terminate at or before the start of the next compilation
   // unit header).
-  if (offset > next_cu_offset) {
-    fprintf (stderr, "warning: DWARF compile unit extends beyond its bounds cu 0x%8.8x at 0x%8.8x'\n", getOffset(), offset);
-  }
+  if (offset > next_cu_offset)
+    fprintf(stderr, "warning: DWARF compile unit extends beyond its "
+                    "bounds cu 0x%8.8x at 0x%8.8x'\n", getOffset(), offset);
 
   setDIERelations();
   return DieArray.size();
 }
 
 void DWARFCompileUnit::clearDIEs(bool keep_compile_unit_die) {
-  if (DieArray.size() > 1) {
+  if (DieArray.size() > (unsigned)keep_compile_unit_die) {
     // std::vectors never get any smaller when resized to a smaller size,
     // or when clear() or erase() are called, the size will report that it
     // is smaller, but the memory allocated remains intact (call capacity()
@@ -227,12 +242,31 @@ DWARFCompileUnit::buildAddressRangeTable(DWARFDebugAranges *debug_aranges,
   // all compile units to stay loaded when they weren't needed. So we can end
   // up parsing the DWARF and then throwing them all away to keep memory usage
   // down.
-  const bool clear_dies = extractDIEsIfNeeded(false) > 1;
-
+  const bool clear_dies = extractDIEsIfNeeded(false) > 1 &&
+                          clear_dies_if_already_not_parsed;
   DieArray[0].buildAddressRangeTable(this, debug_aranges);
 
   // Keep memory down by clearing DIEs if this generate function
   // caused them to be parsed.
   if (clear_dies)
     clearDIEs(true);
+}
+
+DWARFDebugInfoEntryMinimal::InlinedChain
+DWARFCompileUnit::getInlinedChainForAddress(uint64_t Address) {
+  // First, find a subprogram that contains the given address (the root
+  // of inlined chain).
+  extractDIEsIfNeeded(false);
+  const DWARFDebugInfoEntryMinimal *SubprogramDIE = 0;
+  for (size_t i = 0, n = DieArray.size(); i != n; i++) {
+    if (DieArray[i].isSubprogramDIE() &&
+        DieArray[i].addressRangeContainsAddress(this, Address)) {
+      SubprogramDIE = &DieArray[i];
+      break;
+    }
+  }
+  // Get inlined chain rooted at this subprogram DIE.
+  if (!SubprogramDIE)
+    return DWARFDebugInfoEntryMinimal::InlinedChain();
+  return SubprogramDIE->getInlinedChainForAddress(this, Address);
 }

@@ -12,19 +12,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
-#include "llvm/Bitcode/Archive.h"
+#include "Archive.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
+#include <cstdlib>
+#include <fcntl.h>
 #include <memory>
-#include <fstream>
+
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#include <unistd.h>
+#else
+#include <io.h>
+#endif
+
 using namespace llvm;
 
 // Option for compatibility with AIX, not used but must allow it to be present.
@@ -50,7 +58,7 @@ static cl::extrahelp MoreHelp(
   "  m[abiSs]     - move file(s) in the archive\n"
   "  p[kN]        - print file(s) found in the archive\n"
   "  q[ufsS]      - quick append file(s) to the archive\n"
-  "  r[abfiuzRsS] - replace or insert file(s) into the archive\n"
+  "  r[abfiuRsS]  - replace or insert file(s) into the archive\n"
   "  t            - display contents of archive\n"
   "  x[No]        - extract file(s) from the archive\n"
   "\nMODIFIERS (operation specific):\n"
@@ -66,7 +74,6 @@ static cl::extrahelp MoreHelp(
   "  [s] - create an archive index (cf. ranlib)\n"
   "  [S] - do not build a symbol table\n"
   "  [u] - update only files newer than archive contents\n"
-  "  [z] - compress files before inserting/extracting\n"
   "\nMODIFIERS (generic):\n"
   "  [c] - do not warn if the library had to be created\n"
   "  [v] - be verbose about actions taken\n"
@@ -76,7 +83,6 @@ static cl::extrahelp MoreHelp(
 // This enumeration delineates the kinds of operations on an archive
 // that are permitted.
 enum ArchiveOperation {
-  NoOperation,      ///< An operation hasn't been specified
   Print,            ///< Print the contents of the archive
   Delete,           ///< Delete the specified members
   Move,             ///< Move members to end or as given by {a,b,i} modifiers
@@ -92,16 +98,12 @@ bool AddBefore = false;          ///< 'b' modifier
 bool Create = false;             ///< 'c' modifier
 bool TruncateNames = false;      ///< 'f' modifier
 bool InsertBefore = false;       ///< 'i' modifier
-bool DontSkipBitcode = false;    ///< 'k' modifier
 bool UseCount = false;           ///< 'N' modifier
 bool OriginalDates = false;      ///< 'o' modifier
 bool FullPath = false;           ///< 'P' modifier
-bool RecurseDirectories = false; ///< 'R' modifier
 bool SymTable = true;            ///< 's' & 'S' modifiers
 bool OnlyUpdate = false;         ///< 'u' modifier
 bool Verbose = false;            ///< 'v' modifier
-bool ReallyVerbose = false;      ///< 'V' modifier
-bool Compression = false;        ///< 'z' modifier
 
 // Relative Positional Argument (for insert/move). This variable holds
 // the name of the archive member to which the 'a', 'b' or 'i' modifier
@@ -123,45 +125,62 @@ std::vector<std::string> Members;
 
 // This variable holds the (possibly expanded) list of path objects that
 // correspond to files we will
-std::set<sys::Path> Paths;
+std::set<std::string> Paths;
 
 // The Archive object to which all the editing operations will be sent.
 Archive* TheArchive = 0;
 
+// The name this program was invoked as.
+static const char *program_name;
+
+// show_help - Show the error message, the help message and exit.
+LLVM_ATTRIBUTE_NORETURN static void
+show_help(const std::string &msg) {
+  errs() << program_name << ": " << msg << "\n\n";
+  cl::PrintHelpMessage();
+  if (TheArchive)
+    delete TheArchive;
+  std::exit(1);
+}
+
+// fail - Show the error message and exit.
+LLVM_ATTRIBUTE_NORETURN static void
+fail(const std::string &msg) {
+  errs() << program_name << ": " << msg << "\n\n";
+  if (TheArchive)
+    delete TheArchive;
+  std::exit(1);
+}
+
 // getRelPos - Extract the member filename from the command line for
 // the [relpos] argument associated with a, b, and i modifiers
 void getRelPos() {
-  if(RestOfArgs.size() > 0) {
-    RelPos = RestOfArgs[0];
-    RestOfArgs.erase(RestOfArgs.begin());
-  }
-  else
-    throw "Expected [relpos] for a, b, or i modifier";
+  if(RestOfArgs.size() == 0)
+    show_help("Expected [relpos] for a, b, or i modifier");
+  RelPos = RestOfArgs[0];
+  RestOfArgs.erase(RestOfArgs.begin());
 }
 
 // getCount - Extract the [count] argument associated with the N modifier
 // from the command line and check its value.
 void getCount() {
-  if(RestOfArgs.size() > 0) {
-    Count = atoi(RestOfArgs[0].c_str());
-    RestOfArgs.erase(RestOfArgs.begin());
-  }
-  else
-    throw "Expected [count] value with N modifier";
+  if(RestOfArgs.size() == 0)
+    show_help("Expected [count] value with N modifier");
+
+  Count = atoi(RestOfArgs[0].c_str());
+  RestOfArgs.erase(RestOfArgs.begin());
 
   // Non-positive counts are not allowed
   if (Count < 1)
-    throw "Invalid [count] value (not a positive integer)";
+    show_help("Invalid [count] value (not a positive integer)");
 }
 
 // getArchive - Get the archive file name from the command line
 void getArchive() {
-  if(RestOfArgs.size() > 0) {
-    ArchiveName = RestOfArgs[0];
-    RestOfArgs.erase(RestOfArgs.begin());
-  }
-  else
-    throw "An archive name must be specified.";
+  if(RestOfArgs.size() == 0)
+    show_help("An archive name must be specified");
+  ArchiveName = RestOfArgs[0];
+  RestOfArgs.erase(RestOfArgs.begin());
 }
 
 // getMembers - Copy over remaining items in RestOfArgs to our Members vector
@@ -185,7 +204,7 @@ ArchiveOperation parseCommandLine() {
   unsigned NumPositional = 0;
 
   // Keep track of which operation was requested
-  ArchiveOperation Operation = NoOperation;
+  ArchiveOperation Operation;
 
   for(unsigned i=0; i<Options.size(); ++i) {
     switch(Options[i]) {
@@ -198,17 +217,13 @@ ArchiveOperation parseCommandLine() {
     case 'x': ++NumOperations; Operation = Extract; break;
     case 'c': Create = true; break;
     case 'f': TruncateNames = true; break;
-    case 'k': DontSkipBitcode = true; break;
     case 'l': /* accepted but unused */ break;
     case 'o': OriginalDates = true; break;
+    case 's': break; // Ignore for now.
+    case 'S': break; // Ignore for now.
     case 'P': FullPath = true; break;
-    case 'R': RecurseDirectories = true; break;
-    case 's': SymTable = true; break;
-    case 'S': SymTable = false; break;
     case 'u': OnlyUpdate = true; break;
     case 'v': Verbose = true; break;
-    case 'V': Verbose = ReallyVerbose = true; break;
-    case 'z': Compression = true; break;
     case 'a':
       getRelPos();
       AddAfter = true;
@@ -243,63 +258,28 @@ ArchiveOperation parseCommandLine() {
   // Perform various checks on the operation/modifier specification
   // to make sure we are dealing with a legal request.
   if (NumOperations == 0)
-    throw "You must specify at least one of the operations";
+    show_help("You must specify at least one of the operations");
   if (NumOperations > 1)
-    throw "Only one operation may be specified";
+    show_help("Only one operation may be specified");
   if (NumPositional > 1)
-    throw "You may only specify one of a, b, and i modifiers";
-  if (AddAfter || AddBefore || InsertBefore)
+    show_help("You may only specify one of a, b, and i modifiers");
+  if (AddAfter || AddBefore || InsertBefore) {
     if (Operation != Move && Operation != ReplaceOrInsert)
-      throw "The 'a', 'b' and 'i' modifiers can only be specified with "
-            "the 'm' or 'r' operations";
-  if (RecurseDirectories && Operation != ReplaceOrInsert)
-    throw "The 'R' modifiers is only applicabe to the 'r' operation";
+      show_help("The 'a', 'b' and 'i' modifiers can only be specified with "
+            "the 'm' or 'r' operations");
+  }
   if (OriginalDates && Operation != Extract)
-    throw "The 'o' modifier is only applicable to the 'x' operation";
+    show_help("The 'o' modifier is only applicable to the 'x' operation");
   if (TruncateNames && Operation!=QuickAppend && Operation!=ReplaceOrInsert)
-    throw "The 'f' modifier is only applicable to the 'q' and 'r' operations";
+    show_help("The 'f' modifier is only applicable to the 'q' and 'r' "
+              "operations");
   if (OnlyUpdate && Operation != ReplaceOrInsert)
-    throw "The 'u' modifier is only applicable to the 'r' operation";
-  if (Compression && Operation!=ReplaceOrInsert && Operation!=Extract)
-    throw "The 'z' modifier is only applicable to the 'r' and 'x' operations";
+    show_help("The 'u' modifier is only applicable to the 'r' operation");
   if (Count > 1 && Members.size() > 1)
-    throw "Only one member name may be specified with the 'N' modifier";
+    show_help("Only one member name may be specified with the 'N' modifier");
 
   // Return the parsed operation to the caller
   return Operation;
-}
-
-// recurseDirectories - Implements the "R" modifier. This function scans through
-// the Paths vector (built by buildPaths, below) and replaces any directories it
-// finds with all the files in that directory (recursively). It uses the
-// sys::Path::getDirectoryContent method to perform the actual directory scans.
-bool
-recurseDirectories(const sys::Path& path,
-                   std::set<sys::Path>& result, std::string* ErrMsg) {
-  result.clear();
-  if (RecurseDirectories) {
-    std::set<sys::Path> content;
-    if (path.getDirectoryContents(content, ErrMsg))
-      return true;
-
-    for (std::set<sys::Path>::iterator I = content.begin(), E = content.end();
-         I != E; ++I) {
-      // Make sure it exists and is a directory
-      sys::PathWithStatus PwS(*I);
-      const sys::FileStatus *Status = PwS.getFileStatus(false, ErrMsg);
-      if (!Status)
-        return true;
-      if (Status->isDir) {
-        std::set<sys::Path> moreResults;
-        if (recurseDirectories(*I, moreResults, ErrMsg))
-          return true;
-        result.insert(moreResults.begin(), moreResults.end());
-      } else {
-          result.insert(*I);
-      }
-    }
-  }
-  return false;
 }
 
 // buildPaths - Convert the strings in the Members vector to sys::Path objects
@@ -307,42 +287,21 @@ recurseDirectories(const sys::Path& path,
 // the operations that add/replace files to the archive ('q' and 'r')
 bool buildPaths(bool checkExistence, std::string* ErrMsg) {
   for (unsigned i = 0; i < Members.size(); i++) {
-    sys::Path aPath;
-    if (!aPath.set(Members[i]))
-      throw std::string("File member name invalid: ") + Members[i];
+    std::string aPath = Members[i];
     if (checkExistence) {
-      bool Exists;
-      if (sys::fs::exists(aPath.str(), Exists) || !Exists)
-        throw std::string("File does not exist: ") + Members[i];
-      std::string Err;
-      sys::PathWithStatus PwS(aPath);
-      const sys::FileStatus *si = PwS.getFileStatus(false, &Err);
-      if (!si)
-        throw Err;
-      if (si->isDir) {
-        std::set<sys::Path> dirpaths;
-        if (recurseDirectories(aPath, dirpaths, ErrMsg))
-          return true;
-        Paths.insert(dirpaths.begin(),dirpaths.end());
-      } else {
-        Paths.insert(aPath);
-      }
+      bool IsDirectory;
+      error_code EC = sys::fs::is_directory(aPath, IsDirectory);
+      if (EC)
+        fail(aPath + ": " + EC.message());
+      if (IsDirectory)
+        fail(aPath + " Is a directory");
+
+      Paths.insert(aPath);
     } else {
       Paths.insert(aPath);
     }
   }
   return false;
-}
-
-// printSymbolTable - print out the archive's symbol table.
-void printSymbolTable() {
-  outs() << "\nArchive Symbol Table:\n";
-  const Archive::SymTabType& symtab = TheArchive->getSymbolTable();
-  for (Archive::SymTabType::const_iterator I=symtab.begin(), E=symtab.end();
-       I != E; ++I ) {
-    unsigned offset = TheArchive->getFirstFileOffset() + I->second;
-    outs() << " " << format("%9u", offset) << "\t" << I->first <<"\n";
-  }
 }
 
 // doPrint - Implements the 'p' operation. This function traverses the archive
@@ -361,8 +320,7 @@ bool doPrint(std::string* ErrMsg) {
         const char* data = reinterpret_cast<const char*>(I->getData());
 
         // Skip things that don't make sense to print
-        if (I->isLLVMSymbolTable() || I->isSVR4SymbolTable() ||
-            I->isBSD4SymbolTable() || (!DontSkipBitcode && I->isBitcode()))
+        if (I->isSVR4SymbolTable() || I->isBSD4SymbolTable())
           continue;
 
         if (Verbose)
@@ -411,12 +369,7 @@ doDisplayTable(std::string* ErrMsg) {
       if (Verbose) {
         // FIXME: Output should be this format:
         // Zrw-r--r--  500/ 500    525 Nov  8 17:42 2004 Makefile
-        if (I->isBitcode())
-          outs() << "b";
-        else if (I->isCompressed())
-          outs() << "Z";
-        else
-          outs() << " ";
+        outs() << " ";
         unsigned mode = I->getMode();
         printMode((mode >> 6) & 007);
         printMode((mode >> 3) & 007);
@@ -431,13 +384,11 @@ doDisplayTable(std::string* ErrMsg) {
       }
     }
   }
-  if (ReallyVerbose)
-    printSymbolTable();
   return false;
 }
 
 // doExtract - Implement the 'x' operation. This function extracts files back to
-// the file system, making sure to uncompress any that were compressed
+// the file system.
 bool
 doExtract(std::string* ErrMsg) {
   if (buildPaths(false, ErrMsg))
@@ -447,31 +398,43 @@ doExtract(std::string* ErrMsg) {
     if (Paths.empty() ||
         (std::find(Paths.begin(), Paths.end(), I->getPath()) != Paths.end())) {
 
-      // Make sure the intervening directories are created
-      if (I->hasPath()) {
-        sys::Path dirs(I->getPath());
-        dirs.eraseComponent();
-        if (dirs.createDirectoryOnDisk(/*create_parents=*/true, ErrMsg))
-          return true;
+      // Open up a file stream for writing
+      int OpenFlags = O_TRUNC | O_WRONLY | O_CREAT;
+#ifdef O_BINARY
+      OpenFlags |= O_BINARY;
+#endif
+
+      int FD = open(I->getPath().str().c_str(), OpenFlags, 0664);
+      if (FD < 0)
+        return true;
+
+      {
+        raw_fd_ostream file(FD, false);
+
+        // Get the data and its length
+        const char* data = reinterpret_cast<const char*>(I->getData());
+        unsigned len = I->getSize();
+
+        // Write the data.
+        file.write(data, len);
       }
 
-      // Open up a file stream for writing
-      std::ios::openmode io_mode = std::ios::out | std::ios::trunc |
-                                   std::ios::binary;
-      std::ofstream file(I->getPath().c_str(), io_mode);
-
-      // Get the data and its length
-      const char* data = reinterpret_cast<const char*>(I->getData());
-      unsigned len = I->getSize();
-
-      // Write the data.
-      file.write(data,len);
-      file.close();
+      // Retain the original mode.
+      sys::fs::perms Mode = sys::fs::perms(I->getMode());
+      // FIXME: at least on posix we should be able to reuse FD (fchmod).
+      error_code EC = sys::fs::permissions(I->getPath(), Mode);
+      if (EC)
+        fail(EC.message());
 
       // If we're supposed to retain the original modification times, etc. do so
       // now.
-      if (OriginalDates)
-        I->getPath().setStatusInfoOnDisk(I->getFileStatus());
+      if (OriginalDates) {
+        EC = sys::fs::setLastModificationAndAccessTime(FD, I->getModTime());
+        if (EC)
+          fail(EC.message());
+      }
+      if (close(FD))
+        return true;
     }
   }
   return false;
@@ -503,10 +466,8 @@ doDelete(std::string* ErrMsg) {
   }
 
   // We're done editting, reconstruct the archive.
-  if (TheArchive->writeToDisk(SymTable,TruncateNames,Compression,ErrMsg))
+  if (TheArchive->writeToDisk(TruncateNames,ErrMsg))
     return true;
-  if (ReallyVerbose)
-    printSymbolTable();
   return false;
 }
 
@@ -542,14 +503,14 @@ doMove(std::string* ErrMsg) {
   }
 
   // Keep a list of the paths remaining to be moved
-  std::set<sys::Path> remaining(Paths);
+  std::set<std::string> remaining(Paths);
 
   // Scan the archive again, this time looking for the members to move to the
   // moveto_spot.
   for (Archive::iterator I = TheArchive->begin(), E= TheArchive->end();
        I != E && !remaining.empty(); ++I ) {
-    std::set<sys::Path>::iterator found =
-      std::find(remaining.begin(),remaining.end(),I->getPath());
+    std::set<std::string>::iterator found =
+      std::find(remaining.begin(),remaining.end(), I->getPath());
     if (found != remaining.end()) {
       if (I != moveto_spot)
         TheArchive->splice(moveto_spot,*TheArchive,I);
@@ -558,10 +519,8 @@ doMove(std::string* ErrMsg) {
   }
 
   // We're done editting, reconstruct the archive.
-  if (TheArchive->writeToDisk(SymTable,TruncateNames,Compression,ErrMsg))
+  if (TheArchive->writeToDisk(TruncateNames,ErrMsg))
     return true;
-  if (ReallyVerbose)
-    printSymbolTable();
   return false;
 }
 
@@ -576,17 +535,15 @@ doQuickAppend(std::string* ErrMsg) {
     return false;
 
   // Append them quickly.
-  for (std::set<sys::Path>::iterator PI = Paths.begin(), PE = Paths.end();
+  for (std::set<std::string>::iterator PI = Paths.begin(), PE = Paths.end();
        PI != PE; ++PI) {
-    if (TheArchive->addFileBefore(*PI,TheArchive->end(),ErrMsg))
+    if (TheArchive->addFileBefore(*PI, TheArchive->end(), ErrMsg))
       return true;
   }
 
   // We're done editting, reconstruct the archive.
-  if (TheArchive->writeToDisk(SymTable,TruncateNames,Compression,ErrMsg))
+  if (TheArchive->writeToDisk(TruncateNames,ErrMsg))
     return true;
-  if (ReallyVerbose)
-    printSymbolTable();
   return false;
 }
 
@@ -602,7 +559,7 @@ doReplaceOrInsert(std::string* ErrMsg) {
     return false;
 
   // Keep track of the paths that remain to be inserted.
-  std::set<sys::Path> remaining(Paths);
+  std::set<std::string> remaining(Paths);
 
   // Default the insertion spot to the end of the archive
   Archive::iterator insert_spot = TheArchive->end();
@@ -614,10 +571,10 @@ doReplaceOrInsert(std::string* ErrMsg) {
     // Determine if this archive member matches one of the paths we're trying
     // to replace.
 
-    std::set<sys::Path>::iterator found = remaining.end();
-    for (std::set<sys::Path>::iterator RI = remaining.begin(),
+    std::set<std::string>::iterator found = remaining.end();
+    for (std::set<std::string>::iterator RI = remaining.begin(),
          RE = remaining.end(); RI != RE; ++RI ) {
-      std::string compare(RI->str());
+      std::string compare(sys::path::filename(*RI));
       if (TruncateNames && compare.length() > 15) {
         const char* nm = compare.c_str();
         unsigned len = compare.length();
@@ -637,15 +594,14 @@ doReplaceOrInsert(std::string* ErrMsg) {
     }
 
     if (found != remaining.end()) {
-      std::string Err;
-      sys::PathWithStatus PwS(*found);
-      const sys::FileStatus *si = PwS.getFileStatus(false, &Err);
-      if (!si)
+      sys::fs::file_status Status;
+      error_code EC = sys::fs::status(*found, Status);
+      if (EC)
         return true;
-      if (!si->isDir) {
+      if (!sys::fs::is_directory(Status)) {
         if (OnlyUpdate) {
           // Replace the item only if it is newer.
-          if (si->modTime > I->getModTime())
+          if (Status.getLastModificationTime() > I->getModTime())
             if (I->replaceWith(*found, ErrMsg))
               return true;
         } else {
@@ -673,23 +629,39 @@ doReplaceOrInsert(std::string* ErrMsg) {
   // If we didn't replace all the members, some will remain and need to be
   // inserted at the previously computed insert-spot.
   if (!remaining.empty()) {
-    for (std::set<sys::Path>::iterator PI = remaining.begin(),
+    for (std::set<std::string>::iterator PI = remaining.begin(),
          PE = remaining.end(); PI != PE; ++PI) {
-      if (TheArchive->addFileBefore(*PI,insert_spot, ErrMsg))
+      if (TheArchive->addFileBefore(*PI, insert_spot, ErrMsg))
         return true;
     }
   }
 
   // We're done editting, reconstruct the archive.
-  if (TheArchive->writeToDisk(SymTable,TruncateNames,Compression,ErrMsg))
+  if (TheArchive->writeToDisk(TruncateNames,ErrMsg))
     return true;
-  if (ReallyVerbose)
-    printSymbolTable();
   return false;
+}
+
+bool shouldCreateArchive(ArchiveOperation Op) {
+  switch (Op) {
+  case Print:
+  case Delete:
+  case Move:
+  case DisplayTable:
+  case Extract:
+    return false;
+
+  case QuickAppend:
+  case ReplaceOrInsert:
+    return true;
+  }
+
+  llvm_unreachable("Missing entry in covered switch.");
 }
 
 // main - main program for llvm-ar .. see comments in the code
 int main(int argc, char **argv) {
+  program_name = argv[0];
   // Print a stack trace if we signal out.
   sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
@@ -705,76 +677,51 @@ int main(int argc, char **argv) {
 
   int exitCode = 0;
 
-  // Make sure we don't exit with "unhandled exception".
-  try {
-    // Do our own parsing of the command line because the CommandLine utility
-    // can't handle the grouped positional parameters without a dash.
-    ArchiveOperation Operation = parseCommandLine();
+  // Do our own parsing of the command line because the CommandLine utility
+  // can't handle the grouped positional parameters without a dash.
+  ArchiveOperation Operation = parseCommandLine();
 
-    // Check the path name of the archive
-    sys::Path ArchivePath;
-    if (!ArchivePath.set(ArchiveName))
-      throw std::string("Archive name invalid: ") + ArchiveName;
+  // Create or open the archive object.
+  if (shouldCreateArchive(Operation) && !llvm::sys::fs::exists(ArchiveName)) {
+    // Produce a warning if we should and we're creating the archive
+    if (!Create)
+      errs() << argv[0] << ": creating " << ArchiveName << "\n";
+    TheArchive = Archive::CreateEmpty(ArchiveName, Context);
+    TheArchive->writeToDisk();
+  }
 
-    // Create or open the archive object.
-    bool Exists;
-    if (llvm::sys::fs::exists(ArchivePath.str(), Exists) || !Exists) {
-      // Produce a warning if we should and we're creating the archive
-      if (!Create)
-        errs() << argv[0] << ": creating " << ArchivePath.str() << "\n";
-      TheArchive = Archive::CreateEmpty(ArchivePath, Context);
-      TheArchive->writeToDisk();
-    } else {
-      std::string Error;
-      TheArchive = Archive::OpenAndLoad(ArchivePath, Context, &Error);
-      if (TheArchive == 0) {
-        errs() << argv[0] << ": error loading '" << ArchivePath.str() << "': "
-               << Error << "!\n";
-        return 1;
-      }
-    }
-
-    // Make sure we're not fooling ourselves.
-    assert(TheArchive && "Unable to instantiate the archive");
-
-    // Make sure we clean up the archive even on failure.
-    std::auto_ptr<Archive> AutoArchive(TheArchive);
-
-    // Perform the operation
-    std::string ErrMsg;
-    bool haveError = false;
-    switch (Operation) {
-      case Print:           haveError = doPrint(&ErrMsg); break;
-      case Delete:          haveError = doDelete(&ErrMsg); break;
-      case Move:            haveError = doMove(&ErrMsg); break;
-      case QuickAppend:     haveError = doQuickAppend(&ErrMsg); break;
-      case ReplaceOrInsert: haveError = doReplaceOrInsert(&ErrMsg); break;
-      case DisplayTable:    haveError = doDisplayTable(&ErrMsg); break;
-      case Extract:         haveError = doExtract(&ErrMsg); break;
-      case NoOperation:
-        errs() << argv[0] << ": No operation was selected.\n";
-        break;
-    }
-    if (haveError) {
-      errs() << argv[0] << ": " << ErrMsg << "\n";
+  if (!TheArchive) {
+    std::string Error;
+    TheArchive = Archive::OpenAndLoad(ArchiveName, Context, &Error);
+    if (TheArchive == 0) {
+      errs() << argv[0] << ": error loading '" << ArchiveName << "': "
+             << Error << "!\n";
       return 1;
     }
-  } catch (const char*msg) {
-    // These errors are usage errors, thrown only by the various checks in the
-    // code above.
-    errs() << argv[0] << ": " << msg << "\n\n";
-    cl::PrintHelpMessage();
-    exitCode = 1;
-  } catch (const std::string& msg) {
-    // These errors are thrown by LLVM libraries (e.g. lib System) and represent
-    // a more serious error so we bump the exitCode and don't print the usage.
-    errs() << argv[0] << ": " << msg << "\n";
-    exitCode = 2;
-  } catch (...) {
-    // This really shouldn't happen, but just in case ....
-    errs() << argv[0] << ": An unexpected unknown exception occurred.\n";
-    exitCode = 3;
   }
+
+  // Make sure we're not fooling ourselves.
+  assert(TheArchive && "Unable to instantiate the archive");
+
+  // Perform the operation
+  std::string ErrMsg;
+  bool haveError = false;
+  switch (Operation) {
+    case Print:           haveError = doPrint(&ErrMsg); break;
+    case Delete:          haveError = doDelete(&ErrMsg); break;
+    case Move:            haveError = doMove(&ErrMsg); break;
+    case QuickAppend:     haveError = doQuickAppend(&ErrMsg); break;
+    case ReplaceOrInsert: haveError = doReplaceOrInsert(&ErrMsg); break;
+    case DisplayTable:    haveError = doDisplayTable(&ErrMsg); break;
+    case Extract:         haveError = doExtract(&ErrMsg); break;
+  }
+  if (haveError) {
+    errs() << argv[0] << ": " << ErrMsg << "\n";
+    return 1;
+  }
+
+  delete TheArchive;
+  TheArchive = 0;
 
   // Return result code back to operating system.
   return exitCode;

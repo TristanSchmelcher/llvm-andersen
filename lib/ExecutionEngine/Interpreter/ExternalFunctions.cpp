@@ -20,19 +20,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "Interpreter.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Module.h"
 #include "llvm/Config/config.h"     // Detect libffi
-#include "llvm/Support/ErrorHandling.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/DynamicLibrary.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
+#include <cmath>
 #include <csignal>
 #include <cstdio>
-#include <map>
-#include <cmath>
 #include <cstring>
+#include <map>
 
 #ifdef HAVE_FFI_CALL
 #ifdef HAVE_FFI_H
@@ -180,7 +180,7 @@ static void *ffiValueFor(Type *Ty, const GenericValue &AV,
 
 static bool ffiInvoke(RawFunc Fn, Function *F,
                       const std::vector<GenericValue> &ArgVals,
-                      const TargetData *TD, GenericValue &Result) {
+                      const DataLayout *TD, GenericValue &Result) {
   ffi_cif cif;
   FunctionType *FTy = F->getFunctionType();
   const unsigned NumArgs = F->arg_size();
@@ -276,7 +276,7 @@ GenericValue Interpreter::callExternalFunction(Function *F,
   FunctionsLock->release();
 
   GenericValue Result;
-  if (RawFn != 0 && ffiInvoke(RawFn, F, ArgVals, getTargetData(), Result))
+  if (RawFn != 0 && ffiInvoke(RawFn, F, ArgVals, getDataLayout(), Result))
     return Result;
 #endif // USE_LIBFFI
 
@@ -297,18 +297,8 @@ GenericValue Interpreter::callExternalFunction(Function *F,
 //  Functions "exported" to the running application...
 //
 
-// Visual Studio and Clang warn about returning GenericValue in extern "C" linkage
-#ifdef _MSC_VER
-    #pragma warning(disable : 4190)
-#endif
-#ifdef __clang__
-    #pragma clang diagnostic push
-    #pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
-#endif
-
-extern "C" {  // Don't add C++ manglings to llvm mangling :)
-
 // void atexit(Function*)
+static
 GenericValue lle_X_atexit(FunctionType *FT,
                           const std::vector<GenericValue> &Args) {
   assert(Args.size() == 1);
@@ -319,6 +309,7 @@ GenericValue lle_X_atexit(FunctionType *FT,
 }
 
 // void exit(int)
+static
 GenericValue lle_X_exit(FunctionType *FT,
                         const std::vector<GenericValue> &Args) {
   TheInterpreter->exitCalled(Args[0]);
@@ -326,6 +317,7 @@ GenericValue lle_X_exit(FunctionType *FT,
 }
 
 // void abort(void)
+static
 GenericValue lle_X_abort(FunctionType *FT,
                          const std::vector<GenericValue> &Args) {
   //FIXME: should we report or raise here?
@@ -336,6 +328,7 @@ GenericValue lle_X_abort(FunctionType *FT,
 
 // int sprintf(char *, const char *, ...) - a very rough implementation to make
 // output useful.
+static
 GenericValue lle_X_sprintf(FunctionType *FT,
                            const std::vector<GenericValue> &Args) {
   char *OutputBuffer = (char *)GVTOP(Args[0]);
@@ -383,7 +376,7 @@ GenericValue lle_X_sprintf(FunctionType *FT,
       case 'x': case 'X':
         if (HowLong >= 1) {
           if (HowLong == 1 &&
-              TheInterpreter->getTargetData()->getPointerSizeInBits() == 64 &&
+              TheInterpreter->getDataLayout()->getPointerSizeInBits() == 64 &&
               sizeof(long) < sizeof(int64_t)) {
             // Make sure we use %lld with a 64 bit argument because we might be
             // compiling LLI on a 32 bit compiler.
@@ -417,6 +410,7 @@ GenericValue lle_X_sprintf(FunctionType *FT,
 
 // int printf(const char *, ...) - a very rough implementation to make output
 // useful.
+static
 GenericValue lle_X_printf(FunctionType *FT,
                           const std::vector<GenericValue> &Args) {
   char Buffer[10000];
@@ -429,6 +423,7 @@ GenericValue lle_X_printf(FunctionType *FT,
 }
 
 // int sscanf(const char *format, ...);
+static
 GenericValue lle_X_sscanf(FunctionType *FT,
                           const std::vector<GenericValue> &args) {
   assert(args.size() < 10 && "Only handle up to 10 args to sscanf right now!");
@@ -444,6 +439,7 @@ GenericValue lle_X_sscanf(FunctionType *FT,
 }
 
 // int scanf(const char *format, ...);
+static
 GenericValue lle_X_scanf(FunctionType *FT,
                          const std::vector<GenericValue> &args) {
   assert(args.size() < 10 && "Only handle up to 10 args to scanf right now!");
@@ -460,6 +456,7 @@ GenericValue lle_X_scanf(FunctionType *FT,
 
 // int fprintf(FILE *, const char *, ...) - a very rough implementation to make
 // output useful.
+static
 GenericValue lle_X_fprintf(FunctionType *FT,
                            const std::vector<GenericValue> &Args) {
   assert(Args.size() >= 2);
@@ -472,17 +469,6 @@ GenericValue lle_X_fprintf(FunctionType *FT,
   fputs(Buffer, (FILE *) GVTOP(Args[0]));
   return GV;
 }
-
-} // End extern "C"
-
-// Done with externals; turn the warning back on for Clang and Visual Studio
-#ifdef __clang__
-    #pragma clang diagnostic pop
-#endif
-#ifdef _MSC_VER
-    #pragma warning(default: 4190)
-#endif
-
 
 void Interpreter::initializeExternalFunctions() {
   sys::ScopedLock Writer(*FunctionsLock);

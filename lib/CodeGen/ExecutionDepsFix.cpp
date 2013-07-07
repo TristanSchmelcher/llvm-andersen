@@ -21,15 +21,15 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "execution-fix"
+#include "llvm/CodeGen/Passes.h"
+#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/Passes.h"
-#include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetMachine.h"
 using namespace llvm;
 
 /// A DomainValue is a bit like LiveIntervals' ValNo, but it also keeps track
@@ -59,7 +59,7 @@ struct DomainValue {
 
   // Pointer to the next DomainValue in a chain.  When two DomainValues are
   // merged, Victim.Next is set to point to Victor, so old DomainValue
-  // references can be updated by folowing the chain.
+  // references can be updated by following the chain.
   DomainValue *Next;
 
   // Twiddleable instructions using or defining these registers.
@@ -91,7 +91,7 @@ struct DomainValue {
 
   // First domain available.
   unsigned getFirstDomain() const {
-    return CountTrailingZeros_32(AvailableDomains);
+    return countTrailingZeros(AvailableDomains);
   }
 
   DomainValue() : Refs(0) { clear(); }
@@ -564,7 +564,7 @@ void ExeDepsFix::visitSoftInstr(MachineInstr *mi, unsigned mask) {
 
   // If the collapsed operands force a single domain, propagate the collapse.
   if (isPowerOf2_32(available)) {
-    unsigned domain = CountTrailingZeros_32(available);
+    unsigned domain = countTrailingZeros(available);
     TII->setExecutionDomain(mi, domain);
     visitHardInstr(mi, domain);
     return;
@@ -573,7 +573,7 @@ void ExeDepsFix::visitSoftInstr(MachineInstr *mi, unsigned mask) {
   // Kill off any remaining uses that don't match available, and build a list of
   // incoming DomainValues that we want to merge.
   SmallVector<LiveReg, 4> Regs;
-  for (SmallVector<int, 4>::iterator i=used.begin(), e=used.end(); i!=e; ++i) {
+  for (SmallVectorImpl<int>::iterator i=used.begin(), e=used.end(); i!=e; ++i) {
     int rx = *i;
     const LiveReg &LR = LiveRegs[rx];
     // This useless DomainValue could have been missed above.
@@ -583,7 +583,7 @@ void ExeDepsFix::visitSoftInstr(MachineInstr *mi, unsigned mask) {
     }
     // Sorted insertion.
     bool Inserted = false;
-    for (SmallVector<LiveReg, 4>::iterator i = Regs.begin(), e = Regs.end();
+    for (SmallVectorImpl<LiveReg>::iterator i = Regs.begin(), e = Regs.end();
            i != e && !Inserted; ++i) {
       if (LR.Def < i->Def) {
         Inserted = true;
@@ -614,7 +614,7 @@ void ExeDepsFix::visitSoftInstr(MachineInstr *mi, unsigned mask) {
       continue;
 
     // If latest didn't merge, it is useless now. Kill all registers using it.
-    for (SmallVector<int,4>::iterator i=used.begin(), e=used.end(); i != e; ++i)
+    for (SmallVectorImpl<int>::iterator i=used.begin(), e=used.end(); i!=e; ++i)
       if (LiveRegs[*i].Value == Latest)
         kill(*i);
   }
@@ -626,9 +626,12 @@ void ExeDepsFix::visitSoftInstr(MachineInstr *mi, unsigned mask) {
   }
   dv->Instrs.push_back(mi);
 
-  // Finally set all defs and non-collapsed uses to dv.
-  for (unsigned i = 0, e = mi->getDesc().getNumOperands(); i != e; ++i) {
-    MachineOperand &mo = mi->getOperand(i);
+  // Finally set all defs and non-collapsed uses to dv. We must iterate through
+  // all the operators, including imp-def ones.
+  for (MachineInstr::mop_iterator ii = mi->operands_begin(),
+                                  ee = mi->operands_end();
+                                  ii != ee; ++ii) {
+    MachineOperand &mo = *ii;
     if (!mo.isReg()) continue;
     int rx = regIndex(mo.getReg());
     if (rx < 0) continue;
@@ -654,7 +657,7 @@ bool ExeDepsFix::runOnMachineFunction(MachineFunction &mf) {
   bool anyregs = false;
   for (TargetRegisterClass::const_iterator I = RC->begin(), E = RC->end();
        I != E; ++I)
-    if (MF->getRegInfo().isPhysRegOrOverlapUsed(*I)) {
+    if (MF->getRegInfo().isPhysRegUsed(*I)) {
       anyregs = true;
       break;
     }
@@ -666,7 +669,8 @@ bool ExeDepsFix::runOnMachineFunction(MachineFunction &mf) {
     // or -1.
     AliasMap.resize(TRI->getNumRegs(), -1);
     for (unsigned i = 0, e = RC->getNumRegs(); i != e; ++i)
-      for (const unsigned *AI = TRI->getOverlaps(RC->getRegister(i)); *AI; ++AI)
+      for (MCRegAliasIterator AI(RC->getRegister(i), TRI, true);
+           AI.isValid(); ++AI)
         AliasMap[*AI] = i;
   }
 

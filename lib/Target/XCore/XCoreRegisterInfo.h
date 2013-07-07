@@ -25,8 +25,6 @@ class TargetInstrInfo;
 
 struct XCoreRegisterInfo : public XCoreGenRegisterInfo {
 private:
-  const TargetInstrInfo &TII;
-
   void loadConstant(MachineBasicBlock &MBB,
                   MachineBasicBlock::iterator I,
                   unsigned DstReg, int64_t Value, DebugLoc dl) const;
@@ -40,37 +38,27 @@ private:
                   unsigned DstReg, int Offset, DebugLoc dl) const;
 
 public:
-  XCoreRegisterInfo(const TargetInstrInfo &tii);
+  XCoreRegisterInfo();
 
   /// Code Generation virtual methods...
 
-  const unsigned *getCalleeSavedRegs(const MachineFunction *MF = 0) const;
+  const uint16_t *getCalleeSavedRegs(const MachineFunction *MF = 0) const;
 
   BitVector getReservedRegs(const MachineFunction &MF) const;
   
   bool requiresRegisterScavenging(const MachineFunction &MF) const;
 
+  bool trackLivenessAfterRegAlloc(const MachineFunction &MF) const;
+
   bool useFPForScavengingIndex(const MachineFunction &MF) const;
 
-  void eliminateCallFramePseudoInstr(MachineFunction &MF,
-                                     MachineBasicBlock &MBB,
-                                     MachineBasicBlock::iterator I) const;
-
   void eliminateFrameIndex(MachineBasicBlock::iterator II,
-                           int SPAdj, RegScavenger *RS = NULL) const;
+                           int SPAdj, unsigned FIOperandNum,
+                           RegScavenger *RS = NULL) const;
 
   // Debug information queries.
   unsigned getFrameRegister(const MachineFunction &MF) const;
 
-  //! Return the array of argument passing registers
-  /*!
-    \note The size of this array is returned by getArgRegsSize().
-    */
-  static const unsigned *getArgRegs(const MachineFunction *MF = 0);
-
-  //! Return the size of the argument passing register array
-  static unsigned getNumArgRegs(const MachineFunction *MF = 0);
-  
   //! Return whether to emit frame moves
   static bool needsFrameMoves(const MachineFunction &MF);
 };

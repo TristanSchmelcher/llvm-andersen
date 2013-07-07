@@ -28,8 +28,7 @@ namespace {
   // for miscompilation.
   //
   enum OutputType {
-    AutoPick, RunLLI, RunJIT, RunLLC, RunLLCIA, RunCBE, CBE_bug, LLC_Safe,
-    CompileCustom, Custom
+    AutoPick, RunLLI, RunJIT, RunLLC, RunLLCIA, LLC_Safe, CompileCustom, Custom
   };
 
   cl::opt<double>
@@ -48,8 +47,6 @@ namespace {
                             clEnumValN(RunLLC, "run-llc", "Compile with LLC"),
                             clEnumValN(RunLLCIA, "run-llc-ia",
                                   "Compile with LLC with integrated assembler"),
-                            clEnumValN(RunCBE, "run-cbe", "Compile with CBE"),
-                            clEnumValN(CBE_bug,"cbe-bug", "Find CBE bugs"),
                             clEnumValN(LLC_Safe, "llc-safe", "Use LLC for all"),
                             clEnumValN(CompileCustom, "compile-custom",
                             "Use -compile-command to define a command to "
@@ -64,7 +61,6 @@ namespace {
   SafeInterpreterSel(cl::desc("Specify \"safe\" i.e. known-good backend:"),
               cl::values(clEnumValN(AutoPick, "safe-auto", "Use best guess"),
                          clEnumValN(RunLLC, "safe-run-llc", "Compile with LLC"),
-                         clEnumValN(RunCBE, "safe-run-cbe", "Compile with CBE"),
                          clEnumValN(Custom, "safe-run-custom",
                          "Use -exec-command to define a command to execute "
                          "the bitcode. Useful for cross-compilation."),
@@ -154,10 +150,6 @@ bool BugDriver::initializeExecutionEnvironment() {
 
   switch (InterpreterSel) {
   case AutoPick:
-    InterpreterSel = RunCBE;
-    Interpreter =
-      AbstractInterpreter::createCBE(getToolName(), Message, GCCBinary,
-                                     &ToolArgv, &GCCToolArgv);
     if (!Interpreter) {
       InterpreterSel = RunJIT;
       Interpreter = AbstractInterpreter::createJIT(getToolName(), Message,
@@ -195,12 +187,6 @@ bool BugDriver::initializeExecutionEnvironment() {
     Interpreter = AbstractInterpreter::createJIT(getToolName(), Message,
                                                  &ToolArgv);
     break;
-  case RunCBE:
-  case CBE_bug:
-    Interpreter = AbstractInterpreter::createCBE(getToolName(), Message,
-                                                 GCCBinary, &ToolArgv,
-                                                 &GCCToolArgv);
-    break;
   case CompileCustom:
     Interpreter =
       AbstractInterpreter::createCustomCompiler(Message, CustomCompileCommand);
@@ -221,17 +207,6 @@ bool BugDriver::initializeExecutionEnvironment() {
   std::vector<std::string> SafeToolArgs = SafeToolArgv;
   switch (SafeInterpreterSel) {
   case AutoPick:
-    // In "cbe-bug" mode, default to using LLC as the "safe" backend.
-    if (!SafeInterpreter &&
-        InterpreterSel == CBE_bug) {
-      SafeInterpreterSel = RunLLC;
-      SafeToolArgs.push_back("--relocation-model=pic");
-      SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                       GCCBinary,
-                                                       &SafeToolArgs,
-                                                       &GCCToolArgv);
-    }
-
     // In "llc-safe" mode, default to using LLC as the "safe" backend.
     if (!SafeInterpreter &&
         InterpreterSel == LLC_Safe) {
@@ -243,17 +218,6 @@ bool BugDriver::initializeExecutionEnvironment() {
                                                        &GCCToolArgv);
     }
 
-    // Pick a backend that's different from the test backend. The JIT and
-    // LLC backends share a lot of code, so prefer to use the CBE as the
-    // safe back-end when testing them.
-    if (!SafeInterpreter &&
-        InterpreterSel != RunCBE) {
-      SafeInterpreterSel = RunCBE;
-      SafeInterpreter = AbstractInterpreter::createCBE(Path.c_str(), Message,
-                                                       GCCBinary,
-                                                       &SafeToolArgs,
-                                                       &GCCToolArgv);
-    }
     if (!SafeInterpreter &&
         InterpreterSel != RunLLC &&
         InterpreterSel != RunJIT) {
@@ -266,7 +230,7 @@ bool BugDriver::initializeExecutionEnvironment() {
     }
     if (!SafeInterpreter) {
       SafeInterpreterSel = AutoPick;
-      Message = "Sorry, I can't automatically select an interpreter!\n";
+      Message = "Sorry, I can't automatically select a safe interpreter!\n";
     }
     break;
   case RunLLC:
@@ -276,11 +240,6 @@ bool BugDriver::initializeExecutionEnvironment() {
                                                      GCCBinary, &SafeToolArgs,
                                                      &GCCToolArgv,
                                                 SafeInterpreterSel == RunLLCIA);
-    break;
-  case RunCBE:
-    SafeInterpreter = AbstractInterpreter::createCBE(Path.c_str(), Message,
-                                                     GCCBinary, &SafeToolArgs,
-                                                     &GCCToolArgv);
     break;
   case Custom:
     SafeInterpreter =
@@ -306,16 +265,18 @@ bool BugDriver::initializeExecutionEnvironment() {
 ///
 void BugDriver::compileProgram(Module *M, std::string *Error) const {
   // Emit the program to a bitcode file...
-  sys::Path BitcodeFile (OutputPrefix + "-test-program.bc");
-  std::string ErrMsg;
-  if (BitcodeFile.makeUnique(true, &ErrMsg)) {
-    errs() << ToolName << ": Error making unique filename: " << ErrMsg
+  SmallString<128> BitcodeFile;
+  int BitcodeFD;
+  error_code EC = sys::fs::createUniqueFile(
+      OutputPrefix + "-test-program-%%%%%%%.bc", BitcodeFD, BitcodeFile);
+  if (EC) {
+    errs() << ToolName << ": Error making unique filename: " << EC.message()
            << "\n";
     exit(1);
   }
-  if (writeProgramToFile(BitcodeFile.str(), M)) {
-    errs() << ToolName << ": Error emitting bitcode to file '"
-           << BitcodeFile.str() << "'!\n";
+  if (writeProgramToFile(BitcodeFile.str(), BitcodeFD, M)) {
+    errs() << ToolName << ": Error emitting bitcode to file '" << BitcodeFile
+           << "'!\n";
     exit(1);
   }
 
@@ -343,15 +304,18 @@ std::string BugDriver::executeProgram(const Module *Program,
   std::string ErrMsg;
   if (BitcodeFile.empty()) {
     // Emit the program to a bitcode file...
-    sys::Path uniqueFilename(OutputPrefix + "-test-program.bc");
-    if (uniqueFilename.makeUnique(true, &ErrMsg)) {
+    SmallString<128> UniqueFilename;
+    int UniqueFD;
+    error_code EC = sys::fs::createUniqueFile(
+        OutputPrefix + "-test-program-%%%%%%%.bc", UniqueFD, UniqueFilename);
+    if (EC) {
       errs() << ToolName << ": Error making unique filename: "
-             << ErrMsg << "!\n";
+             << EC.message() << "!\n";
       exit(1);
     }
-    BitcodeFile = uniqueFilename.str();
+    BitcodeFile = UniqueFilename.str();
 
-    if (writeProgramToFile(BitcodeFile, Program)) {
+    if (writeProgramToFile(BitcodeFile, UniqueFD, Program)) {
       errs() << ToolName << ": Error emitting bitcode to file '"
              << BitcodeFile << "'!\n";
       exit(1);
@@ -360,20 +324,21 @@ std::string BugDriver::executeProgram(const Module *Program,
   }
 
   // Remove the temporary bitcode file when we are done.
-  sys::Path BitcodePath(BitcodeFile);
-  FileRemover BitcodeFileRemover(BitcodePath.str(),
+  std::string BitcodePath(BitcodeFile);
+  FileRemover BitcodeFileRemover(BitcodePath,
     CreatedBitcode && !SaveTemps);
 
-  if (OutputFile.empty()) OutputFile = OutputPrefix + "-execution-output";
+  if (OutputFile.empty()) OutputFile = OutputPrefix + "-execution-output-%%%%%%%";
 
   // Check to see if this is a valid output filename...
-  sys::Path uniqueFile(OutputFile);
-  if (uniqueFile.makeUnique(true, &ErrMsg)) {
+  SmallString<128> UniqueFile;
+  error_code EC = sys::fs::createUniqueFile(OutputFile, UniqueFile);
+  if (EC) {
     errs() << ToolName << ": Error making unique filename: "
-           << ErrMsg << "\n";
+           << EC.message() << "\n";
     exit(1);
   }
-  OutputFile = uniqueFile.str();
+  OutputFile = UniqueFile.str();
 
   // Figure out which shared objects to run, if any.
   std::vector<std::string> SharedObjs(AdditionalSOs);
@@ -421,7 +386,7 @@ std::string BugDriver::executeProgramSafely(const Module *Program,
 std::string BugDriver::compileSharedObject(const std::string &BitcodeFile,
                                            std::string &Error) {
   assert(Interpreter && "Interpreter should have been created already!");
-  sys::Path OutputFile;
+  std::string OutputFile;
 
   // Using the known-good backend.
   GCC::FileType FT = SafeInterpreter->OutputCode(BitcodeFile, OutputFile,
@@ -430,7 +395,7 @@ std::string BugDriver::compileSharedObject(const std::string &BitcodeFile,
     return "";
 
   std::string SharedObjectFile;
-  bool Failure = gcc->MakeSharedObject(OutputFile.str(), FT, SharedObjectFile,
+  bool Failure = gcc->MakeSharedObject(OutputFile, FT, SharedObjectFile,
                                        AdditionalLinkerArgs, Error);
   if (!Error.empty())
     return "";
@@ -438,7 +403,7 @@ std::string BugDriver::compileSharedObject(const std::string &BitcodeFile,
     exit(1);
 
   // Remove the intermediate C file
-  OutputFile.eraseFromDisk();
+  sys::fs::remove(OutputFile);
 
   return "./" + SharedObjectFile;
 }
@@ -459,8 +424,8 @@ bool BugDriver::createReferenceFile(Module *M, const std::string &Filename) {
     errs() << Error;
     if (Interpreter != SafeInterpreter) {
       errs() << "*** There is a bug running the \"safe\" backend.  Either"
-             << " debug it (for example with the -run-cbe bugpoint option,"
-             << " if CBE is being used as the \"safe\" backend), or fix the"
+             << " debug it (for example with the -run-jit bugpoint option,"
+             << " if JIT is being used as the \"safe\" backend), or fix the"
              << " error some other way.\n";
     }
     return false;
@@ -480,15 +445,15 @@ bool BugDriver::diffProgram(const Module *Program,
                             bool RemoveBitcode,
                             std::string *ErrMsg) const {
   // Execute the program, generating an output file...
-  sys::Path Output(executeProgram(Program, "", BitcodeFile, SharedObject, 0,
-                                  ErrMsg));
+  std::string Output(
+      executeProgram(Program, "", BitcodeFile, SharedObject, 0, ErrMsg));
   if (!ErrMsg->empty())
     return false;
 
   std::string Error;
   bool FilesDifferent = false;
-  if (int Diff = DiffFilesWithTolerance(sys::Path(ReferenceOutputFile),
-                                        sys::Path(Output.str()),
+  if (int Diff = DiffFilesWithTolerance(ReferenceOutputFile,
+                                        Output,
                                         AbsTolerance, RelTolerance, &Error)) {
     if (Diff == 2) {
       errs() << "While diffing output: " << Error << '\n';
@@ -498,12 +463,12 @@ bool BugDriver::diffProgram(const Module *Program,
   }
   else {
     // Remove the generated output if there are no differences.
-    Output.eraseFromDisk();
+    sys::fs::remove(Output);
   }
 
   // Remove the bitcode file if we are supposed to.
   if (RemoveBitcode)
-    sys::Path(BitcodeFile).eraseFromDisk();
+    sys::fs::remove(BitcodeFile);
   return FilesDifferent;
 }
 

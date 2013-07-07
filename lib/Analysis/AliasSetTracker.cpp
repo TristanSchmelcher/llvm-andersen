@@ -13,13 +13,13 @@
 
 #include "llvm/Analysis/AliasSetTracker.h"
 #include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Pass.h"
-#include "llvm/Type.h"
-#include "llvm/Target/TargetData.h"
 #include "llvm/Assembly/Writer.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Type.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/InstIterator.h"
@@ -501,7 +501,7 @@ void AliasSetTracker::deleteValue(Value *PtrVal) {
   }
 
   // First, look up the PointerRec for this pointer.
-  PointerMapType::iterator I = PointerMap.find(PtrVal);
+  PointerMapType::iterator I = PointerMap.find_as(PtrVal);
   if (I == PointerMap.end()) return;  // Noop
 
   // If we found one, remove the pointer from the alias set it is in.
@@ -527,7 +527,7 @@ void AliasSetTracker::copyValue(Value *From, Value *To) {
   AA.copyValue(From, To);
 
   // First, look up the PointerRec for this pointer.
-  PointerMapType::iterator I = PointerMap.find(From);
+  PointerMapType::iterator I = PointerMap.find_as(From);
   if (I == PointerMap.end())
     return;  // Noop
   assert(I->second->hasAliasSet() && "Dead entry?");
@@ -536,7 +536,7 @@ void AliasSetTracker::copyValue(Value *From, Value *To) {
   if (Entry.hasAliasSet()) return;    // Already in the tracker!
 
   // Add it to the alias set it aliases...
-  I = PointerMap.find(From);
+  I = PointerMap.find_as(From);
   AliasSet *AS = I->second->getAliasSet(*this);
   AS->addPointer(*this, Entry, I->second->getSize(),
                  I->second->getTBAAInfo(),
@@ -550,7 +550,7 @@ void AliasSetTracker::copyValue(Value *From, Value *To) {
 //===----------------------------------------------------------------------===//
 
 void AliasSet::print(raw_ostream &OS) const {
-  OS << "  AliasSet[" << (void*)this << ", " << RefCount << "] ";
+  OS << "  AliasSet[" << (const void*)this << ", " << RefCount << "] ";
   OS << (AliasTy == MustAlias ? "must" : "may") << " alias, ";
   switch (AccessTy) {
   case NoModRef: OS << "No access "; break;
@@ -590,8 +590,10 @@ void AliasSetTracker::print(raw_ostream &OS) const {
   OS << "\n";
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void AliasSet::dump() const { print(dbgs()); }
 void AliasSetTracker::dump() const { print(dbgs()); }
+#endif
 
 //===----------------------------------------------------------------------===//
 //                     ASTCallbackVH Class Implementation

@@ -12,15 +12,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "MBlazeInstrInfo.h"
-#include "MBlazeTargetMachine.h"
 #include "MBlazeMachineFunction.h"
+#include "MBlazeTargetMachine.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/ScoreboardHazardRecognizer.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "llvm/ADT/STLExtras.h"
 
 #define GET_INSTRINFO_CTOR
 #include "MBlazeGenInstrInfo.inc"
@@ -29,7 +29,7 @@ using namespace llvm;
 
 MBlazeInstrInfo::MBlazeInstrInfo(MBlazeTargetMachine &tm)
   : MBlazeGenInstrInfo(MBlaze::ADJCALLSTACKDOWN, MBlaze::ADJCALLSTACKUP),
-    TM(tm), RI(*TM.getSubtargetImpl(), *this) {}
+    TM(tm), RI(*TM.getSubtargetImpl()) {}
 
 static bool isZeroImm(const MachineOperand &op) {
   return op.isImm() && op.getImm() == 0;
@@ -287,7 +287,7 @@ unsigned MBlazeInstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
   MachineRegisterInfo &RegInfo = MF->getRegInfo();
   const TargetInstrInfo *TII = MF->getTarget().getInstrInfo();
 
-  GlobalBaseReg = RegInfo.createVirtualRegister(MBlaze::GPRRegisterClass);
+  GlobalBaseReg = RegInfo.createVirtualRegister(&MBlaze::GPRRegClass);
   BuildMI(FirstMBB, MBBI, DebugLoc(), TII->get(TargetOpcode::COPY),
           GlobalBaseReg).addReg(MBlaze::R20);
   RegInfo.addLiveIn(MBlaze::R20);

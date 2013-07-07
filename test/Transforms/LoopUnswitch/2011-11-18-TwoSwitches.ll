@@ -1,5 +1,6 @@
+; REQUIRES: asserts
 ; RUN: opt -loop-unswitch -loop-unswitch-threshold 1000 -disable-output -stats -info-output-file - < %s | FileCheck --check-prefix=STATS %s
-; RUN: opt -S -loop-unswitch -loop-unswitch-threshold 1000 -verify-loop-info -verify-dom-info %s | FileCheck %s
+; RUN: opt -S -loop-unswitch -loop-unswitch-threshold 1000 -verify-loop-info -verify-dom-info < %s | FileCheck %s
 
 ; STATS: 1 loop-simplify - Number of pre-header or exit blocks inserted
 ; STATS: 3 loop-unswitch - Number of switches unswitched
@@ -25,13 +26,13 @@
 ; CHECK-NEXT:   switch i32 1, label %second_switch.us.us [
 ; CHECK-NEXT:     i32 1, label %inc.us.us
 
-; CHECK:      inc.us.us:                                        ; preds = %second_switch.us.us, %loop_begin.us.us
-; CHECK-NEXT:   call void @incf() noreturn nounwind
-; CHECK-NEXT:   br label %loop_begin.backedge.us.us
-
 ; CHECK:      second_switch.us.us:                              ; preds = %loop_begin.us.us
 ; CHECK-NEXT:   switch i32 1, label %default.us.us [
 ; CHECK-NEXT:     i32 1, label %inc.us.us
+
+; CHECK:      inc.us.us:                                        ; preds = %second_switch.us.us, %loop_begin.us.us
+; CHECK-NEXT:   call void @incf() [[NOR_NUW:#[0-9]+]]
+; CHECK-NEXT:   br label %loop_begin.backedge.us.us
 
 ; CHECK:      .split.us.split:                                  ; preds = %.split.us..split.us.split_crit_edge
 ; CHECK-NEXT:   br label %loop_begin.us
@@ -41,10 +42,6 @@
 ; CHECK-NEXT:   switch i32 1, label %second_switch.us [
 ; CHECK-NEXT:     i32 1, label %inc.us
 
-; CHECK:      inc.us:                                           ; preds = %second_switch.us.inc.us_crit_edge, %loop_begin.us
-; CHECK-NEXT:   call void @incf() noreturn nounwind
-; CHECK-NEXT:   br label %loop_begin.backedge.us
-
 ; CHECK:      second_switch.us:                                 ; preds = %loop_begin.us
 ; CHECK-NEXT:   switch i32 %d, label %default.us [
 ; CHECK-NEXT:     i32 1, label %second_switch.us.inc.us_crit_edge
@@ -52,6 +49,10 @@
 
 ; CHECK:      second_switch.us.inc.us_crit_edge:                ; preds = %second_switch.us
 ; CHECK-NEXT:   br i1 true, label %us-unreachable8, label %inc.us
+
+; CHECK:      inc.us:                                           ; preds = %second_switch.us.inc.us_crit_edge, %loop_begin.us
+; CHECK-NEXT:   call void @incf() [[NOR_NUW]]
+; CHECK-NEXT:   br label %loop_begin.backedge.us
 
 ; CHECK:      .split:                                           ; preds = %..split_crit_edge
 ; CHECK-NEXT:   %3 = icmp eq i32 %d, 1
@@ -65,21 +66,21 @@
 
 ; CHECK:      loop_begin.us1:                                   ; preds = %loop_begin.backedge.us6, %.split.split.us
 ; CHECK-NEXT:   %var_val.us2 = load i32* %var
-; CHECK-NEXT:   switch i32 %c, label %second_switch.us4 [
+; CHECK-NEXT:   switch i32 %c, label %second_switch.us3 [
 ; CHECK-NEXT:     i32 1, label %loop_begin.inc_crit_edge.us
 ; CHECK-NEXT:   ]
 
-; CHECK:      inc.us3:                                          ; preds = %loop_begin.inc_crit_edge.us, %second_switch.us4
-; CHECK-NEXT:   call void @incf() noreturn nounwind
-; CHECK-NEXT:   br label %loop_begin.backedge.us6
-
-; CHECK:      second_switch.us4:                                ; preds = %loop_begin.us1
+; CHECK:      second_switch.us3:                                ; preds = %loop_begin.us1
 ; CHECK-NEXT:   switch i32 1, label %default.us5 [
-; CHECK-NEXT:     i32 1, label %inc.us3
+; CHECK-NEXT:     i32 1, label %inc.us4
 ; CHECK-NEXT:   ]
 
+; CHECK:      inc.us4:                                          ; preds = %loop_begin.inc_crit_edge.us, %second_switch.us3
+; CHECK-NEXT:   call void @incf() [[NOR_NUW]]
+; CHECK-NEXT:   br label %loop_begin.backedge.us6
+
 ; CHECK:      loop_begin.inc_crit_edge.us:                      ; preds = %loop_begin.us1
-; CHECK-NEXT:   br i1 true, label %us-unreachable.us-lcssa.us, label %inc.us3
+; CHECK-NEXT:   br i1 true, label %us-unreachable.us-lcssa.us, label %inc.us4
 
 ; CHECK:      .split.split:                                     ; preds = %.split..split.split_crit_edge
 ; CHECK-NEXT:   br label %loop_begin
@@ -127,7 +128,7 @@ inc:
   call void @incf() noreturn nounwind
   br label %loop_begin
 
-default:  
+default:
   br label %loop_begin
 
 loop_exit:
@@ -136,3 +137,6 @@ loop_exit:
 
 declare void @incf() noreturn
 declare void @decf() noreturn
+
+; CHECK: attributes #0 = { noreturn }
+; CHECK: attributes [[NOR_NUW]] = { noreturn nounwind }

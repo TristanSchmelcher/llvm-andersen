@@ -13,21 +13,24 @@
 
 #define DEBUG_TYPE "correlated-value-propagation"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Constants.h"
-#include "llvm/Function.h"
-#include "llvm/Instructions.h"
-#include "llvm/Pass.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/LazyValueInfo.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/CFG.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include "llvm/ADT/Statistic.h"
 using namespace llvm;
 
 STATISTIC(NumPhis,      "Number of phis propagated");
 STATISTIC(NumSelects,   "Number of selects propagated");
 STATISTIC(NumMemAccess, "Number of memory access targets propagated");
 STATISTIC(NumCmps,      "Number of comparisons propagated");
+STATISTIC(NumDeadCases, "Number of switch cases removed");
 
 namespace {
   class CorrelatedValuePropagation : public FunctionPass {
@@ -37,6 +40,7 @@ namespace {
     bool processPHI(PHINode *P);
     bool processMemAccess(Instruction *I);
     bool processCmp(CmpInst *C);
+    bool processSwitch(SwitchInst *SI);
 
   public:
     static char ID;
@@ -95,12 +99,29 @@ bool CorrelatedValuePropagation::processPHI(PHINode *P) {
     Value *Incoming = P->getIncomingValue(i);
     if (isa<Constant>(Incoming)) continue;
 
-    Constant *C = LVI->getConstantOnEdge(P->getIncomingValue(i),
-                                         P->getIncomingBlock(i),
-                                         BB);
-    if (!C) continue;
+    Value *V = LVI->getConstantOnEdge(Incoming, P->getIncomingBlock(i), BB);
 
-    P->setIncomingValue(i, C);
+    // Look if the incoming value is a select with a constant but LVI tells us
+    // that the incoming value can never be that constant. In that case replace
+    // the incoming value with the other value of the select. This often allows
+    // us to remove the select later.
+    if (!V) {
+      SelectInst *SI = dyn_cast<SelectInst>(Incoming);
+      if (!SI) continue;
+
+      Constant *C = dyn_cast<Constant>(SI->getFalseValue());
+      if (!C) continue;
+
+      if (LVI->getPredicateOnEdge(ICmpInst::ICMP_EQ, SI, C,
+                                  P->getIncomingBlock(i), BB) !=
+          LazyValueInfo::False)
+        continue;
+
+      DEBUG(dbgs() << "CVP: Threading PHI over " << *SI << '\n');
+      V = SI->getTrueValue();
+    }
+
+    P->setIncomingValue(i, V);
     Changed = true;
   }
 
@@ -110,7 +131,8 @@ bool CorrelatedValuePropagation::processPHI(PHINode *P) {
     Changed = true;
   }
 
-  ++NumPhis;
+  if (Changed)
+    ++NumPhis;
 
   return Changed;
 }
@@ -173,6 +195,91 @@ bool CorrelatedValuePropagation::processCmp(CmpInst *C) {
   return true;
 }
 
+/// processSwitch - Simplify a switch instruction by removing cases which can
+/// never fire.  If the uselessness of a case could be determined locally then
+/// constant propagation would already have figured it out.  Instead, walk the
+/// predecessors and statically evaluate cases based on information available
+/// on that edge.  Cases that cannot fire no matter what the incoming edge can
+/// safely be removed.  If a case fires on every incoming edge then the entire
+/// switch can be removed and replaced with a branch to the case destination.
+bool CorrelatedValuePropagation::processSwitch(SwitchInst *SI) {
+  Value *Cond = SI->getCondition();
+  BasicBlock *BB = SI->getParent();
+
+  // If the condition was defined in same block as the switch then LazyValueInfo
+  // currently won't say anything useful about it, though in theory it could.
+  if (isa<Instruction>(Cond) && cast<Instruction>(Cond)->getParent() == BB)
+    return false;
+
+  // If the switch is unreachable then trying to improve it is a waste of time.
+  pred_iterator PB = pred_begin(BB), PE = pred_end(BB);
+  if (PB == PE) return false;
+
+  // Analyse each switch case in turn.  This is done in reverse order so that
+  // removing a case doesn't cause trouble for the iteration.
+  bool Changed = false;
+  for (SwitchInst::CaseIt CI = SI->case_end(), CE = SI->case_begin(); CI-- != CE;
+       ) {
+    ConstantInt *Case = CI.getCaseValue();
+
+    // Check to see if the switch condition is equal to/not equal to the case
+    // value on every incoming edge, equal/not equal being the same each time.
+    LazyValueInfo::Tristate State = LazyValueInfo::Unknown;
+    for (pred_iterator PI = PB; PI != PE; ++PI) {
+      // Is the switch condition equal to the case value?
+      LazyValueInfo::Tristate Value = LVI->getPredicateOnEdge(CmpInst::ICMP_EQ,
+                                                              Cond, Case, *PI, BB);
+      // Give up on this case if nothing is known.
+      if (Value == LazyValueInfo::Unknown) {
+        State = LazyValueInfo::Unknown;
+        break;
+      }
+
+      // If this was the first edge to be visited, record that all other edges
+      // need to give the same result.
+      if (PI == PB) {
+        State = Value;
+        continue;
+      }
+
+      // If this case is known to fire for some edges and known not to fire for
+      // others then there is nothing we can do - give up.
+      if (Value != State) {
+        State = LazyValueInfo::Unknown;
+        break;
+      }
+    }
+
+    if (State == LazyValueInfo::False) {
+      // This case never fires - remove it.
+      CI.getCaseSuccessor()->removePredecessor(BB);
+      SI->removeCase(CI); // Does not invalidate the iterator.
+
+      // The condition can be modified by removePredecessor's PHI simplification
+      // logic.
+      Cond = SI->getCondition();
+
+      ++NumDeadCases;
+      Changed = true;
+    } else if (State == LazyValueInfo::True) {
+      // This case always fires.  Arrange for the switch to be turned into an
+      // unconditional branch by replacing the switch condition with the case
+      // value.
+      SI->setCondition(Case);
+      NumDeadCases += SI->getNumCases();
+      Changed = true;
+      break;
+    }
+  }
+
+  if (Changed)
+    // If the switch has been simplified to the point where it can be replaced
+    // by a branch then do so now.
+    ConstantFoldTerminator(BB);
+
+  return Changed;
+}
+
 bool CorrelatedValuePropagation::runOnFunction(Function &F) {
   LVI = &getAnalysis<LazyValueInfo>();
 
@@ -198,6 +305,13 @@ bool CorrelatedValuePropagation::runOnFunction(Function &F) {
         BBChanged |= processMemAccess(II);
         break;
       }
+    }
+
+    Instruction *Term = FI->getTerminator();
+    switch (Term->getOpcode()) {
+    case Instruction::Switch:
+      BBChanged |= processSwitch(cast<SwitchInst>(Term));
+      break;
     }
 
     FnChanged |= BBChanged;

@@ -9,6 +9,7 @@
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/edit_distance.h"
 #include <bitset>
@@ -229,6 +230,52 @@ StringRef::size_type StringRef::find_last_of(StringRef Chars,
   return npos;
 }
 
+/// find_last_not_of - Find the last character in the string that is not
+/// \arg C, or npos if not found.
+StringRef::size_type StringRef::find_last_not_of(char C, size_t From) const {
+  for (size_type i = min(From, Length) - 1, e = -1; i != e; --i)
+    if (Data[i] != C)
+      return i;
+  return npos;
+}
+
+/// find_last_not_of - Find the last character in the string that is not in
+/// \arg Chars, or npos if not found.
+///
+/// Note: O(size() + Chars.size())
+StringRef::size_type StringRef::find_last_not_of(StringRef Chars,
+                                                 size_t From) const {
+  std::bitset<1 << CHAR_BIT> CharBits;
+  for (size_type i = 0, e = Chars.size(); i != e; ++i)
+    CharBits.set((unsigned char)Chars[i]);
+
+  for (size_type i = min(From, Length) - 1, e = -1; i != e; --i)
+    if (!CharBits.test((unsigned char)Data[i]))
+      return i;
+  return npos;
+}
+
+void StringRef::split(SmallVectorImpl<StringRef> &A,
+                      StringRef Separators, int MaxSplit,
+                      bool KeepEmpty) const {
+  StringRef rest = *this;
+
+  // rest.data() is used to distinguish cases like "a," that splits into
+  // "a" + "" and "a" that splits into "a" + 0.
+  for (int splits = 0;
+       rest.data() != NULL && (MaxSplit < 0 || splits < MaxSplit);
+       ++splits) {
+    std::pair<StringRef, StringRef> p = rest.split(Separators);
+
+    if (KeepEmpty || p.first.size() != 0)
+      A.push_back(p.first);
+    rest = p.second;
+  }
+  // If we have a tail left, add it.
+  if (rest.data() != NULL && (rest.size() != 0 || KeepEmpty))
+    A.push_back(rest);
+}
+
 //===----------------------------------------------------------------------===//
 // Helpful Algorithms
 //===----------------------------------------------------------------------===//
@@ -250,21 +297,29 @@ static unsigned GetAutoSenseRadix(StringRef &Str) {
   if (Str.startswith("0x")) {
     Str = Str.substr(2);
     return 16;
-  } else if (Str.startswith("0b")) {
+  }
+  
+  if (Str.startswith("0b")) {
     Str = Str.substr(2);
     return 2;
-  } else if (Str.startswith("0")) {
-    return 8;
-  } else {
-    return 10;
   }
+
+  if (Str.startswith("0o")) {
+    Str = Str.substr(2);
+    return 8;
+  }
+
+  if (Str.startswith("0"))
+    return 8;
+  
+  return 10;
 }
 
 
 /// GetAsUnsignedInteger - Workhorse method that converts a integer character
 /// sequence of radix up to 36 to an unsigned long long value.
-static bool GetAsUnsignedInteger(StringRef Str, unsigned Radix,
-                                 unsigned long long &Result) {
+bool llvm::getAsUnsignedInteger(StringRef Str, unsigned Radix,
+                                unsigned long long &Result) {
   // Autosense radix if not specified.
   if (Radix == 0)
     Radix = GetAutoSenseRadix(Str);
@@ -294,8 +349,8 @@ static bool GetAsUnsignedInteger(StringRef Str, unsigned Radix,
     unsigned long long PrevResult = Result;
     Result = Result*Radix+CharVal;
 
-    // Check for overflow.
-    if (Result < PrevResult)
+    // Check for overflow by shifting back and seeing if bits were lost.
+    if (Result/Radix < PrevResult)
       return true;
 
     Str = Str.substr(1);
@@ -304,17 +359,13 @@ static bool GetAsUnsignedInteger(StringRef Str, unsigned Radix,
   return false;
 }
 
-bool StringRef::getAsInteger(unsigned Radix, unsigned long long &Result) const {
-  return GetAsUnsignedInteger(*this, Radix, Result);
-}
-
-
-bool StringRef::getAsInteger(unsigned Radix, long long &Result) const {
+bool llvm::getAsSignedInteger(StringRef Str, unsigned Radix,
+                              long long &Result) {
   unsigned long long ULLVal;
 
   // Handle positive strings first.
-  if (empty() || front() != '-') {
-    if (GetAsUnsignedInteger(*this, Radix, ULLVal) ||
+  if (Str.empty() || Str.front() != '-') {
+    if (getAsUnsignedInteger(Str, Radix, ULLVal) ||
         // Check for value so large it overflows a signed value.
         (long long)ULLVal < 0)
       return true;
@@ -323,7 +374,7 @@ bool StringRef::getAsInteger(unsigned Radix, long long &Result) const {
   }
 
   // Get the positive part of the value.
-  if (GetAsUnsignedInteger(substr(1), Radix, ULLVal) ||
+  if (getAsUnsignedInteger(Str.substr(1), Radix, ULLVal) ||
       // Reject values so large they'd overflow as negative signed, but allow
       // "-0".  This negates the unsigned so that the negative isn't undefined
       // on signed overflow.
@@ -331,24 +382,6 @@ bool StringRef::getAsInteger(unsigned Radix, long long &Result) const {
     return true;
 
   Result = -ULLVal;
-  return false;
-}
-
-bool StringRef::getAsInteger(unsigned Radix, int &Result) const {
-  long long Val;
-  if (getAsInteger(Radix, Val) ||
-      (int)Val != Val)
-    return true;
-  Result = Val;
-  return false;
-}
-
-bool StringRef::getAsInteger(unsigned Radix, unsigned &Result) const {
-  unsigned long long Val;
-  if (getAsInteger(Radix, Val) ||
-      (unsigned)Val != Val)
-    return true;
-  Result = Val;
   return false;
 }
 
@@ -383,7 +416,7 @@ bool StringRef::getAsInteger(unsigned Radix, APInt &Result) const {
   unsigned BitWidth = Log2Radix * Str.size();
   if (BitWidth < Result.getBitWidth())
     BitWidth = Result.getBitWidth(); // don't shrink the result
-  else
+  else if (BitWidth > Result.getBitWidth())
     Result = Result.zext(BitWidth);
 
   APInt RadixAP, CharAP; // unused unless !IsPowerOf2Radix
@@ -425,4 +458,10 @@ bool StringRef::getAsInteger(unsigned Radix, APInt &Result) const {
   }
 
   return false;
+}
+
+
+// Implementation of StringRef hashing.
+hash_code llvm::hash_value(StringRef S) {
+  return hash_combine_range(S.begin(), S.end());
 }

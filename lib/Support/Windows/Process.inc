@@ -12,10 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "Windows.h"
-#include <psapi.h>
-#include <malloc.h>
-#include <io.h>
 #include <direct.h>
+#include <io.h>
+#include <malloc.h>
+#include <psapi.h>
 
 #ifdef __MINGW32__
  #if (HAVE_LIBPSAPI != 1)
@@ -35,13 +35,47 @@
 #  define _HEAPOK (-2)
 #endif
 
-namespace llvm {
+using namespace llvm;
 using namespace sys;
 
+
+process::id_type self_process::get_id() {
+  return GetCurrentProcessId();
+}
+
+static TimeValue getTimeValueFromFILETIME(FILETIME Time) {
+  ULARGE_INTEGER TimeInteger;
+  TimeInteger.LowPart = Time.dwLowDateTime;
+  TimeInteger.HighPart = Time.dwHighDateTime;
+
+  // FILETIME's are # of 100 nanosecond ticks (1/10th of a microsecond)
+  return TimeValue(
+      static_cast<TimeValue::SecondsType>(TimeInteger.QuadPart / 10000000),
+      static_cast<TimeValue::NanoSecondsType>(
+          (TimeInteger.QuadPart % 10000000) * 100));
+}
+
+TimeValue self_process::get_user_time() const {
+  FILETIME ProcCreate, ProcExit, KernelTime, UserTime;
+  if (GetProcessTimes(GetCurrentProcess(), &ProcCreate, &ProcExit, &KernelTime,
+                      &UserTime) == 0)
+    return TimeValue();
+
+  return getTimeValueFromFILETIME(UserTime);
+}
+
+TimeValue self_process::get_system_time() const {
+  FILETIME ProcCreate, ProcExit, KernelTime, UserTime;
+  if (GetProcessTimes(GetCurrentProcess(), &ProcCreate, &ProcExit, &KernelTime,
+                      &UserTime) == 0)
+    return TimeValue();
+
+  return getTimeValueFromFILETIME(KernelTime);
+}
+
 // This function retrieves the page size using GetSystemInfo and is present
-// solely so it can be called once in Process::GetPageSize to initialize the
-// static variable PageSize.
-inline unsigned GetPageSizeOnce() {
+// solely so it can be called once to initialize the self_process member below.
+static unsigned getPageSize() {
   // NOTE: A 32-bit application running under WOW64 is supposed to use
   // GetNativeSystemInfo.  However, this interface is not present prior
   // to Windows XP so to use it requires dynamic linking.  It is not clear
@@ -52,11 +86,11 @@ inline unsigned GetPageSizeOnce() {
   return static_cast<unsigned>(info.dwPageSize);
 }
 
-unsigned
-Process::GetPageSize() {
-  static const unsigned PageSize = GetPageSizeOnce();
-  return PageSize;
+// This constructor guaranteed to be run exactly once on a single thread, and
+// sets up various process invariants that can be queried cheaply from then on.
+self_process::self_process() : PageSize(getPageSize()) {
 }
+
 
 size_t
 Process::GetMallocUsage()
@@ -72,30 +106,17 @@ Process::GetMallocUsage()
   return size;
 }
 
-size_t
-Process::GetTotalMemoryUsage()
-{
-  PROCESS_MEMORY_COUNTERS pmc;
-  GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc));
-  return pmc.PagefileUsage;
-}
-
-void
-Process::GetTimeUsage(
-  TimeValue& elapsed, TimeValue& user_time, TimeValue& sys_time)
-{
+void Process::GetTimeUsage(TimeValue &elapsed, TimeValue &user_time,
+                           TimeValue &sys_time) {
   elapsed = TimeValue::now();
 
-  uint64_t ProcCreate, ProcExit, KernelTime, UserTime;
-  GetProcessTimes(GetCurrentProcess(), (FILETIME*)&ProcCreate,
-                  (FILETIME*)&ProcExit, (FILETIME*)&KernelTime,
-                  (FILETIME*)&UserTime);
+  FILETIME ProcCreate, ProcExit, KernelTime, UserTime;
+  if (GetProcessTimes(GetCurrentProcess(), &ProcCreate, &ProcExit, &KernelTime,
+                      &UserTime) == 0)
+    return;
 
-  // FILETIME's are # of 100 nanosecond ticks (1/10th of a microsecond)
-  user_time.seconds( UserTime / 10000000 );
-  user_time.nanoseconds( unsigned(UserTime % 10000000) * 100 );
-  sys_time.seconds( KernelTime / 10000000 );
-  sys_time.nanoseconds( unsigned(KernelTime % 10000000) * 100 );
+  user_time = getTimeValueFromFILETIME(UserTime);
+  sys_time = getTimeValueFromFILETIME(KernelTime);
 }
 
 int Process::GetCurrentUserId()
@@ -133,7 +154,7 @@ bool Process::StandardErrIsDisplayed() {
 }
 
 bool Process::FileDescriptorIsDisplayed(int fd) {
-  DWORD Mode;	// Unused
+  DWORD Mode;  // Unused
   return (GetConsoleMode((HANDLE)_get_osfhandle(fd), &Mode) != 0);
 }
 
@@ -153,13 +174,17 @@ unsigned Process::StandardErrColumns() {
   return Columns;
 }
 
-// It always has colors.
-bool Process::StandardErrHasColors() {
-  return StandardErrIsDisplayed();
+// The terminal always has colors.
+bool Process::FileDescriptorHasColors(int fd) {
+  return FileDescriptorIsDisplayed(fd);
 }
 
 bool Process::StandardOutHasColors() {
-  return StandardOutIsDisplayed();
+  return FileDescriptorHasColors(1);
+}
+
+bool Process::StandardErrHasColors() {
+  return FileDescriptorHasColors(2);
 }
 
 namespace {
@@ -215,9 +240,39 @@ const char *Process::OutputColor(char code, bool bold, bool bg) {
   return 0;
 }
 
-const char *Process::ResetColor() {
-  SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), defaultColors());
+static WORD GetConsoleTextAttribute(HANDLE hConsoleOutput) {
+  CONSOLE_SCREEN_BUFFER_INFO info;
+  GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info);
+  return info.wAttributes;
+}
+
+const char *Process::OutputReverse() {
+  const WORD attributes
+   = GetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE));
+
+  const WORD foreground_mask = FOREGROUND_BLUE | FOREGROUND_GREEN |
+    FOREGROUND_RED | FOREGROUND_INTENSITY;
+  const WORD background_mask = BACKGROUND_BLUE | BACKGROUND_GREEN |
+    BACKGROUND_RED | BACKGROUND_INTENSITY;
+  const WORD color_mask = foreground_mask | background_mask;
+
+  WORD new_attributes =
+    ((attributes & FOREGROUND_BLUE     )?BACKGROUND_BLUE     :0) |
+    ((attributes & FOREGROUND_GREEN    )?BACKGROUND_GREEN    :0) |
+    ((attributes & FOREGROUND_RED      )?BACKGROUND_RED      :0) |
+    ((attributes & FOREGROUND_INTENSITY)?BACKGROUND_INTENSITY:0) |
+    ((attributes & BACKGROUND_BLUE     )?FOREGROUND_BLUE     :0) |
+    ((attributes & BACKGROUND_GREEN    )?FOREGROUND_GREEN    :0) |
+    ((attributes & BACKGROUND_RED      )?FOREGROUND_RED      :0) |
+    ((attributes & BACKGROUND_INTENSITY)?FOREGROUND_INTENSITY:0) |
+    0;
+  new_attributes = (attributes & ~color_mask) | (new_attributes & color_mask);
+
+  SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), new_attributes);
   return 0;
 }
 
+const char *Process::ResetColor() {
+  SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), defaultColors());
+  return 0;
 }

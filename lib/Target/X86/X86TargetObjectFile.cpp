@@ -8,21 +8,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86TargetObjectFile.h"
-#include "X86TargetMachine.h"
-#include "llvm/CodeGen/MachineModuleInfoImpls.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
-#include "llvm/MC/MCSectionMachO.h"
-#include "llvm/Target/Mangler.h"
-#include "llvm/ADT/SmallString.h"
+#include "llvm/MC/MCSectionELF.h"
 #include "llvm/Support/Dwarf.h"
+#include "llvm/Target/Mangler.h"
+
 using namespace llvm;
 using namespace dwarf;
 
-const MCExpr *X8664_MachoTargetObjectFile::
-getExprForDwarfGlobalReference(const GlobalValue *GV, Mangler *Mang,
-                               MachineModuleInfo *MMI, unsigned Encoding,
-                               MCStreamer &Streamer) const {
+const MCExpr *X86_64MachoTargetObjectFile::
+getTTypeGlobalReference(const GlobalValue *GV, Mangler *Mang,
+                        MachineModuleInfo *MMI, unsigned Encoding,
+                        MCStreamer &Streamer) const {
 
   // On Darwin/X86-64, we can reference dwarf symbols with foo@GOTPCREL+4, which
   // is an indirect pc-relative reference.
@@ -35,11 +33,23 @@ getExprForDwarfGlobalReference(const GlobalValue *GV, Mangler *Mang,
   }
 
   return TargetLoweringObjectFileMachO::
-    getExprForDwarfGlobalReference(GV, Mang, MMI, Encoding, Streamer);
+    getTTypeGlobalReference(GV, Mang, MMI, Encoding, Streamer);
 }
 
-MCSymbol *X8664_MachoTargetObjectFile::
+MCSymbol *X86_64MachoTargetObjectFile::
 getCFIPersonalitySymbol(const GlobalValue *GV, Mangler *Mang,
                         MachineModuleInfo *MMI) const {
   return Mang->getSymbol(GV);
+}
+
+void
+X86LinuxTargetObjectFile::Initialize(MCContext &Ctx, const TargetMachine &TM) {
+  TargetLoweringObjectFileELF::Initialize(Ctx, TM);
+  InitializeELF(TM.Options.UseInitArray);
+}
+
+const MCExpr *
+X86LinuxTargetObjectFile::getDebugThreadLocalSymbol(
+    const MCSymbol *Sym) const {
+  return MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_DTPOFF, getContext());
 }

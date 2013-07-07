@@ -15,21 +15,15 @@
 #ifndef LLVM_CODEGEN_FUNCTIONLOWERINGINFO_H
 #define LLVM_CODEGEN_FUNCTIONLOWERINGINFO_H
 
-#include "llvm/InlineAsm.h"
-#include "llvm/Instructions.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/IndexedMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#ifndef NDEBUG
-#include "llvm/ADT/SmallSet.h"
-#endif
-#include "llvm/Analysis/BranchProbabilityInfo.h"
-#include "llvm/CodeGen/ValueTypes.h"
-#include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
-#include "llvm/Support/CallSite.h"
+#include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include <vector>
 
@@ -37,6 +31,7 @@ namespace llvm {
 
 class AllocaInst;
 class BasicBlock;
+class BranchProbabilityInfo;
 class CallInst;
 class Function;
 class GlobalVariable;
@@ -54,8 +49,8 @@ class Value;
 /// function that is used when lowering a region of the function.
 ///
 class FunctionLoweringInfo {
+  const TargetMachine &TM;
 public:
-  const TargetLowering &TLI;
   const Function *Fn;
   MachineFunction *MF;
   MachineRegisterInfo *RegInfo;
@@ -98,8 +93,8 @@ public:
   MachineBasicBlock::iterator InsertPt;
 
 #ifndef NDEBUG
-  SmallSet<const Instruction *, 8> CatchInfoLost;
-  SmallSet<const Instruction *, 8> CatchInfoFound;
+  SmallPtrSet<const Instruction *, 8> CatchInfoLost;
+  SmallPtrSet<const Instruction *, 8> CatchInfoFound;
 #endif
 
   struct LiveOutInfo {
@@ -112,7 +107,7 @@ public:
 
   /// VisitedBBs - The set of basic blocks visited thus far by instruction
   /// selection.
-  DenseSet<const BasicBlock*> VisitedBBs;
+  SmallPtrSet<const BasicBlock*, 4> VisitedBBs;
 
   /// PHINodesToUpdate - A list of phi instructions whose operand list will
   /// be updated after processing the current basic block.
@@ -120,7 +115,12 @@ public:
   /// there's no other convenient place for it to live right now.
   std::vector<std::pair<MachineInstr*, unsigned> > PHINodesToUpdate;
 
-  explicit FunctionLoweringInfo(const TargetLowering &TLI);
+  /// If the current MBB is a landing pad, the exception pointer and exception
+  /// selector registers are copied into these virtual registers by
+  /// SelectionDAGISel::PrepareEHLandingPad().
+  unsigned ExceptionPointerVirtReg, ExceptionSelectorVirtReg;
+
+  explicit FunctionLoweringInfo(const TargetMachine &TM) : TM(TM) {}
 
   /// set - Initialize this FunctionLoweringInfo with the given Function
   /// and its associated MachineFunction.
@@ -138,7 +138,7 @@ public:
     return ValueMap.count(V);
   }
 
-  unsigned CreateReg(EVT VT);
+  unsigned CreateReg(MVT VT);
   
   unsigned CreateRegs(Type *Ty);
   
@@ -202,7 +202,7 @@ public:
   /// setArgumentFrameIndex - Record frame index for the byval
   /// argument.
   void setArgumentFrameIndex(const Argument *A, int FI);
-  
+
   /// getArgumentFrameIndex - Get frame index for the byval argument.
   int getArgumentFrameIndex(const Argument *A);
 
@@ -210,6 +210,13 @@ private:
   /// LiveOutRegInfo - Information about live out vregs.
   IndexedMap<LiveOutInfo, VirtReg2IndexFunctor> LiveOutRegInfo;
 };
+
+/// ComputeUsesVAFloatArgument - Determine if any floating-point values are
+/// being passed to this variadic function, and set the MachineModuleInfo's
+/// usesVAFloatArgument flag if so. This flag is used to emit an undefined
+/// reference to _fltused on Windows, which will link in MSVCRT's
+/// floating-point support.
+void ComputeUsesVAFloatArgument(const CallInst &I, MachineModuleInfo *MMI);
 
 /// AddCatchInfo - Extract the personality and type infos from an eh.selector
 /// call, and add them to the specified machine basic block.

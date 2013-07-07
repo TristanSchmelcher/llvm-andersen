@@ -20,7 +20,7 @@
 // 2. Read the opcode, and determine what kind of opcode it is.  The
 //    disassembler distinguishes four kinds of opcodes, which are enumerated in
 //    OpcodeType (X86DisassemblerDecoderCommon.h): one-byte (0xnn), two-byte
-//    (0x0f 0xnn), three-byte-38 (0x0f 0x38 0xnn), or three-byte-3a 
+//    (0x0f 0xnn), three-byte-38 (0x0f 0x38 0xnn), or three-byte-3a
 //    (0x0f 0x3a 0xnn).  Mandatory prefixes are treated as part of the context.
 //
 // 3. Depending on the opcode type, look in one of four ClassDecision structures
@@ -74,11 +74,11 @@
 #ifndef X86DISASSEMBLER_H
 #define X86DISASSEMBLER_H
 
-#define INSTRUCTION_SPECIFIER_FIELDS  \
-  const char*             name;
+#define INSTRUCTION_SPECIFIER_FIELDS \
+  uint16_t operands;
 
 #define INSTRUCTION_IDS               \
-  unsigned instructionIDs;
+  uint16_t instructionIDs;
 
 #include "X86DisassemblerDecoderCommon.h"
 
@@ -88,15 +88,13 @@
 #include "llvm/MC/MCDisassembler.h"
 
 namespace llvm {
-  
+
 class MCInst;
 class MCInstrInfo;
 class MCSubtargetInfo;
 class MemoryObject;
 class raw_ostream;
 
-struct EDInstInfo;
-  
 namespace X86Disassembler {
 
 /// X86GenericDisassembler - Generic disassembler for all X86 platforms.
@@ -117,13 +115,11 @@ public:
   /// getInstruction - See MCDisassembler.
   DecodeStatus getInstruction(MCInst &instr,
                               uint64_t &size,
-                              MemoryObject &region,
+                              const MemoryObject &region,
                               uint64_t address,
                               raw_ostream &vStream,
                               raw_ostream &cStream) const;
 
-  /// getEDInfo - See MCDisassembler.
-  const EDInstInfo *getEDInfo() const;
 private:
   DisassemblerMode              fMode;
 };

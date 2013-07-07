@@ -39,25 +39,27 @@
 
 #define DEBUG_TYPE "loop-simplify"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Constants.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Function.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Type.h"
+#include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/SetOperations.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/DependenceAnalysis.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolution.h"
-#include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include "llvm/Transforms/Utils/Local.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Support/CFG.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/ADT/SetOperations.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/Local.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 using namespace llvm;
 
 STATISTIC(NumInserted, "Number of pre-header or exit blocks inserted");
@@ -89,6 +91,7 @@ namespace {
 
       AU.addPreserved<AliasAnalysis>();
       AU.addPreserved<ScalarEvolution>();
+      AU.addPreserved<DependenceAnalysis>();
       AU.addPreservedID(BreakCriticalEdgesID);  // No critical edges added.
     }
 
@@ -98,15 +101,15 @@ namespace {
   private:
     bool ProcessLoop(Loop *L, LPPassManager &LPM);
     BasicBlock *RewriteLoopExitBlock(Loop *L, BasicBlock *Exit);
-    BasicBlock *InsertPreheaderForLoop(Loop *L);
     Loop *SeparateNestedLoop(Loop *L, LPPassManager &LPM,
                              BasicBlock *Preheader);
     BasicBlock *InsertUniqueBackedgeBlock(Loop *L, BasicBlock *Preheader);
-    void PlaceSplitBlockCarefully(BasicBlock *NewBB,
-                                  SmallVectorImpl<BasicBlock*> &SplitPreds,
-                                  Loop *L);
   };
 }
+
+static void PlaceSplitBlockCarefully(BasicBlock *NewBB,
+                                     SmallVectorImpl<BasicBlock*> &SplitPreds,
+                                     Loop *L);
 
 char LoopSimplify::ID = 0;
 INITIALIZE_PASS_BEGIN(LoopSimplify, "loop-simplify",
@@ -194,6 +197,11 @@ ReprocessLoop:
 
           BI->setCondition(ConstantInt::get(Cond->getType(),
                                             !L->contains(BI->getSuccessor(0))));
+
+          // This may make the loop analyzable, force SCEV recomputation.
+          if (SE)
+            SE->forgetLoop(L);
+
           Changed = true;
         }
       }
@@ -201,7 +209,7 @@ ReprocessLoop:
   // Does the loop already have a preheader?  If so, don't insert one.
   BasicBlock *Preheader = L->getLoopPreheader();
   if (!Preheader) {
-    Preheader = InsertPreheaderForLoop(L);
+    Preheader = InsertPreheaderForLoop(L, this);
     if (Preheader) {
       ++NumInserted;
       Changed = true;
@@ -360,7 +368,7 @@ ReprocessLoop:
 /// preheader, this method is called to insert one.  This method has two phases:
 /// preheader insertion and analysis updating.
 ///
-BasicBlock *LoopSimplify::InsertPreheaderForLoop(Loop *L) {
+BasicBlock *llvm::InsertPreheaderForLoop(Loop *L, Pass *PP) {
   BasicBlock *Header = L->getHeader();
 
   // Compute the set of predecessors of the loop that are not in the loop.
@@ -383,11 +391,11 @@ BasicBlock *LoopSimplify::InsertPreheaderForLoop(Loop *L) {
   BasicBlock *PreheaderBB;
   if (!Header->isLandingPad()) {
     PreheaderBB = SplitBlockPredecessors(Header, OutsideBlocks, ".preheader",
-                                         this);
+                                         PP);
   } else {
     SmallVector<BasicBlock*, 2> NewBBs;
-    SplitLandingPadPredecessors(Header, OutsideBlocks, ".preheader", 
-                                ".split-lp", this, NewBBs);
+    SplitLandingPadPredecessors(Header, OutsideBlocks, ".preheader",
+                                ".split-lp", PP, NewBBs);
     PreheaderBB = NewBBs[0];
   }
 
@@ -484,9 +492,9 @@ static PHINode *FindPHIToPartitionLoops(Loop *L, DominatorTree *DT,
 // PlaceSplitBlockCarefully - If the block isn't already, move the new block to
 // right after some 'outside block' block.  This prevents the preheader from
 // being placed inside the loop body, e.g. when the loop hasn't been rotated.
-void LoopSimplify::PlaceSplitBlockCarefully(BasicBlock *NewBB,
-                                       SmallVectorImpl<BasicBlock*> &SplitPreds,
-                                            Loop *L) {
+void PlaceSplitBlockCarefully(BasicBlock *NewBB,
+                              SmallVectorImpl<BasicBlock*> &SplitPreds,
+                              Loop *L) {
   // Check to see if NewBB is already well placed.
   Function::iterator BBI = NewBB; --BBI;
   for (unsigned i = 0, e = SplitPreds.size(); i != e; ++i) {
@@ -538,8 +546,7 @@ void LoopSimplify::PlaceSplitBlockCarefully(BasicBlock *NewBB,
 ///
 Loop *LoopSimplify::SeparateNestedLoop(Loop *L, LPPassManager &LPM,
                                        BasicBlock *Preheader) {
-  // Don't try to separate loops without a preheader (this excludes 
-  // loop headers which are targeted by an indirectbr).
+  // Don't try to separate loops without a preheader.
   if (!Preheader)
     return 0;
 
@@ -554,11 +561,15 @@ Loop *LoopSimplify::SeparateNestedLoop(Loop *L, LPPassManager &LPM,
   // handles the case when a PHI node has multiple instances of itself as
   // arguments.
   SmallVector<BasicBlock*, 8> OuterLoopPreds;
-  for (unsigned i = 0, e = PN->getNumIncomingValues(); i != e; ++i)
+  for (unsigned i = 0, e = PN->getNumIncomingValues(); i != e; ++i) {
     if (PN->getIncomingValue(i) != PN ||
-        !L->contains(PN->getIncomingBlock(i)))
+        !L->contains(PN->getIncomingBlock(i))) {
+      // We can't split indirectbr edges.
+      if (isa<IndirectBrInst>(PN->getIncomingBlock(i)->getTerminator()))
+        return 0;
       OuterLoopPreds.push_back(PN->getIncomingBlock(i));
-
+    }
+  }
   DEBUG(dbgs() << "LoopSimplify: Splitting out a new outer loop\n");
 
   // If ScalarEvolution is around and knows anything about values in

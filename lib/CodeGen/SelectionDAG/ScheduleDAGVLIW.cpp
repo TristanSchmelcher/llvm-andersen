@@ -19,19 +19,19 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "pre-RA-sched"
-#include "ScheduleDAGSDNodes.h"
-#include "llvm/CodeGen/LatencyPriorityQueue.h"
-#include "llvm/CodeGen/ScheduleHazardRecognizer.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
+#include "ScheduleDAGSDNodes.h"
+#include "llvm/ADT/Statistic.h"
+#include "llvm/CodeGen/LatencyPriorityQueue.h"
+#include "llvm/CodeGen/ResourcePriorityQueue.h"
+#include "llvm/CodeGen/ScheduleHazardRecognizer.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
-#include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/ADT/Statistic.h"
-#include "llvm/CodeGen/ResourcePriorityQueue.h"
+#include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 #include <climits>
 using namespace llvm;
 
@@ -123,6 +123,8 @@ void ScheduleDAGVLIW::releaseSucc(SUnit *SU, const SDep &D) {
     llvm_unreachable(0);
   }
 #endif
+  assert(!D.isWeak() && "unexpected artificial DAG edge");
+
   --SuccSU->NumPredsLeft;
 
   SuccSU->setDepthToAtLeast(SU->getDepth() + D.getLatency());
@@ -158,7 +160,7 @@ void ScheduleDAGVLIW::scheduleNodeTopDown(SUnit *SU, unsigned CurCycle) {
 
   releaseSuccessors(SU);
   SU->isScheduled = true;
-  AvailableQueue->ScheduledNode(SU);
+  AvailableQueue->scheduledNode(SU);
 }
 
 /// listScheduleTopDown - The main loop of list scheduling for top-down
@@ -202,7 +204,7 @@ void ScheduleDAGVLIW::listScheduleTopDown() {
     // don't advance the hazard recognizer.
     if (AvailableQueue->empty()) {
       // Reset DFA state.
-      AvailableQueue->ScheduledNode(0);
+      AvailableQueue->scheduledNode(0);
       ++CurCycle;
       continue;
     }
@@ -261,7 +263,7 @@ void ScheduleDAGVLIW::listScheduleTopDown() {
   }
 
 #ifndef NDEBUG
-  VerifySchedule(/*isBottomUp=*/false);
+  VerifyScheduledSequence(/*isBottomUp=*/false);
 #endif
 }
 

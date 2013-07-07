@@ -14,20 +14,29 @@
 #include "HexagonTargetMachine.h"
 #include "Hexagon.h"
 #include "HexagonISelLowering.h"
-#include "llvm/Module.h"
+#include "HexagonMachineScheduler.h"
+#include "HexagonTargetObjectFile.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/IR/Module.h"
 #include "llvm/PassManager.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "llvm/Transforms/Scalar.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Scalar.h"
 
 using namespace llvm;
 
-static cl::
-opt<bool> DisableHardwareLoops(
-                        "disable-hexagon-hwloops", cl::Hidden,
-                        cl::desc("Disable Hardware Loops for Hexagon target"));
+static cl:: opt<bool> DisableHardwareLoops("disable-hexagon-hwloops",
+      cl::Hidden, cl::desc("Disable Hardware Loops for Hexagon target"));
+
+static cl::opt<bool> DisableHexagonMISched("disable-hexagon-misched",
+      cl::Hidden, cl::ZeroOrMore, cl::init(false),
+      cl::desc("Disable Hexagon MI Scheduling"));
+
+static cl::opt<bool> DisableHexagonCFGOpt("disable-hexagon-cfgopt",
+      cl::Hidden, cl::ZeroOrMore, cl::init(false),
+      cl::desc("Disable Hexagon CFG Optimization"));
+
 
 /// HexagonTargetMachineModule - Note that this is used on hosts that
 /// cannot link in a library unless there are references into the
@@ -42,6 +51,13 @@ extern "C" void LLVMInitializeHexagonTarget() {
   RegisterTargetMachine<HexagonTargetMachine> X(TheHexagonTarget);
 }
 
+static ScheduleDAGInstrs *createVLIWMachineSched(MachineSchedContext *C) {
+  return new VLIWMachineScheduler(C, new ConvergingVLIWScheduler());
+}
+
+static MachineSchedRegistry
+SchedCustomRegistry("hexagon", "Run Hexagon's custom scheduler",
+                    createVLIWMachineSched);
 
 /// HexagonTargetMachine ctor - Create an ILP32 architecture model.
 ///
@@ -50,29 +66,33 @@ extern "C" void LLVMInitializeHexagonTarget() {
 ///
 HexagonTargetMachine::HexagonTargetMachine(const Target &T, StringRef TT,
                                            StringRef CPU, StringRef FS,
-                                           TargetOptions Options,
+                                           const TargetOptions &Options,
                                            Reloc::Model RM,
                                            CodeModel::Model CM,
                                            CodeGenOpt::Level OL)
   : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
-    DataLayout("e-p:32:32:32-i64:64:64-i32:32:32-i16:16:16-i1:32:32-a0:0") ,
+    DL("e-p:32:32:32-"
+                "i64:64:64-i32:32:32-i16:16:16-i1:32:32-"
+                "f64:64:64-f32:32:32-a0:0-n32") ,
     Subtarget(TT, CPU, FS), InstrInfo(Subtarget), TLInfo(*this),
     TSInfo(*this),
     FrameLowering(Subtarget),
     InstrItins(&Subtarget.getInstrItineraryData()) {
-  setMCUseCFI(false);
+    setMCUseCFI(false);
+    initAsmInfo();
 }
 
 // addPassesForOptimizations - Allow the backend (target) to add Target
 // Independent Optimization passes to the Pass Manager.
 bool HexagonTargetMachine::addPassesForOptimizations(PassManagerBase &PM) {
-
-  PM.add(createConstantPropagationPass());
-  PM.add(createLoopSimplifyPass());
-  PM.add(createDeadCodeEliminationPass());
-  PM.add(createConstantPropagationPass());
-  PM.add(createLoopUnrollPass());
-  PM.add(createLoopStrengthReducePass(getTargetLowering()));
+  if (getOptLevel() != CodeGenOpt::None) {
+    PM.add(createConstantPropagationPass());
+    PM.add(createLoopSimplifyPass());
+    PM.add(createDeadCodeEliminationPass());
+    PM.add(createConstantPropagationPass());
+    PM.add(createLoopUnrollPass());
+    PM.add(createLoopStrengthReducePass());
+  }
   return true;
 }
 
@@ -81,7 +101,13 @@ namespace {
 class HexagonPassConfig : public TargetPassConfig {
 public:
   HexagonPassConfig(HexagonTargetMachine *TM, PassManagerBase &PM)
-    : TargetPassConfig(TM, PM) {}
+    : TargetPassConfig(TM, PM) {
+    // Enable MI scheduler.
+    if (!DisableHexagonMISched) {
+      enablePass(&MachineSchedulerID);
+      MachineSchedRegistry::setDefault(createVLIWMachineSched);
+    }
+  }
 
   HexagonTargetMachine &getHexagonTargetMachine() const {
     return getTM<HexagonTargetMachine>();
@@ -100,43 +126,71 @@ TargetPassConfig *HexagonTargetMachine::createPassConfig(PassManagerBase &PM) {
 }
 
 bool HexagonPassConfig::addInstSelector() {
-  PM.add(createHexagonRemoveExtendOps(getHexagonTargetMachine()));
-  PM.add(createHexagonISelDag(getHexagonTargetMachine()));
-  PM.add(createHexagonPeephole());
+  HexagonTargetMachine &TM = getHexagonTargetMachine();
+  bool NoOpt = (getOptLevel() == CodeGenOpt::None);
+
+  if (!NoOpt)
+    addPass(createHexagonRemoveExtendArgs(TM));
+
+  addPass(createHexagonISelDag(TM, getOptLevel()));
+
+  if (!NoOpt) {
+    addPass(createHexagonPeephole());
+    printAndVerify("After hexagon peephole pass");
+  }
+
   return false;
 }
 
-
 bool HexagonPassConfig::addPreRegAlloc() {
-  if (!DisableHardwareLoops) {
-    PM.add(createHexagonHardwareLoops());
-  }
-
+  if (getOptLevel() != CodeGenOpt::None)
+    if (!DisableHardwareLoops)
+      addPass(createHexagonHardwareLoops());
   return false;
 }
 
 bool HexagonPassConfig::addPostRegAlloc() {
-  PM.add(createHexagonCFGOptimizer(getHexagonTargetMachine()));
-  return true;
+  const HexagonTargetMachine &TM = getHexagonTargetMachine();
+  if (getOptLevel() != CodeGenOpt::None)
+    if (!DisableHexagonCFGOpt)
+      addPass(createHexagonCFGOptimizer(TM));
+  return false;
 }
 
-
 bool HexagonPassConfig::addPreSched2() {
-  addPass(IfConverterID);
+  const HexagonTargetMachine &TM = getHexagonTargetMachine();
+  const HexagonTargetObjectFile &TLOF =
+    (const HexagonTargetObjectFile &)getTargetLowering()->getObjFileLowering();
+
+  addPass(createHexagonCopyToCombine());
+  if (getOptLevel() != CodeGenOpt::None)
+    addPass(&IfConverterID);
+  if (!TLOF.IsSmallDataEnabled()) {
+    addPass(createHexagonSplitConst32AndConst64(TM));
+    printAndVerify("After hexagon split const32/64 pass");
+  }
   return true;
 }
 
 bool HexagonPassConfig::addPreEmitPass() {
+  const HexagonTargetMachine &TM = getHexagonTargetMachine();
+  bool NoOpt = (getOptLevel() == CodeGenOpt::None);
 
-  if (!DisableHardwareLoops) {
-    PM.add(createHexagonFixupHwLoops());
-  }
+  if (!NoOpt)
+    addPass(createHexagonNewValueJump());
 
   // Expand Spill code for predicate registers.
-  PM.add(createHexagonExpandPredSpillCode(getHexagonTargetMachine()));
+  addPass(createHexagonExpandPredSpillCode(TM));
 
   // Split up TFRcondsets into conditional transfers.
-  PM.add(createHexagonSplitTFRCondSets(getHexagonTargetMachine()));
+  addPass(createHexagonSplitTFRCondSets(TM));
+
+  // Create Packets.
+  if (!NoOpt) {
+    if (!DisableHardwareLoops)
+      addPass(createHexagonFixupHwLoops());
+    addPass(createHexagonPacketizer());
+  }
 
   return false;
 }

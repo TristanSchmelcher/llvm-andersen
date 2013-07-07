@@ -9,10 +9,6 @@
 // This describes the calling conventions for ARM architecture.
 //===----------------------------------------------------------------------===//
 
-/// CCIfSubtarget - Match if the current subtarget has a feature F.
-class CCIfSubtarget<string F, CCAction A>:
-  CCIf<!strconcat("State.getTarget().getSubtarget<ARMSubtarget>().", F), A>;
-
 /// CCIfAlign - Match of the original alignment of the arg
 class CCIfAlign<string Align, CCAction A>:
   CCIf<!strconcat("ArgFlags.getOrigAlign() == ", Align), A>;
@@ -83,6 +79,25 @@ def RetFastCC_ARM_APCS : CallingConv<[
   CCDelegateTo<RetCC_ARM_APCS>
 ]>;
 
+//===----------------------------------------------------------------------===//
+// ARM APCS Calling Convention for GHC
+//===----------------------------------------------------------------------===//
+
+def CC_ARM_APCS_GHC : CallingConv<[
+  // Handle all vector types as either f64 or v2f64.
+  CCIfType<[v1i64, v2i32, v4i16, v8i8, v2f32], CCBitConvertToType<f64>>,
+  CCIfType<[v2i64, v4i32, v8i16, v16i8, v4f32], CCBitConvertToType<v2f64>>,
+
+  CCIfType<[v2f64], CCAssignToReg<[Q4, Q5]>>,
+  CCIfType<[f64], CCAssignToReg<[D8, D9, D10, D11]>>,
+  CCIfType<[f32], CCAssignToReg<[S16, S17, S18, S19, S20, S21, S22, S23]>>,
+
+  // Promote i8/i16 arguments to i32.
+  CCIfType<[i8, i16], CCPromoteToType<i32>>,
+
+  // Pass in STG registers: Base, Sp, Hp, R1, R2, R3, R4, SpLim
+  CCIfType<[i32], CCAssignToReg<[R4, R5, R6, R7, R8, R9, R10, R11]>>
+]>;
 
 //===----------------------------------------------------------------------===//
 // ARM AAPCS (EABI) Calling Convention, common parts
@@ -96,8 +111,7 @@ def CC_ARM_AAPCS_Common : CallingConv<[
   // i64 is 8-aligned i32 here, so we may need to eat R1 as a pad register
   // (and the same is true for f64 if VFP is not enabled)
   CCIfType<[i32], CCIfAlign<"8", CCAssignToRegWithShadow<[R0, R2], [R0, R1]>>>,
-  CCIfType<[i32], CCIf<"State.getNextStackOffset() == 0 &&"
-                       "ArgFlags.getOrigAlign() != 8",
+  CCIfType<[i32], CCIf<"ArgFlags.getOrigAlign() != 8",
                        CCAssignToReg<[R0, R1, R2, R3]>>>,
 
   CCIfType<[i32], CCIfAlign<"8", CCAssignToStackWithShadow<4, 8, R3>>>,
@@ -117,6 +131,9 @@ def RetCC_ARM_AAPCS_Common : CallingConv<[
 //===----------------------------------------------------------------------===//
 
 def CC_ARM_AAPCS : CallingConv<[
+  // Handles byval parameters.
+  CCIfByVal<CCPassByVal<4, 4>>,
+
   // Handle all vector types as either f64 or v2f64.
   CCIfType<[v1i64, v2i32, v4i16, v8i8, v2f32], CCBitConvertToType<f64>>,
   CCIfType<[v2i64, v4i32, v8i16, v16i8, v4f32], CCBitConvertToType<v2f64>>,
@@ -142,6 +159,9 @@ def RetCC_ARM_AAPCS : CallingConv<[
 //===----------------------------------------------------------------------===//
 
 def CC_ARM_AAPCS_VFP : CallingConv<[
+  // Handles byval parameters.
+  CCIfByVal<CCPassByVal<4, 4>>,
+
   // Handle all vector types as either f64 or v2f64.
   CCIfType<[v1i64, v2i32, v4i16, v8i8, v2f32], CCBitConvertToType<f64>>,
   CCIfType<[v2i64, v4i32, v8i16, v16i8, v4f32], CCBitConvertToType<v2f64>>,
@@ -169,9 +189,22 @@ def RetCC_ARM_AAPCS_VFP : CallingConv<[
 // Callee-saved register lists.
 //===----------------------------------------------------------------------===//
 
+def CSR_NoRegs : CalleeSavedRegs<(add)>;
+
 def CSR_AAPCS : CalleeSavedRegs<(add LR, R11, R10, R9, R8, R7, R6, R5, R4,
                                      (sequence "D%u", 15, 8))>;
+
+// Constructors and destructors return 'this' in the ARM C++ ABI; since 'this'
+// and the pointer return value are both passed in R0 in these cases, this can
+// be partially modelled by treating R0 as a callee-saved register
+// Only the resulting RegMask is used; the SaveList is ignored
+def CSR_AAPCS_ThisReturn : CalleeSavedRegs<(add LR, R11, R10, R9, R8, R7, R6,
+                                            R5, R4, (sequence "D%u", 15, 8),
+                                            R0)>;
 
 // iOS ABI deviates from ARM standard ABI. R9 is not a callee-saved register.
 // Also save R7-R4 first to match the stack frame fixed spill areas.
 def CSR_iOS : CalleeSavedRegs<(add LR, R7, R6, R5, R4, (sub CSR_AAPCS, R9))>;
+
+def CSR_iOS_ThisReturn : CalleeSavedRegs<(add LR, R7, R6, R5, R4,
+                                          (sub CSR_AAPCS_ThisReturn, R9))>;

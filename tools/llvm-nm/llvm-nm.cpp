@@ -7,30 +7,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This program is a utility that works like traditional Unix "nm",
-// that is, it prints out the names of symbols in a bitcode file,
-// along with some information about each symbol.
+// This program is a utility that works like traditional Unix "nm", that is, it
+// prints out the names of symbols in a bitcode or object file, along with some
+// information about each symbol.
 //
-// This "nm" does not print symbols' addresses. It supports many of
-// the features of GNU "nm", including its different output formats.
+// This "nm" supports many of the features of GNU "nm", including its different
+// output formats.
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/Bitcode/ReaderWriter.h"
-#include "llvm/Bitcode/Archive.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Object/Archive.h"
+#include "llvm/Object/MachOUniversal.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Program.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Signals.h"
-#include "llvm/Support/Format.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
 #include <algorithm>
 #include <cctype>
@@ -60,6 +60,12 @@ namespace {
                               cl::desc("Show only undefined symbols"));
   cl::alias UndefinedOnly2("u", cl::desc("Alias for --undefined-only"),
                            cl::aliasopt(UndefinedOnly));
+
+  cl::opt<bool> DynamicSyms("dynamic",
+                             cl::desc("Display the dynamic symbols instead "
+                                      "of normal symbols."));
+  cl::alias DynamicSyms2("D", cl::desc("Alias for --dynamic"),
+                         cl::aliasopt(DynamicSyms));
 
   cl::opt<bool> DefinedOnly("defined-only",
                             cl::desc("Show only defined symbols"));
@@ -104,9 +110,18 @@ namespace {
 
   cl::opt<bool> SizeSort("size-sort", cl::desc("Sort symbols by size"));
 
+  cl::opt<bool> WithoutAliases("without-aliases", cl::Hidden,
+                               cl::desc("Exclude aliases from output"));
+
+  cl::opt<bool> ArchiveMap("print-armap",
+    cl::desc("Print the archive map"));
+  cl::alias ArchiveMaps("s", cl::desc("Alias for --print-armap"),
+                                 cl::aliasopt(ArchiveMap));
   bool PrintAddress = true;
 
   bool MultipleFiles = false;
+
+  bool HadError = false;
 
   std::string ToolName;
 }
@@ -119,6 +134,7 @@ static void error(Twine message, Twine path = Twine()) {
 static bool error(error_code ec, Twine path = Twine()) {
   if (ec) {
     error(ec.message(), path);
+    HadError = true;
     return true;
   }
   return false;
@@ -137,6 +153,8 @@ namespace {
       return true;
     else if (a.Address == b.Address && a.Name < b.Name)
       return true;
+    else if (a.Address == b.Address && a.Name == b.Name && a.Size < b.Size)
+      return true;
     else
       return false;
 
@@ -147,12 +165,21 @@ namespace {
       return true;
     else if (a.Size == b.Size && a.Name < b.Name)
       return true;
+    else if (a.Size == b.Size && a.Name == b.Name && a.Address < b.Address)
+      return true;
     else
       return false;
   }
 
   static bool CompareSymbolName(const NMSymbol &a, const NMSymbol &b) {
-    return a.Name < b.Name;
+    if (a.Name < b.Name)
+      return true;
+    else if (a.Name == b.Name && a.Size < b.Size)
+      return true;
+    else if (a.Name == b.Name && a.Size == b.Size && a.Address < b.Address)
+      return true;
+    else
+      return false;
   }
 
   StringRef CurrentFilename;
@@ -198,9 +225,10 @@ static void SortAndPrintSymbolList() {
       strcpy(SymbolSizeStr, "        ");
 
     if (i->Address != object::UnknownAddressOrSize)
-      format("%08"PRIx64, i->Address).print(SymbolAddrStr, sizeof(SymbolAddrStr));
+      format("%08" PRIx64, i->Address).print(SymbolAddrStr,
+                                             sizeof(SymbolAddrStr));
     if (i->Size != object::UnknownAddressOrSize)
-      format("%08"PRIx64, i->Size).print(SymbolSizeStr, sizeof(SymbolSizeStr));
+      format("%08" PRIx64, i->Size).print(SymbolSizeStr, sizeof(SymbolSizeStr));
 
     if (OutputFormat == posix) {
       outs() << i->Name << " " << i->TypeChar << " "
@@ -249,7 +277,6 @@ static void DumpSymbolNameForGlobalValue(GlobalValue &GV) {
   if (GV.hasPrivateLinkage() ||
       GV.hasLinkerPrivateLinkage() ||
       GV.hasLinkerPrivateWeakLinkage() ||
-      GV.hasLinkerPrivateWeakDefAutoLinkage() ||
       GV.hasAvailableExternallyLinkage())
     return;
   char TypeChar = TypeCharForSymbol(GV);
@@ -269,21 +296,26 @@ static void DumpSymbolNamesFromModule(Module *M) {
   std::for_each (M->begin(), M->end(), DumpSymbolNameForGlobalValue);
   std::for_each (M->global_begin(), M->global_end(),
                  DumpSymbolNameForGlobalValue);
-  std::for_each (M->alias_begin(), M->alias_end(),
-                 DumpSymbolNameForGlobalValue);
+  if (!WithoutAliases)
+    std::for_each (M->alias_begin(), M->alias_end(),
+		   DumpSymbolNameForGlobalValue);
 
   SortAndPrintSymbolList();
 }
 
 static void DumpSymbolNamesFromObject(ObjectFile *obj) {
   error_code ec;
-  for (symbol_iterator i = obj->begin_symbols(),
-                       e = obj->end_symbols();
-                       i != e; i.increment(ec)) {
+  symbol_iterator ibegin = obj->begin_symbols();
+  symbol_iterator iend = obj->end_symbols();
+  if (DynamicSyms) {
+    ibegin = obj->begin_dynamic_symbols();
+    iend = obj->end_dynamic_symbols();
+  }
+  for (symbol_iterator i = ibegin; i != iend; i.increment(ec)) {
     if (error(ec)) break;
-    bool internal;
-    if (error(i->isInternal(internal))) break;
-    if (!DebugSyms && internal)
+    uint32_t symflags;
+    if (error(i->getFlags(symflags))) break;
+    if (!DebugSyms && (symflags & SymbolRef::SF_FormatSpecific))
       continue;
     NMSymbol s;
     s.Size = object::UnknownAddressOrSize;
@@ -332,12 +364,32 @@ static void DumpSymbolNamesFromFile(std::string &Filename) {
       return;
 
     if (object::Archive *a = dyn_cast<object::Archive>(arch.get())) {
+      if (ArchiveMap) {
+        outs() << "Archive map" << "\n";
+        for (object::Archive::symbol_iterator i = a->begin_symbols(), 
+             e = a->end_symbols(); i != e; ++i) {
+          object::Archive::child_iterator c;
+          StringRef symname;
+          StringRef filename;
+          if (error(i->getMember(c))) 
+              return;
+          if (error(i->getName(symname)))
+              return;
+          if (error(c->getName(filename)))
+              return;
+          outs() << symname << " in " << filename << "\n";
+        }
+        outs() << "\n";
+      }
+
       for (object::Archive::child_iterator i = a->begin_children(),
                                            e = a->end_children(); i != e; ++i) {
         OwningPtr<Binary> child;
         if (i->getAsBinary(child)) {
           // Try opening it as a bitcode file.
-          OwningPtr<MemoryBuffer> buff(i->getBuffer());
+          OwningPtr<MemoryBuffer> buff;
+          if (error(i->getMemoryBuffer(buff)))
+            return;
           Module *Result = 0;
           if (buff)
             Result = ParseBitcodeFile(buff.get(), Context, &ErrorMessage);
@@ -354,6 +406,23 @@ static void DumpSymbolNamesFromFile(std::string &Filename) {
         }
       }
     }
+  } else if (magic == sys::fs::file_magic::macho_universal_binary) {
+    OwningPtr<Binary> Bin;
+    if (error(object::createBinary(Buffer.take(), Bin), Filename))
+      return;
+
+    object::MachOUniversalBinary *UB =
+        cast<object::MachOUniversalBinary>(Bin.get());
+    for (object::MachOUniversalBinary::object_iterator
+             I = UB->begin_objects(),
+             E = UB->end_objects();
+         I != E; ++I) {
+      OwningPtr<ObjectFile> Obj;
+      if (!I->getAsObjectFile(Obj)) {
+        outs() << Obj->getFileName() << ":\n";
+        DumpSymbolNamesFromObject(Obj.get());
+      }
+    }
   } else if (magic.is_object()) {
     OwningPtr<Binary> obj;
     if (error(object::createBinary(Buffer.take(), obj), Filename))
@@ -363,6 +432,7 @@ static void DumpSymbolNamesFromFile(std::string &Filename) {
   } else {
     errs() << ToolName << ": " << Filename << ": "
            << "unrecognizable file type\n";
+    HadError = true;
     return;
   }
 }
@@ -376,7 +446,7 @@ int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "llvm symbol table dumper\n");
 
   // llvm-nm only reads binary files.
-  if (error(sys::Program::ChangeStdinToBinary()))
+  if (error(sys::ChangeStdinToBinary()))
     return 1;
 
   ToolName = argv[0];
@@ -397,5 +467,9 @@ int main(int argc, char **argv) {
 
   std::for_each(InputFilenames.begin(), InputFilenames.end(),
                 DumpSymbolNamesFromFile);
+
+  if (HadError)
+    return 1;
+
   return 0;
 }

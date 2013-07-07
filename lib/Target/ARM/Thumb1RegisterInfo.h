@@ -16,22 +16,22 @@
 #define THUMB1REGISTERINFO_H
 
 #include "ARM.h"
-#include "ARMRegisterInfo.h"
+#include "ARMBaseRegisterInfo.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 
 namespace llvm {
   class ARMSubtarget;
   class ARMBaseInstrInfo;
-  class Type;
 
 struct Thumb1RegisterInfo : public ARMBaseRegisterInfo {
 public:
-  Thumb1RegisterInfo(const ARMBaseInstrInfo &tii, const ARMSubtarget &STI);
+  Thumb1RegisterInfo(const ARMSubtarget &STI);
 
   const TargetRegisterClass*
   getLargestLegalSuperClass(const TargetRegisterClass *RC) const;
 
-  const TargetRegisterClass *getPointerRegClass(unsigned Kind = 0) const;
+  const TargetRegisterClass*
+  getPointerRegClass(const MachineFunction &MF, unsigned Kind = 0) const;
 
   /// emitLoadConstPool - Emits a load from constpool to materialize the
   /// specified immediate.
@@ -42,11 +42,6 @@ public:
                         ARMCC::CondCodes Pred = ARMCC::AL,
                         unsigned PredReg = 0,
                         unsigned MIFlags = MachineInstr::NoFlags) const;
-
-  /// Code Generation virtual methods...
-  void eliminateCallFramePseudoInstr(MachineFunction &MF,
-                                     MachineBasicBlock &MBB,
-                                     MachineBasicBlock::iterator I) const;
 
   // rewrite MI to access 'Offset' bytes from the FP. Update Offset to be
   // however much remains to be handled. Return 'true' if no further
@@ -62,7 +57,8 @@ public:
                              const TargetRegisterClass *RC,
                              unsigned Reg) const;
   void eliminateFrameIndex(MachineBasicBlock::iterator II,
-                           int SPAdj, RegScavenger *RS = NULL) const;
+                           int SPAdj, unsigned FIOperandNum,
+                           RegScavenger *RS = NULL) const;
 };
 }
 

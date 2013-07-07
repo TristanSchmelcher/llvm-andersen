@@ -50,6 +50,9 @@
 // CHECK: ret
         ret
         
+// CHECK: retw
+        retw
+        
 // FIXME: Check that this matches SUB32ri8
 // CHECK: subl $1, %eax
         subl $1, %eax
@@ -339,15 +342,28 @@ rclb	$1, %bl   // CHECK: rclb %bl     # encoding: [0xd0,0xd3]
 rclb	$2, %bl   // CHECK: rclb $2, %bl # encoding: [0xc0,0xd3,0x02]
 
 // rdar://8418316
-// CHECK: shldw	$1, %bx, %bx
-// CHECK: shldw	$1, %bx, %bx
-// CHECK: shrdw	$1, %bx, %bx
-// CHECK: shrdw	$1, %bx, %bx
+// PR12173
+// CHECK: shldw	%cl, %bx, %dx
+// CHECK: shldw	%cl, %bx, %dx
+// CHECK: shldw	$1, %bx, %dx
+// CHECK: shldw	%cl, %bx, (%rax)
+// CHECK: shldw	%cl, %bx, (%rax)
+// CHECK: shrdw	%cl, %bx, %dx
+// CHECK: shrdw	%cl, %bx, %dx
+// CHECK: shrdw	$1, %bx, %dx
+// CHECK: shrdw	%cl, %bx, (%rax)
+// CHECK: shrdw	%cl, %bx, (%rax)
 
-shld	%bx,%bx
-shld	$1, %bx,%bx
-shrd	%bx,%bx
-shrd	$1, %bx,%bx
+shld  %bx, %dx
+shld  %cl, %bx, %dx
+shld  $1, %bx, %dx
+shld  %bx, (%rax)
+shld  %cl, %bx, (%rax)
+shrd  %bx, %dx
+shrd  %cl, %bx, %dx
+shrd  $1, %bx, %dx
+shrd  %bx, (%rax)
+shrd  %cl, %bx, (%rax)
 
 // CHECK: sldtl	%ecx
 // CHECK: encoding: [0x0f,0x00,0xc1]
@@ -491,15 +507,15 @@ fsave	32493
 
 // rdar://8456382 - cvtsd2si support.
 cvtsd2si	%xmm1, %rax
-// CHECK: cvtsd2siq	%xmm1, %rax
+// CHECK: cvtsd2si	%xmm1, %rax
 // CHECK: encoding: [0xf2,0x48,0x0f,0x2d,0xc1]
 cvtsd2si	%xmm1, %eax
-// CHECK: cvtsd2sil	%xmm1, %eax
+// CHECK: cvtsd2si	%xmm1, %eax
 // CHECK: encoding: [0xf2,0x0f,0x2d,0xc1]
 
-cvtsd2siq %xmm0, %rax // CHECK: cvtsd2siq	%xmm0, %rax
-cvtsd2sil %xmm0, %eax // CHECK: cvtsd2sil	%xmm0, %eax
-cvtsd2si %xmm0, %rax  // CHECK: cvtsd2siq	%xmm0, %rax
+cvtsd2siq %xmm0, %rax // CHECK: cvtsd2si	%xmm0, %rax
+cvtsd2sil %xmm0, %eax // CHECK: cvtsd2si	%xmm0, %eax
+cvtsd2si %xmm0, %rax  // CHECK: cvtsd2si	%xmm0, %rax
 
 
 cvttpd2dq %xmm1, %xmm0  // CHECK: cvttpd2dq %xmm1, %xmm0
@@ -828,6 +844,7 @@ iretq
 lretq  // CHECK: lretq # encoding: [0x48,0xcb]
 lretl  // CHECK: lretl # encoding: [0xcb]
 lret   // CHECK: lretl # encoding: [0xcb]
+lretw  // CHECK: lretw # encoding: [0x66,0xcb]
 
 // rdar://8403907
 sysret
@@ -1040,6 +1057,9 @@ xsetbv // CHECK: xsetbv # encoding: [0x0f,0x01,0xd1]
 	movsl
 	movsl	%ds:(%rsi), %es:(%rdi)
 	movsl	(%rsi), %es:(%rdi)
+// rdar://10883092
+// CHECK: movsd
+	movsl	(%rsi), (%rdi)
 
 // CHECK: movsq # encoding: [0x48,0xa5]
 // CHECK: movsq
@@ -1144,6 +1164,10 @@ xsetbv // CHECK: xsetbv # encoding: [0x0f,0x01,0xd1]
 // CHECK: encoding: [0x66,0x48,0x0f,0x6e,0xc7]
 	movd %rdi,%xmm0
 
+// CHECK: movd  %xmm0, %rax
+// CHECK: encoding: [0x66,0x48,0x0f,0x7e,0xc0]
+        movd  %xmm0, %rax
+
 // CHECK: movntil %eax, (%rdi)
 // CHECK: encoding: [0x0f,0xc3,0x07]
 // CHECK: movntil
@@ -1204,3 +1228,11 @@ sysexitl
 // CHECK: sysexitq
 // CHECK: encoding: [0x48,0x0f,0x35]
 sysexitq
+
+// CHECK: clac
+// CHECK: encoding: [0x0f,0x01,0xca]
+clac
+
+// CHECK: stac
+// CHECK: encoding: [0x0f,0x01,0xcb]
+stac

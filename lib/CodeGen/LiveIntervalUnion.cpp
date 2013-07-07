@@ -14,13 +14,11 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "regalloc"
-#include "LiveIntervalUnion.h"
+#include "llvm/CodeGen/LiveIntervalUnion.h"
 #include "llvm/ADT/SparseBitVector.h"
-#include "llvm/CodeGen/MachineLoopRanges.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-
 #include <algorithm>
 
 using namespace llvm;
@@ -81,7 +79,6 @@ void LiveIntervalUnion::extract(LiveInterval &VirtReg) {
 
 void
 LiveIntervalUnion::print(raw_ostream &OS, const TargetRegisterInfo *TRI) const {
-  OS << "LIU " << PrintReg(RepReg, TRI);
   if (empty()) {
     OS << " empty\n";
     return;
@@ -183,29 +180,25 @@ collectInterferingVRegs(unsigned MaxInterferingRegs) {
   return InterferingVRegs.size();
 }
 
-bool LiveIntervalUnion::Query::checkLoopInterference(MachineLoopRange *Loop) {
-  // VirtReg is likely live throughout the loop, so start by checking LIU-Loop
-  // overlaps.
-  IntervalMapOverlaps<LiveIntervalUnion::Map, MachineLoopRange::Map>
-    Overlaps(LiveUnion->getMap(), Loop->getMap());
-  if (!Overlaps.valid())
-    return false;
+void LiveIntervalUnion::Array::init(LiveIntervalUnion::Allocator &Alloc,
+                                    unsigned NSize) {
+  // Reuse existing allocation.
+  if (NSize == Size)
+    return;
+  clear();
+  Size = NSize;
+  LIUs = static_cast<LiveIntervalUnion*>(
+    malloc(sizeof(LiveIntervalUnion)*NSize));
+  for (unsigned i = 0; i != Size; ++i)
+    new(LIUs + i) LiveIntervalUnion(Alloc);
+}
 
-  // The loop is overlapping an LIU assignment. Check VirtReg as well.
-  LiveInterval::iterator VRI = VirtReg->find(Overlaps.start());
-
-  for (;;) {
-    if (VRI == VirtReg->end())
-      return false;
-    if (VRI->start < Overlaps.stop())
-      return true;
-
-    Overlaps.advanceTo(VRI->start);
-    if (!Overlaps.valid())
-      return false;
-    if (Overlaps.start() < VRI->end)
-      return true;
-
-    VRI = VirtReg->advanceTo(VRI, Overlaps.start());
-  }
+void LiveIntervalUnion::Array::clear() {
+  if (!LIUs)
+    return;
+  for (unsigned i = 0; i != Size; ++i)
+    LIUs[i].~LiveIntervalUnion();
+  free(LIUs);
+  Size =  0;
+  LIUs = 0;
 }

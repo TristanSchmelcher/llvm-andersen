@@ -13,14 +13,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "PPC.h"
+#include "MCTargetDesc/PPCMCExpr.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Target/Mangler.h"
-#include "llvm/ADT/SmallString.h"
 using namespace llvm;
 
 static MachineModuleInfoMachO &getMachOMMI(AsmPrinter &AP) {
@@ -50,7 +53,14 @@ static MCSymbol *GetSymbolFromOperand(const MachineOperand &MO, AsmPrinter &AP){
   // before we return the symbol.
   if (MO.getTargetFlags() == PPCII::MO_DARWIN_STUB) {
     Name += "$stub";
-    MCSymbol *Sym = Ctx.GetOrCreateSymbol(Name.str());
+    const char *PGP = AP.MAI->getPrivateGlobalPrefix();
+    const char *Prefix = "";
+    if (!Name.startswith(PGP)) {
+      // http://llvm.org/bugs/show_bug.cgi?id=15763
+      // all stubs and lazy_ptrs should be local symbols, which need leading 'L'
+      Prefix = PGP;
+    }
+    MCSymbol *Sym = Ctx.GetOrCreateSymbol(Twine(Prefix) + Twine(Name));
     MachineModuleInfoImpl::StubValueTy &StubSym =
       getMachOMMI(AP).getFnStubEntry(Sym);
     if (StubSym.getPointer())
@@ -95,20 +105,33 @@ static MCSymbol *GetSymbolFromOperand(const MachineOperand &MO, AsmPrinter &AP){
 }
 
 static MCOperand GetSymbolRef(const MachineOperand &MO, const MCSymbol *Symbol,
-                              AsmPrinter &Printer, bool isDarwin) {
+                              AsmPrinter &Printer) {
   MCContext &Ctx = Printer.OutContext;
   MCSymbolRefExpr::VariantKind RefKind = MCSymbolRefExpr::VK_None;
 
-  if (MO.getTargetFlags() & PPCII::MO_LO16)
-    RefKind = isDarwin ? MCSymbolRefExpr::VK_PPC_DARWIN_LO16 : MCSymbolRefExpr::VK_PPC_GAS_LO16;
-  else if (MO.getTargetFlags() & PPCII::MO_HA16)
-    RefKind = isDarwin ? MCSymbolRefExpr::VK_PPC_DARWIN_HA16 : MCSymbolRefExpr::VK_PPC_GAS_HA16;
+  unsigned access = MO.getTargetFlags() & PPCII::MO_ACCESS_MASK;
 
-  // FIXME: This isn't right, but we don't have a good way to express this in
-  // the MC Level, see below.
-  if (MO.getTargetFlags() & PPCII::MO_PIC_FLAG)
-    RefKind = MCSymbolRefExpr::VK_None;
-  
+  switch (access) {
+    case PPCII::MO_TPREL_LO:
+      RefKind = MCSymbolRefExpr::VK_PPC_TPREL_LO;
+      break;
+    case PPCII::MO_TPREL_HA:
+      RefKind = MCSymbolRefExpr::VK_PPC_TPREL_HA;
+      break;
+    case PPCII::MO_DTPREL_LO:
+      RefKind = MCSymbolRefExpr::VK_PPC_DTPREL_LO;
+      break;
+    case PPCII::MO_TLSLD_LO:
+      RefKind = MCSymbolRefExpr::VK_PPC_GOT_TLSLD_LO;
+      break;
+    case PPCII::MO_TOC_LO:
+      RefKind = MCSymbolRefExpr::VK_PPC_TOC_LO;
+      break;
+    case PPCII::MO_TLS:
+      RefKind = MCSymbolRefExpr::VK_PPC_TLS;
+      break;
+  }
+
   const MCExpr *Expr = MCSymbolRefExpr::Create(Symbol, RefKind, Ctx);
 
   if (!MO.isJTI() && MO.getOffset())
@@ -122,15 +145,23 @@ static MCOperand GetSymbolRef(const MachineOperand &MO, const MCSymbol *Symbol,
     
     const MCExpr *PB = MCSymbolRefExpr::Create(MF->getPICBaseSymbol(), Ctx);
     Expr = MCBinaryExpr::CreateSub(Expr, PB, Ctx);
-    // FIXME: We have no way to make the result be VK_PPC_LO16/VK_PPC_HA16,
-    // since it is not a symbol!
   }
-  
+
+  // Add ha16() / lo16() markers if required.
+  switch (access) {
+    case PPCII::MO_LO:
+      Expr = PPCMCExpr::CreateLo(Expr, Ctx);
+      break;
+    case PPCII::MO_HA:
+      Expr = PPCMCExpr::CreateHa(Expr, Ctx);
+      break;
+  }
+
   return MCOperand::CreateExpr(Expr);
 }
 
 void llvm::LowerPPCMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
-                                        AsmPrinter &AP, bool isDarwin) {
+                                        AsmPrinter &AP) {
   OutMI.setOpcode(MI->getOpcode());
   
   for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
@@ -154,17 +185,17 @@ void llvm::LowerPPCMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
       break;
     case MachineOperand::MO_GlobalAddress:
     case MachineOperand::MO_ExternalSymbol:
-      MCOp = GetSymbolRef(MO, GetSymbolFromOperand(MO, AP), AP, isDarwin);
+      MCOp = GetSymbolRef(MO, GetSymbolFromOperand(MO, AP), AP);
       break;
     case MachineOperand::MO_JumpTableIndex:
-      MCOp = GetSymbolRef(MO, AP.GetJTISymbol(MO.getIndex()), AP, isDarwin);
+      MCOp = GetSymbolRef(MO, AP.GetJTISymbol(MO.getIndex()), AP);
       break;
     case MachineOperand::MO_ConstantPoolIndex:
-      MCOp = GetSymbolRef(MO, AP.GetCPISymbol(MO.getIndex()), AP, isDarwin);
+      MCOp = GetSymbolRef(MO, AP.GetCPISymbol(MO.getIndex()), AP);
       break;
     case MachineOperand::MO_BlockAddress:
-      MCOp = GetSymbolRef(MO,AP.GetBlockAddressSymbol(MO.getBlockAddress()),AP,
-                          isDarwin);
+      MCOp = GetSymbolRef(MO, AP.GetBlockAddressSymbol(MO.getBlockAddress()),
+                          AP);
       break;
     case MachineOperand::MO_RegisterMask:
       continue;

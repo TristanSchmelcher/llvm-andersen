@@ -15,6 +15,7 @@
 #ifndef LLVM_ADT_POINTERUNION_H
 #define LLVM_ADT_POINTERUNION_H
 
+#include "llvm/Support/Compiler.h"
 #include "llvm/ADT/PointerIntPair.h"
 
 namespace llvm {
@@ -54,8 +55,8 @@ namespace llvm {
     static inline void *getAsVoidPointer(void *P) { return P; }
     static inline void *getFromVoidPointer(void *P) { return P; }
     enum {
-      PT1BitsAv = PointerLikeTypeTraits<PT1>::NumLowBitsAvailable,
-      PT2BitsAv = PointerLikeTypeTraits<PT2>::NumLowBitsAvailable,
+      PT1BitsAv = (int)(PointerLikeTypeTraits<PT1>::NumLowBitsAvailable),
+      PT2BitsAv = (int)(PointerLikeTypeTraits<PT2>::NumLowBitsAvailable),
       NumLowBitsAvailable = PT1BitsAv < PT2BitsAv ? PT1BitsAv : PT2BitsAv
     };
   };
@@ -95,15 +96,11 @@ namespace llvm {
   public:
     PointerUnion() {}
     
-    PointerUnion(PT1 V) {
-      Val.setPointer(
-         const_cast<void *>(PointerLikeTypeTraits<PT1>::getAsVoidPointer(V)));
-      Val.setInt(0);
+    PointerUnion(PT1 V) : Val(
+      const_cast<void *>(PointerLikeTypeTraits<PT1>::getAsVoidPointer(V))) {
     }
-    PointerUnion(PT2 V) {
-      Val.setPointer(
-         const_cast<void *>(PointerLikeTypeTraits<PT2>::getAsVoidPointer(V)));
-      Val.setInt(1);
+    PointerUnion(PT2 V) : Val(
+      const_cast<void *>(PointerLikeTypeTraits<PT2>::getAsVoidPointer(V)), 1) {
     }
     
     /// isNull - Return true if the pointer held in the union is null,
@@ -113,7 +110,7 @@ namespace llvm {
       // we recursively strip off low bits if we have a nested PointerUnion.
       return !PointerLikeTypeTraits<PT1>::getFromVoidPointer(Val.getPointer());
     }
-    operator bool() const { return !isNull(); }
+    LLVM_EXPLICIT operator bool() const { return !isNull(); }
 
     /// is<T>() return true if the Union currently holds the type matching T.
     template<typename T>
@@ -142,30 +139,32 @@ namespace llvm {
       return T();
     }
 
-    /// \brief If the union is set to the first pointer type we can get an
-    /// address pointing to it.
-    template <typename T>
-    PT1 const *getAddrOf() const {
+    /// \brief If the union is set to the first pointer type get an address
+    /// pointing to it.
+    PT1 const *getAddrOfPtr1() const {
+      return const_cast<PointerUnion *>(this)->getAddrOfPtr1();
+    }
+
+    /// \brief If the union is set to the first pointer type get an address
+    /// pointing to it.
+    PT1 *getAddrOfPtr1() {
       assert(is<PT1>() && "Val is not the first pointer");
       assert(get<PT1>() == Val.getPointer() &&
          "Can't get the address because PointerLikeTypeTraits changes the ptr");
-      T const *can_only_get_address_of_first_pointer_type
-                        = reinterpret_cast<PT1 const *>(Val.getAddrOfPointer());
-      return can_only_get_address_of_first_pointer_type;
+      return (PT1 *)Val.getAddrOfPointer();
     }
     
     /// Assignment operators - Allow assigning into this union from either
     /// pointer type, setting the discriminator to remember what it came from.
     const PointerUnion &operator=(const PT1 &RHS) {
-      Val.setPointer(
+      Val.initWithPointer(
          const_cast<void *>(PointerLikeTypeTraits<PT1>::getAsVoidPointer(RHS)));
-      Val.setInt(0);
       return *this;
     }
     const PointerUnion &operator=(const PT2 &RHS) {
-      Val.setPointer(
-        const_cast<void *>(PointerLikeTypeTraits<PT2>::getAsVoidPointer(RHS)));
-      Val.setInt(1);
+      Val.setPointerAndInt(
+        const_cast<void *>(PointerLikeTypeTraits<PT2>::getAsVoidPointer(RHS)),
+        1);
       return *this;
     }
     
@@ -176,6 +175,11 @@ namespace llvm {
       return V;
     }
   };
+
+  template<typename PT1, typename PT2>
+  bool operator==(PointerUnion<PT1, PT2> lhs, PointerUnion<PT1, PT2> rhs) {
+    return lhs.getOpaqueValue() == rhs.getOpaqueValue();
+  }
   
   // Teach SmallPtrSet that PointerUnion is "basically a pointer", that has
   // # low bits available = min(PT1bits,PT2bits)-1.
@@ -253,7 +257,7 @@ namespace llvm {
     /// isNull - Return true if the pointer held in the union is null,
     /// regardless of which type it is.
     bool isNull() const { return Val.isNull(); }
-    operator bool() const { return !isNull(); }
+    LLVM_EXPLICIT operator bool() const { return !isNull(); }
     
     /// is<T>() return true if the Union currently holds the type matching T.
     template<typename T>
@@ -263,7 +267,7 @@ namespace llvm {
         ::llvm::PointerUnionTypeSelector<PT1, T, IsInnerUnion,
           ::llvm::PointerUnionTypeSelector<PT2, T, IsInnerUnion, IsPT3 >
                                                                    >::Return Ty;
-      return Ty(Val).is<T>();
+      return Ty(Val).template is<T>();
     }
     
     /// get<T>() - Return the value of the specified pointer type. If the
@@ -276,7 +280,7 @@ namespace llvm {
         ::llvm::PointerUnionTypeSelector<PT1, T, IsInnerUnion,
           ::llvm::PointerUnionTypeSelector<PT2, T, IsInnerUnion, IsPT3 >
                                                                    >::Return Ty;
-      return Ty(Val).get<T>();
+      return Ty(Val).template get<T>();
     }
     
     /// dyn_cast<T>() - If the current value is of the specified pointer type,
@@ -361,7 +365,7 @@ namespace llvm {
     /// isNull - Return true if the pointer held in the union is null,
     /// regardless of which type it is.
     bool isNull() const { return Val.isNull(); }
-    operator bool() const { return !isNull(); }
+    LLVM_EXPLICIT operator bool() const { return !isNull(); }
     
     /// is<T>() return true if the Union currently holds the type matching T.
     template<typename T>

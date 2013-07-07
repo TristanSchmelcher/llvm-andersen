@@ -14,12 +14,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RESOURCE_PRIORITY_QUEUE_H
-#define RESOURCE_PRIORITY_QUEUE_H
+#ifndef LLVM_CODEGEN_RESOURCEPRIORITYQUEUE_H
+#define LLVM_CODEGEN_RESOURCEPRIORITYQUEUE_H
 
 #include "llvm/CodeGen/DFAPacketizer.h"
-#include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/CodeGen/ScheduleDAG.h"
+#include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetRegisterInfo.h"
@@ -76,7 +76,7 @@ namespace llvm {
 
   public:
     ResourcePriorityQueue(SelectionDAGISel *IS);
-    
+
     ~ResourcePriorityQueue() {
       delete ResourcesModel;
     }
@@ -126,8 +126,8 @@ namespace llvm {
 
     virtual void dump(ScheduleDAG* DAG) const;
 
-    /// ScheduledNode - Main resource tracking point.
-    void ScheduledNode(SUnit *Node);
+    /// scheduledNode - Main resource tracking point.
+    void scheduledNode(SUnit *Node);
     bool isResourceAvailable(SUnit *SU);
     void reserveResources(SUnit *SU);
 

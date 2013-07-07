@@ -12,58 +12,57 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "inline"
-#include "llvm/CallingConv.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Module.h"
-#include "llvm/Type.h"
+#include "llvm/Transforms/IPO.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/InlineCost.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Support/CallSite.h"
-#include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/InlinerPass.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/ADT/SmallPtrSet.h"
 
 using namespace llvm;
 
 namespace {
 
-  class SimpleInliner : public Inliner {
-    // Functions that are never inlined
-    SmallPtrSet<const Function*, 16> NeverInline;
-    InlineCostAnalyzer CA;
-  public:
-    SimpleInliner() : Inliner(ID) {
-      initializeSimpleInlinerPass(*PassRegistry::getPassRegistry());
-    }
-    SimpleInliner(int Threshold) : Inliner(ID, Threshold) {
-      initializeSimpleInlinerPass(*PassRegistry::getPassRegistry());
-    }
-    static char ID; // Pass identification, replacement for typeid
-    InlineCost getInlineCost(CallSite CS) {
-      return CA.getInlineCost(CS, NeverInline);
-    }
-    float getInlineFudgeFactor(CallSite CS) {
-      return CA.getInlineFudgeFactor(CS);
-    }
-    void resetCachedCostInfo(Function *Caller) {
-      CA.resetCachedCostInfo(Caller);
-    }
-    void growCachedCostInfo(Function* Caller, Function* Callee) {
-      CA.growCachedCostInfo(Caller, Callee);
-    }
-    virtual bool doInitialization(CallGraph &CG);
-    void releaseMemory() {
-      CA.clear();
-    }
-  };
-}
+/// \brief Actaul inliner pass implementation.
+///
+/// The common implementation of the inlining logic is shared between this
+/// inliner pass and the always inliner pass. The two passes use different cost
+/// analyses to determine when to inline.
+class SimpleInliner : public Inliner {
+  InlineCostAnalysis *ICA;
+
+public:
+  SimpleInliner() : Inliner(ID), ICA(0) {
+    initializeSimpleInlinerPass(*PassRegistry::getPassRegistry());
+  }
+
+  SimpleInliner(int Threshold)
+      : Inliner(ID, Threshold, /*InsertLifetime*/ true), ICA(0) {
+    initializeSimpleInlinerPass(*PassRegistry::getPassRegistry());
+  }
+
+  static char ID; // Pass identification, replacement for typeid
+
+  InlineCost getInlineCost(CallSite CS) {
+    return ICA->getInlineCost(CS, getInlineThreshold(CS));
+  }
+
+  virtual bool runOnSCC(CallGraphSCC &SCC);
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+};
+
+} // end anonymous namespace
 
 char SimpleInliner::ID = 0;
 INITIALIZE_PASS_BEGIN(SimpleInliner, "inline",
                 "Function Integration/Inlining", false, false)
 INITIALIZE_AG_DEPENDENCY(CallGraph)
+INITIALIZE_PASS_DEPENDENCY(InlineCostAnalysis)
 INITIALIZE_PASS_END(SimpleInliner, "inline",
                 "Function Integration/Inlining", false, false)
 
@@ -73,48 +72,12 @@ Pass *llvm::createFunctionInliningPass(int Threshold) {
   return new SimpleInliner(Threshold);
 }
 
-// doInitialization - Initializes the vector of functions that have been
-// annotated with the noinline attribute.
-bool SimpleInliner::doInitialization(CallGraph &CG) {
-  CA.setTargetData(getAnalysisIfAvailable<TargetData>());
-
-  Module &M = CG.getModule();
-
-  for (Module::iterator I = M.begin(), E = M.end();
-       I != E; ++I)
-    if (!I->isDeclaration() && I->hasFnAttr(Attribute::NoInline))
-      NeverInline.insert(I);
-
-  // Get llvm.noinline
-  GlobalVariable *GV = M.getNamedGlobal("llvm.noinline");
-
-  if (GV == 0)
-    return false;
-
-  // Don't crash on invalid code
-  if (!GV->hasDefinitiveInitializer())
-    return false;
-
-  const ConstantArray *InitList = dyn_cast<ConstantArray>(GV->getInitializer());
-
-  if (InitList == 0)
-    return false;
-
-  // Iterate over each element and add to the NeverInline set
-  for (unsigned i = 0, e = InitList->getNumOperands(); i != e; ++i) {
-
-    // Get Source
-    const Constant *Elt = InitList->getOperand(i);
-
-    if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(Elt))
-      if (CE->getOpcode() == Instruction::BitCast)
-        Elt = CE->getOperand(0);
-
-    // Insert into set of functions to never inline
-    if (const Function *F = dyn_cast<Function>(Elt))
-      NeverInline.insert(F);
-  }
-
-  return false;
+bool SimpleInliner::runOnSCC(CallGraphSCC &SCC) {
+  ICA = &getAnalysis<InlineCostAnalysis>();
+  return Inliner::runOnSCC(SCC);
 }
 
+void SimpleInliner::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.addRequired<InlineCostAnalysis>();
+  Inliner::getAnalysisUsage(AU);
+}

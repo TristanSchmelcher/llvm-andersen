@@ -18,10 +18,17 @@
 
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/CaptureTracking.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/Support/CallSite.h"
+
 using namespace llvm;
 
 CaptureTracker::~CaptureTracker() {}
+
+bool CaptureTracker::shouldExplore(Use *U) { return true; }
 
 namespace {
   struct SimpleCaptureTracker : public CaptureTracker {
@@ -30,11 +37,9 @@ namespace {
 
     void tooManyUses() { Captured = true; }
 
-    bool shouldExplore(Use *U) { return true; }
-
     bool captured(Use *U) {
       if (isa<ReturnInst>(U->getUser()) && !ReturnCaptures)
-	return false;
+        return false;
 
       Captured = true;
       return true;
@@ -153,10 +158,10 @@ void llvm::PointerMayBeCaptured(const Value *V, CaptureTracker *Tracker) {
       // Don't count comparisons of a no-alias return value against null as
       // captures. This allows us to ignore comparisons of malloc results
       // with null, for example.
-      if (isNoAliasCall(V->stripPointerCasts()))
-        if (ConstantPointerNull *CPN =
-              dyn_cast<ConstantPointerNull>(I->getOperand(1)))
-          if (CPN->getType()->getAddressSpace() == 0)
+      if (ConstantPointerNull *CPN =
+          dyn_cast<ConstantPointerNull>(I->getOperand(1)))
+        if (CPN->getType()->getAddressSpace() == 0)
+          if (isNoAliasCall(V->stripPointerCasts()))
             break;
       // Otherwise, be conservative. There are crazy ways to capture pointers
       // using comparisons.

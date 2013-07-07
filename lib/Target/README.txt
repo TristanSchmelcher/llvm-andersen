@@ -2,22 +2,6 @@ Target Independent Opportunities:
 
 //===---------------------------------------------------------------------===//
 
-With the recent changes to make the implicit def/use set explicit in
-machineinstrs, we should change the target descriptions for 'call' instructions
-so that the .td files don't list all the call-clobbered registers as implicit
-defs.  Instead, these should be added by the code generator (e.g. on the dag).
-
-This has a number of uses:
-
-1. PPC32/64 and X86 32/64 can avoid having multiple copies of call instructions
-   for their different impdef sets.
-2. Targets with multiple calling convs (e.g. x86) which have different clobber
-   sets don't need copies of call instructions.
-3. 'Interprocedural register allocation' can be done to reduce the clobber sets
-   of calls.
-
-//===---------------------------------------------------------------------===//
-
 We should recognized various "overflow detection" idioms and translate them into
 llvm.uadd.with.overflow and similar intrinsics.  Here is a multiply idiom:
 
@@ -168,7 +152,7 @@ stuff too.
 
 //===---------------------------------------------------------------------===//
 
-For vector types, TargetData.cpp::getTypeInfo() returns alignment that is equal
+For vector types, DataLayout.cpp::getTypeInfo() returns alignment that is equal
 to the type size. It works but can be overly conservative as the alignment of
 specific vector types are target dependent.
 
@@ -278,22 +262,7 @@ unsigned countbits_slow(unsigned v) {
     c += v & 1;
   return c;
 }
-unsigned countbits_fast(unsigned v){
-  unsigned c;
-  for (c = 0; v; c++)
-    v &= v - 1; // clear the least significant bit set
-  return c;
-}
 
-BITBOARD = unsigned long long
-int PopCnt(register BITBOARD a) {
-  register int c=0;
-  while(a) {
-    c++;
-    a &= a - 1;
-  }
-  return c;
-}
 unsigned int popcount(unsigned int input) {
   unsigned int count = 0;
   for (unsigned int i =  0; i < 4 * 8; i++)
@@ -958,6 +927,31 @@ There's an unnecessary zext in the generated code with "clang
 unsigned a(unsigned long long x) {return 40 * (x >> 1);}
 Should combine to "20 * (((unsigned)x) & -2)".  Currently not
 optimized with "clang -emit-llvm-bc | opt -std-compile-opts".
+
+//===---------------------------------------------------------------------===//
+
+int g(int x) { return (x - 10) < 0; }
+Should combine to "x <= 9" (the sub has nsw).  Currently not
+optimized with "clang -emit-llvm-bc | opt -std-compile-opts".
+
+//===---------------------------------------------------------------------===//
+
+int g(int x) { return (x + 10) < 0; }
+Should combine to "x < -10" (the add has nsw).  Currently not
+optimized with "clang -emit-llvm-bc | opt -std-compile-opts".
+
+//===---------------------------------------------------------------------===//
+
+int f(int i, int j) { return i < j + 1; }
+int g(int i, int j) { return j > i - 1; }
+Should combine to "i <= j" (the add/sub has nsw).  Currently not
+optimized with "clang -emit-llvm-bc | opt -std-compile-opts".
+
+//===---------------------------------------------------------------------===//
+
+unsigned f(unsigned x) { return ((x & 7) + 1) & 15; }
+The & 15 part should be optimized away, it doesn't change the result. Currently
+not optimized with "clang -emit-llvm-bc | opt -std-compile-opts".
 
 //===---------------------------------------------------------------------===//
 

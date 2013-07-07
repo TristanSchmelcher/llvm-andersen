@@ -15,12 +15,13 @@
 #ifndef ARMISELLOWERING_H
 #define ARMISELLOWERING_H
 
+#include "ARM.h"
 #include "ARMSubtarget.h"
-#include "llvm/Target/TargetLowering.h"
-#include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/FastISel.h"
 #include "llvm/CodeGen/SelectionDAG.h"
-#include "llvm/CodeGen/CallingConvLower.h"
+#include "llvm/Target/TargetLowering.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 #include <vector>
 
 namespace llvm {
@@ -40,6 +41,9 @@ namespace llvm {
                     // PIC mode.
       WrapperJT,    // WrapperJT - A wrapper node for TargetJumpTable
 
+      // Add pseudo op to model memcpy for struct byval.
+      COPY_STRUCT_BYVAL,
+
       CALL,         // Function call.
       CALL_PRED,    // Function call that's predicable.
       CALL_NOLINK,  // Function call with branch not branch-and-link.
@@ -52,10 +56,12 @@ namespace llvm {
       PIC_ADD,      // Add with a PC operand and a PIC label.
 
       CMP,          // ARM compare instructions.
+      CMN,          // ARM CMN instructions.
       CMPZ,         // ARM compare that sets only Z flag.
       CMPFP,        // ARM VFP compare instruction, sets FPSCR.
       CMPFPw0,      // ARM VFP compare against zero instruction, sets FPSCR.
       FMSTAT,       // ARM fmstat instruction.
+
       CMOV,         // ARM conditional move instructions.
 
       BCC_i64,
@@ -167,6 +173,9 @@ namespace llvm {
       VMULLs,       // ...signed
       VMULLu,       // ...unsigned
 
+      UMLAL,        // 64bit Unsigned Accumulate Multiply
+      SMLAL,        // 64bit Signed Accumulate Multiply
+
       // Operands of the standard BUILD_VECTOR node are not legalized, which
       // is fine if BUILD_VECTORs are always lowered to shuffles or other
       // operations, but for ARM some BUILD_VECTORs are legal as-is and their
@@ -223,7 +232,11 @@ namespace llvm {
       ATOMAND64_DAG,
       ATOMNAND64_DAG,
       ATOMSWAP64_DAG,
-      ATOMCMPXCHG64_DAG
+      ATOMCMPXCHG64_DAG,
+      ATOMMIN64_DAG,
+      ATOMUMIN64_DAG,
+      ATOMMAX64_DAG,
+      ATOMUMAX64_DAG
     };
   }
 
@@ -239,7 +252,7 @@ namespace llvm {
   public:
     explicit ARMTargetLowering(TargetMachine &TM);
 
-    virtual unsigned getJumpTableEncoding(void) const;
+    virtual unsigned getJumpTableEncoding() const;
 
     virtual SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const;
 
@@ -251,8 +264,13 @@ namespace llvm {
 
     virtual const char *getTargetNodeName(unsigned Opcode) const;
 
+    virtual bool isSelectSupported(SelectSupportKind Kind) const {
+      // ARM does not support scalar condition selects on vectors.
+      return (Kind != ScalarCondVectorVal);
+    }
+
     /// getSetCCResultType - Return the value type to use for ISD::SETCC.
-    virtual EVT getSetCCResultType(EVT VT) const;
+    virtual EVT getSetCCResultType(LLVMContext &Context, EVT VT) const;
 
     virtual MachineBasicBlock *
       EmitInstrWithCustomInserter(MachineInstr *MI,
@@ -267,14 +285,18 @@ namespace llvm {
     bool isDesirableToTransformToIntegerOp(unsigned Opc, EVT VT) const;
 
     /// allowsUnalignedMemoryAccesses - Returns true if the target allows
-    /// unaligned memory accesses. of the specified type.
-    virtual bool allowsUnalignedMemoryAccesses(EVT VT) const;
+    /// unaligned memory accesses of the specified type. Returns whether it
+    /// is "fast" by reference in the second argument.
+    virtual bool allowsUnalignedMemoryAccesses(EVT VT, bool *Fast) const;
 
     virtual EVT getOptimalMemOpType(uint64_t Size,
                                     unsigned DstAlign, unsigned SrcAlign,
-                                    bool IsZeroVal,
+                                    bool IsMemset, bool ZeroMemset,
                                     bool MemcpyStrSrc,
                                     MachineFunction &MF) const;
+
+    using TargetLowering::isZExtFree;
+    virtual bool isZExtFree(SDValue Val, EVT VT2) const;
 
     /// isLegalAddressingMode - Return true if the addressing mode represented
     /// by AM is legal for this target, for a load/store of the specified type.
@@ -310,7 +332,6 @@ namespace llvm {
                                             SelectionDAG &DAG) const;
 
     virtual void computeMaskedBitsForTargetNode(const SDValue Op,
-                                                const APInt &Mask,
                                                 APInt &KnownZero,
                                                 APInt &KnownOne,
                                                 const SelectionDAG &DAG,
@@ -328,7 +349,7 @@ namespace llvm {
 
     std::pair<unsigned, const TargetRegisterClass*>
       getRegForInlineAsmConstraint(const std::string &Constraint,
-                                   EVT VT) const;
+                                   MVT VT) const;
 
     /// LowerAsmOperandForConstraint - Lower the specified operand into the Ops
     /// vector.  If it is invalid, don't add anything to Ops. If hasMemory is
@@ -345,7 +366,7 @@ namespace llvm {
 
     /// getRegClassFor - Return the register class that should be used for the
     /// specified value type.
-    virtual TargetRegisterClass *getRegClassFor(EVT VT) const;
+    virtual const TargetRegisterClass *getRegClassFor(MVT VT) const;
 
     /// getMaximalGlobalOffset - Returns the maximal possible offset which can
     /// be used for loads / stores from the global.
@@ -353,7 +374,8 @@ namespace llvm {
 
     /// createFastISel - This method returns a target specific FastISel object,
     /// or null if the target does not support "fast" ISel.
-    virtual FastISel *createFastISel(FunctionLoweringInfo &funcInfo) const;
+    virtual FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
+                                     const TargetLibraryInfo *libInfo) const;
 
     Sched::Preference getSchedulingPreference(SDNode *N) const;
 
@@ -370,7 +392,7 @@ namespace llvm {
                                     unsigned Intrinsic) const;
   protected:
     std::pair<const TargetRegisterClass*, uint8_t>
-    findRepresentativeClass(EVT VT) const;
+    findRepresentativeClass(MVT VT) const;
 
   private:
     /// Subtarget - Keep a pointer to the ARMSubtarget around so that we can
@@ -385,12 +407,12 @@ namespace llvm {
     ///
     unsigned ARMPCLabelIndex;
 
-    void addTypeForNEON(EVT VT, EVT PromotedLdStVT, EVT PromotedBitwiseVT);
-    void addDRTypeForNEON(EVT VT);
-    void addQRTypeForNEON(EVT VT);
+    void addTypeForNEON(MVT VT, MVT PromotedLdStVT, MVT PromotedBitwiseVT);
+    void addDRTypeForNEON(MVT VT);
+    void addQRTypeForNEON(MVT VT);
 
     typedef SmallVector<std::pair<unsigned, SDValue>, 8> RegsToPassVector;
-    void PassF64ArgInRegs(DebugLoc dl, SelectionDAG &DAG,
+    void PassF64ArgInRegs(SDLoc dl, SelectionDAG &DAG,
                           SDValue Chain, SDValue &Arg,
                           RegsToPassVector &RegsToPass,
                           CCValAssign &VA, CCValAssign &NextVA,
@@ -399,12 +421,12 @@ namespace llvm {
                           ISD::ArgFlagsTy Flags) const;
     SDValue GetF64FormalArgument(CCValAssign &VA, CCValAssign &NextVA,
                                  SDValue &Root, SelectionDAG &DAG,
-                                 DebugLoc dl) const;
+                                 SDLoc dl) const;
 
     CCAssignFn *CCAssignFnForNode(CallingConv::ID CC, bool Return,
                                   bool isVarArg) const;
     SDValue LowerMemOpCallTo(SDValue Chain, SDValue StackPtr, SDValue Arg,
-                             DebugLoc dl, SelectionDAG &DAG,
+                             SDLoc dl, SelectionDAG &DAG,
                              const CCValAssign &VA,
                              ISD::ArgFlagsTy Flags) const;
     SDValue LowerEH_SJLJ_SETJMP(SDValue Op, SelectionDAG &DAG) const;
@@ -418,7 +440,8 @@ namespace llvm {
     SDValue LowerToTLSGeneralDynamicModel(GlobalAddressSDNode *GA,
                                             SelectionDAG &DAG) const;
     SDValue LowerToTLSExecModels(GlobalAddressSDNode *GA,
-                                   SelectionDAG &DAG) const;
+                                 SelectionDAG &DAG,
+                                 TLSModel::Model model) const;
     SDValue LowerGLOBAL_OFFSET_TABLE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBR_JT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
@@ -430,6 +453,8 @@ namespace llvm {
     SDValue LowerShiftRightParts(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerShiftLeftParts(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFLT_ROUNDS_(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerConstantFP(SDValue Op, SelectionDAG &DAG,
+                            const ARMSubtarget *ST) const;
     SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
                               const ARMSubtarget *ST) const;
 
@@ -438,35 +463,43 @@ namespace llvm {
     SDValue LowerCallResult(SDValue Chain, SDValue InFlag,
                             CallingConv::ID CallConv, bool isVarArg,
                             const SmallVectorImpl<ISD::InputArg> &Ins,
-                            DebugLoc dl, SelectionDAG &DAG,
-                            SmallVectorImpl<SDValue> &InVals) const;
+                            SDLoc dl, SelectionDAG &DAG,
+                            SmallVectorImpl<SDValue> &InVals,
+                            bool isThisReturn, SDValue ThisVal) const;
 
     virtual SDValue
       LowerFormalArguments(SDValue Chain,
                            CallingConv::ID CallConv, bool isVarArg,
                            const SmallVectorImpl<ISD::InputArg> &Ins,
-                           DebugLoc dl, SelectionDAG &DAG,
+                           SDLoc dl, SelectionDAG &DAG,
                            SmallVectorImpl<SDValue> &InVals) const;
 
+    int StoreByValRegs(CCState &CCInfo, SelectionDAG &DAG,
+                       SDLoc dl, SDValue &Chain,
+                       const Value *OrigArg,
+                       unsigned InRegsParamRecordIdx,
+                       unsigned OffsetFromOrigArg,
+                       unsigned ArgOffset,
+                       unsigned ArgSize,
+                       bool ForceMutable) const;
+
     void VarArgStyleRegisters(CCState &CCInfo, SelectionDAG &DAG,
-                              DebugLoc dl, SDValue &Chain, unsigned ArgOffset)
-      const;
+                              SDLoc dl, SDValue &Chain,
+                              unsigned ArgOffset,
+                              bool ForceMutable = false) const;
 
     void computeRegArea(CCState &CCInfo, MachineFunction &MF,
-                        unsigned &VARegSize, unsigned &VARegSaveSize) const;
+                        unsigned InRegsParamRecordIdx,
+                        unsigned ArgSize,
+                        unsigned &ArgRegsSize,
+                        unsigned &ArgRegsSaveSize) const;
 
     virtual SDValue
-      LowerCall(SDValue Chain, SDValue Callee,
-                CallingConv::ID CallConv, bool isVarArg,
-                bool &isTailCall,
-                const SmallVectorImpl<ISD::OutputArg> &Outs,
-                const SmallVectorImpl<SDValue> &OutVals,
-                const SmallVectorImpl<ISD::InputArg> &Ins,
-                DebugLoc dl, SelectionDAG &DAG,
+      LowerCall(TargetLowering::CallLoweringInfo &CLI,
                 SmallVectorImpl<SDValue> &InVals) const;
 
     /// HandleByVal - Target-specific cleanup for ByVal support.
-    virtual void HandleByVal(CCState *, unsigned &) const;
+    virtual void HandleByVal(CCState *, unsigned &, unsigned) const;
 
     /// IsEligibleForTailCallOptimization - Check whether the call is eligible
     /// for tail call optimization. Targets which want to do tail call
@@ -480,21 +513,27 @@ namespace llvm {
                                     const SmallVectorImpl<SDValue> &OutVals,
                                     const SmallVectorImpl<ISD::InputArg> &Ins,
                                            SelectionDAG& DAG) const;
+
+    virtual bool CanLowerReturn(CallingConv::ID CallConv,
+                                MachineFunction &MF, bool isVarArg,
+                                const SmallVectorImpl<ISD::OutputArg> &Outs,
+                                LLVMContext &Context) const;
+
     virtual SDValue
       LowerReturn(SDValue Chain,
                   CallingConv::ID CallConv, bool isVarArg,
                   const SmallVectorImpl<ISD::OutputArg> &Outs,
                   const SmallVectorImpl<SDValue> &OutVals,
-                  DebugLoc dl, SelectionDAG &DAG) const;
+                  SDLoc dl, SelectionDAG &DAG) const;
 
-    virtual bool isUsedByReturnOnly(SDNode *N) const;
+    virtual bool isUsedByReturnOnly(SDNode *N, SDValue &Chain) const;
 
     virtual bool mayBeEmittedAsTailCall(CallInst *CI) const;
 
     SDValue getARMCmp(SDValue LHS, SDValue RHS, ISD::CondCode CC,
-                      SDValue &ARMcc, SelectionDAG &DAG, DebugLoc dl) const;
+                      SDValue &ARMcc, SelectionDAG &DAG, SDLoc dl) const;
     SDValue getVFPCmp(SDValue LHS, SDValue RHS,
-                      SelectionDAG &DAG, DebugLoc dl) const;
+                      SelectionDAG &DAG, SDLoc dl) const;
     SDValue duplicateCmp(SDValue Cmp, SelectionDAG &DAG) const;
 
     SDValue OptimizeVFPBrcond(SDValue Op, SelectionDAG &DAG) const;
@@ -511,7 +550,9 @@ namespace llvm {
                                           unsigned Op1,
                                           unsigned Op2,
                                           bool NeedsCarry = false,
-                                          bool IsCmpxchg = false) const;
+                                          bool IsCmpxchg = false,
+                                          bool IsMinMax = false,
+                                          ARMCC::CondCodes CC = ARMCC::AL) const;
     MachineBasicBlock * EmitAtomicBinaryMinMax(MachineInstr *MI,
                                                MachineBasicBlock *BB,
                                                unsigned Size,
@@ -526,6 +567,9 @@ namespace llvm {
                                              MachineBasicBlock *MBB) const;
 
     bool RemapAddSubWithFlags(MachineInstr *MI, MachineBasicBlock *BB) const;
+
+    MachineBasicBlock *EmitStructByval(MachineInstr *MI,
+                                       MachineBasicBlock *MBB) const;
   };
 
   enum NEONModImmType {
@@ -536,7 +580,8 @@ namespace llvm {
 
 
   namespace ARM {
-    FastISel *createFastISel(FunctionLoweringInfo &funcInfo);
+    FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
+                             const TargetLibraryInfo *libInfo);
   }
 }
 

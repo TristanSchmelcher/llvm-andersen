@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_SUPPORT_WIN_COFF_H
-#define LLVM_SUPPORT_WIN_COFF_H
+#ifndef LLVM_SUPPORT_COFF_H
+#define LLVM_SUPPORT_COFF_H
 
 #include "llvm/Support/DataTypes.h"
 #include <cassert>
@@ -29,6 +29,9 @@
 
 namespace llvm {
 namespace COFF {
+
+  // The PE signature bytes that follows the DOS stub header.
+  static const char PEMagic[] = { 'P', 'E', '\0', '\0' };
 
   // Sizes in bytes of various things in the COFF format.
   enum {
@@ -50,6 +53,8 @@ namespace COFF {
   };
 
   enum MachineTypes {
+    MT_Invalid = 0xffff,
+
     IMAGE_FILE_MACHINE_UNKNOWN   = 0x0,
     IMAGE_FILE_MACHINE_AM33      = 0x13,
     IMAGE_FILE_MACHINE_AMD64     = 0x8664,
@@ -74,6 +79,8 @@ namespace COFF {
   };
 
   enum Characteristics {
+    C_Invalid = 0,
+
     /// The file does not contain base relocations and must be loaded at its
     /// preferred base. If this cannot be done, the loader will error.
     IMAGE_FILE_RELOCS_STRIPPED         = 0x0001,
@@ -114,9 +121,9 @@ namespace COFF {
   struct symbol {
     char     Name[NameSize];
     uint32_t Value;
+    uint16_t SectionNumber;
     uint16_t Type;
     uint8_t  StorageClass;
-    uint16_t SectionNumber;
     uint8_t  NumberOfAuxSymbols;
   };
 
@@ -138,6 +145,8 @@ namespace COFF {
 
   /// Storage class tells where and what the symbol represents
   enum SymbolStorageClass {
+    SSC_Invalid = 0xff,
+
     IMAGE_SYM_CLASS_END_OF_FUNCTION  = -1,  ///< Physical end of function
     IMAGE_SYM_CLASS_NULL             = 0,   ///< No symbol
     IMAGE_SYM_CLASS_AUTOMATIC        = 1,   ///< Stack variable
@@ -214,6 +223,8 @@ namespace COFF {
   };
 
   enum SectionCharacteristics {
+    SC_Invalid = 0xffffffff,
+
     IMAGE_SCN_TYPE_NO_PAD            = 0x00000008,
     IMAGE_SCN_CNT_CODE               = 0x00000020,
     IMAGE_SCN_CNT_INITIALIZED_DATA   = 0x00000040,
@@ -313,7 +324,8 @@ namespace COFF {
     IMAGE_COMDAT_SELECT_SAME_SIZE,
     IMAGE_COMDAT_SELECT_EXACT_MATCH,
     IMAGE_COMDAT_SELECT_ASSOCIATIVE,
-    IMAGE_COMDAT_SELECT_LARGEST
+    IMAGE_COMDAT_SELECT_LARGEST,
+    IMAGE_COMDAT_SELECT_NEWEST
   };
 
   // Auxiliary Symbol Formats
@@ -439,8 +451,6 @@ namespace COFF {
   };
 
   struct PEHeader {
-    uint32_t Signature;
-    header COFFHeader;
     uint16_t Magic;
     uint8_t  MajorLinkerVersion;
     uint8_t  MinorLinkerVersion;

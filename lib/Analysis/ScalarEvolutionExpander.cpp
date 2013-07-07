@@ -14,13 +14,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/ScalarEvolutionExpander.h"
-#include "llvm/Analysis/LoopInfo.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetLowering.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/Debug.h"
 
 using namespace llvm;
 
@@ -31,13 +31,18 @@ using namespace llvm;
 Value *SCEVExpander::ReuseOrCreateCast(Value *V, Type *Ty,
                                        Instruction::CastOps Op,
                                        BasicBlock::iterator IP) {
-  // All new or reused instructions must strictly dominate the Builder's
-  // InsertPt to ensure that the expression's expansion dominates its uses.
-  // Assert that the requested insertion point works at least for new
-  // instructions.
+  // This function must be called with the builder having a valid insertion
+  // point. It doesn't need to be the actual IP where the uses of the returned
+  // cast will be added, but it must dominate such IP.
+  // We use this precondition to produce a cast that will dominate all its
+  // uses. In particular, this is crucial for the case where the builder's
+  // insertion point *is* the point where we were asked to put the cast.
+  // Since we don't know the builder's insertion point is actually
+  // where the uses will be added (only that it dominates it), we are
+  // not allowed to move it.
+  BasicBlock::iterator BIP = Builder.GetInsertPoint();
 
-  // FIXME: disabled to make the bots happy.
-  //assert(SE.DT->dominates(IP, Builder.GetInsertPoint()));
+  Instruction *Ret = NULL;
 
   // Check to see if there is already a cast!
   for (Value::use_iterator UI = V->use_begin(), E = V->use_end();
@@ -46,28 +51,35 @@ Value *SCEVExpander::ReuseOrCreateCast(Value *V, Type *Ty,
     if (U->getType() == Ty)
       if (CastInst *CI = dyn_cast<CastInst>(U))
         if (CI->getOpcode() == Op) {
-          // If the cast isn't where we want it, fix it.
-          if (BasicBlock::iterator(CI) != IP
-              || IP == Builder.GetInsertPoint()) {
+          // If the cast isn't where we want it, create a new cast at IP.
+          // Likewise, do not reuse a cast at BIP because it must dominate
+          // instructions that might be inserted before BIP.
+          if (BasicBlock::iterator(CI) != IP || BIP == IP) {
             // Create a new cast, and leave the old cast in place in case
             // it is being used as an insert point. Clear its operand
             // so that it doesn't hold anything live.
-            Instruction *NewCI = CastInst::Create(Op, V, Ty, "", IP);
-            NewCI->takeName(CI);
-            CI->replaceAllUsesWith(NewCI);
+            Ret = CastInst::Create(Op, V, Ty, "", IP);
+            Ret->takeName(CI);
+            CI->replaceAllUsesWith(Ret);
             CI->setOperand(0, UndefValue::get(V->getType()));
-            rememberInstruction(NewCI);
-            return NewCI;
+            break;
           }
-          rememberInstruction(CI);
-          return CI;
+          Ret = CI;
+          break;
         }
   }
 
   // Create a new cast.
-  Instruction *I = CastInst::Create(Op, V, Ty, V->getName(), IP);
-  rememberInstruction(I);
-  return I;
+  if (!Ret)
+    Ret = CastInst::Create(Op, V, Ty, V->getName(), IP);
+
+  // We assert at the end of the function since IP might point to an
+  // instruction with different dominance properties than a cast
+  // (an invoke for example) and not dominate BIP (but the cast does).
+  assert(SE.DT->dominates(Ret, BIP));
+
+  rememberInstruction(Ret);
+  return Ret;
 }
 
 /// InsertNoopCastOfTo - Insert a cast of V to the specified type,
@@ -200,7 +212,7 @@ static bool FactorOutConstant(const SCEV *&S,
                               const SCEV *&Remainder,
                               const SCEV *Factor,
                               ScalarEvolution &SE,
-                              const TargetData *TD) {
+                              const DataLayout *TD) {
   // Everything is divisible by one.
   if (Factor->isOne())
     return true;
@@ -241,7 +253,7 @@ static bool FactorOutConstant(const SCEV *&S,
   // of the given factor.
   if (const SCEVMulExpr *M = dyn_cast<SCEVMulExpr>(S)) {
     if (TD) {
-      // With TargetData, the size is known. Check if there is a constant
+      // With DataLayout, the size is known. Check if there is a constant
       // operand which is a multiple of the given factor. If so, we can
       // factor it.
       const SCEVConstant *FC = cast<SCEVConstant>(Factor);
@@ -255,7 +267,7 @@ static bool FactorOutConstant(const SCEV *&S,
           return true;
         }
     } else {
-      // Without TargetData, check if Factor can be factored out of any of the
+      // Without DataLayout, check if Factor can be factored out of any of the
       // Mul's operands. If so, we can just remove it.
       for (unsigned i = 0, e = M->getNumOperands(); i != e; ++i) {
         const SCEV *SOp = M->getOperand(i);
@@ -446,7 +458,7 @@ Value *SCEVExpander::expandAddToGEP(const SCEV *const *op_begin,
       // An empty struct has no fields.
       if (STy->getNumElements() == 0) break;
       if (SE.TD) {
-        // With TargetData, field offsets are known. See if a constant offset
+        // With DataLayout, field offsets are known. See if a constant offset
         // falls within any of the struct fields.
         if (Ops.empty()) break;
         if (const SCEVConstant *C = dyn_cast<SCEVConstant>(Ops[0]))
@@ -465,7 +477,7 @@ Value *SCEVExpander::expandAddToGEP(const SCEV *const *op_begin,
             }
           }
       } else {
-        // Without TargetData, just check for an offsetof expression of the
+        // Without DataLayout, just check for an offsetof expression of the
         // appropriate struct type.
         for (unsigned i = 0, e = Ops.size(); i != e; ++i)
           if (const SCEVUnknown *U = dyn_cast<SCEVUnknown>(Ops[i])) {
@@ -505,6 +517,9 @@ Value *SCEVExpander::expandAddToGEP(const SCEV *const *op_begin,
     // Cast the base to i8*.
     V = InsertNoopCastOfTo(V,
        Type::getInt8PtrTy(Ty->getContext(), PTy->getAddressSpace()));
+
+    assert(!isa<Instruction>(V) ||
+           SE.DT->dominates(cast<Instruction>(V), Builder.GetInsertPoint()));
 
     // Expand the operands for a plain byte offset.
     Value *Idx = expandCodeFor(SE.getAddExpr(Ops), Ty);
@@ -896,7 +911,7 @@ Instruction *SCEVExpander::getIVIncOperand(Instruction *IncV,
   case Instruction::Add:
   case Instruction::Sub: {
     Instruction *OInst = dyn_cast<Instruction>(IncV->getOperand(1));
-    if (!OInst || SE.DT->properlyDominates(OInst, InsertPos))
+    if (!OInst || SE.DT->dominates(OInst, InsertPos))
       return dyn_cast<Instruction>(IncV->getOperand(0));
     return NULL;
   }
@@ -908,7 +923,7 @@ Instruction *SCEVExpander::getIVIncOperand(Instruction *IncV,
       if (isa<Constant>(*I))
         continue;
       if (Instruction *OInst = dyn_cast<Instruction>(*I)) {
-        if (!SE.DT->properlyDominates(OInst, InsertPos))
+        if (!SE.DT->dominates(OInst, InsertPos))
           return NULL;
       }
       if (allowScale) {
@@ -935,12 +950,13 @@ Instruction *SCEVExpander::getIVIncOperand(Instruction *IncV,
 /// it available to other uses in this loop. Recursively hoist any operands,
 /// until we reach a value that dominates InsertPos.
 bool SCEVExpander::hoistIVInc(Instruction *IncV, Instruction *InsertPos) {
-  if (SE.DT->properlyDominates(IncV, InsertPos))
+  if (SE.DT->dominates(IncV, InsertPos))
       return true;
 
   // InsertPos must itself dominate IncV so that IncV's new position satisfies
   // its existing users.
-  if (!SE.DT->dominates(InsertPos->getParent(), IncV->getParent()))
+  if (isa<PHINode>(InsertPos)
+      || !SE.DT->dominates(InsertPos->getParent(), IncV->getParent()))
     return false;
 
   // Check that the chain of IV operands leading back to Phi can be hoisted.
@@ -952,7 +968,7 @@ bool SCEVExpander::hoistIVInc(Instruction *IncV, Instruction *InsertPos) {
     // IncV is safe to hoist.
     IVIncs.push_back(IncV);
     IncV = Oper;
-    if (SE.DT->properlyDominates(IncV, InsertPos))
+    if (SE.DT->dominates(IncV, InsertPos))
       break;
   }
   for (SmallVectorImpl<Instruction*>::reverse_iterator I = IVIncs.rbegin(),
@@ -1507,9 +1523,8 @@ Value *SCEVExpander::expand(const SCEV *S) {
     }
 
   // Check to see if we already expanded this here.
-  std::map<std::pair<const SCEV *, Instruction *>,
-           AssertingVH<Value> >::iterator I =
-    InsertedExpressions.find(std::make_pair(S, InsertPt));
+  std::map<std::pair<const SCEV *, Instruction *>, TrackingVH<Value> >::iterator
+    I = InsertedExpressions.find(std::make_pair(S, InsertPt));
   if (I != InsertedExpressions.end())
     return I->second;
 
@@ -1584,14 +1599,14 @@ static bool width_descending(Value *lhs, Value *rhs) {
 /// the same context that SCEVExpander is used.
 unsigned SCEVExpander::replaceCongruentIVs(Loop *L, const DominatorTree *DT,
                                            SmallVectorImpl<WeakVH> &DeadInsts,
-                                           const TargetLowering *TLI) {
+                                           const TargetTransformInfo *TTI) {
   // Find integer phis in order of increasing width.
   SmallVector<PHINode*, 8> Phis;
   for (BasicBlock::iterator I = L->getHeader()->begin();
        PHINode *Phi = dyn_cast<PHINode>(I); ++I) {
     Phis.push_back(Phi);
   }
-  if (TLI)
+  if (TTI)
     std::sort(Phis.begin(), Phis.end(), width_descending);
 
   unsigned NumElim = 0;
@@ -1602,14 +1617,25 @@ unsigned SCEVExpander::replaceCongruentIVs(Loop *L, const DominatorTree *DT,
          PEnd = Phis.end(); PIter != PEnd; ++PIter) {
     PHINode *Phi = *PIter;
 
+    // Fold constant phis. They may be congruent to other constant phis and
+    // would confuse the logic below that expects proper IVs.
+    if (Value *V = Phi->hasConstantValue()) {
+      Phi->replaceAllUsesWith(V);
+      DeadInsts.push_back(Phi);
+      ++NumElim;
+      DEBUG_WITH_TYPE(DebugType, dbgs()
+                      << "INDVARS: Eliminated constant iv: " << *Phi << '\n');
+      continue;
+    }
+
     if (!SE.isSCEVable(Phi->getType()))
       continue;
 
     PHINode *&OrigPhiRef = ExprToIVMap[SE.getSCEV(Phi)];
     if (!OrigPhiRef) {
       OrigPhiRef = Phi;
-      if (Phi->getType()->isIntegerTy() && TLI
-          && TLI->isTruncateFree(Phi->getType(), Phis.back()->getType())) {
+      if (Phi->getType()->isIntegerTy() && TTI
+          && TTI->isTruncateFree(Phi->getType(), Phis.back()->getType())) {
         // This phi can be freely truncated to the narrowest phi type. Map the
         // truncated expression to it so it will be reused for narrow types.
         const SCEV *TruncExpr =
@@ -1683,4 +1709,45 @@ unsigned SCEVExpander::replaceCongruentIVs(Loop *L, const DominatorTree *DT,
     DeadInsts.push_back(Phi);
   }
   return NumElim;
+}
+
+namespace {
+// Search for a SCEV subexpression that is not safe to expand.  Any expression
+// that may expand to a !isSafeToSpeculativelyExecute value is unsafe, namely
+// UDiv expressions. We don't know if the UDiv is derived from an IR divide
+// instruction, but the important thing is that we prove the denominator is
+// nonzero before expansion.
+//
+// IVUsers already checks that IV-derived expressions are safe. So this check is
+// only needed when the expression includes some subexpression that is not IV
+// derived.
+//
+// Currently, we only allow division by a nonzero constant here. If this is
+// inadequate, we could easily allow division by SCEVUnknown by using
+// ValueTracking to check isKnownNonZero().
+struct SCEVFindUnsafe {
+  bool IsUnsafe;
+
+  SCEVFindUnsafe(): IsUnsafe(false) {}
+
+  bool follow(const SCEV *S) {
+    const SCEVUDivExpr *D = dyn_cast<SCEVUDivExpr>(S);
+    if (!D)
+      return true;
+    const SCEVConstant *SC = dyn_cast<SCEVConstant>(D->getRHS());
+    if (SC && !SC->getValue()->isZero())
+      return true;
+    IsUnsafe = true;
+    return false;
+  }
+  bool isDone() const { return IsUnsafe; }
+};
+}
+
+namespace llvm {
+bool isSafeToExpand(const SCEV *S) {
+  SCEVFindUnsafe Search;
+  visitAll(S, Search);
+  return !Search.IsUnsafe;
+}
 }

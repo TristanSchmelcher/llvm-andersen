@@ -17,11 +17,11 @@
 #ifndef LLVM_CODEGEN_LEXICALSCOPES_H
 #define LLVM_CODEGEN_LEXICALSCOPES_H
 
-#include "llvm/Metadata.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/Support/DebugLoc.h"
 #include "llvm/Support/ValueHandle.h"
 #include <utility>
@@ -141,8 +141,8 @@ private:
   DenseMap<const MDNode *, LexicalScope *> AbstractScopeMap;
 
   /// AbstractScopesList - Tracks abstract scopes constructed while processing
-  /// a function. 
-  SmallVector<LexicalScope *, 4>AbstractScopesList;
+  /// a function.
+  SmallVector<LexicalScope *, 4> AbstractScopesList;
 
   /// CurrentFnLexicalScope - Top level scope for the current function.
   ///
@@ -158,7 +158,7 @@ class LexicalScope {
 public:
   LexicalScope(LexicalScope *P, const MDNode *D, const MDNode *I, bool A)
     : Parent(P), Desc(D), InlinedAtLocation(I), AbstractScope(A),
-      LastInsn(0), FirstInsn(0), DFSIn(0), DFSOut(0), IndentLevel(0) {
+      LastInsn(0), FirstInsn(0), DFSIn(0), DFSOut(0) {
     if (Parent)
       Parent->addChild(this);
   }
@@ -166,13 +166,13 @@ public:
   virtual ~LexicalScope() {}
 
   // Accessors.
-  LexicalScope *getParent() const               { return Parent; }
-  const MDNode *getDesc() const                 { return Desc; }
-  const MDNode *getInlinedAt() const            { return InlinedAtLocation; }
-  const MDNode *getScopeNode() const            { return Desc; }
-  bool isAbstractScope() const                  { return AbstractScope; }
-  SmallVector<LexicalScope *, 4> &getChildren() { return Children; }
-  SmallVector<InsnRange, 4> &getRanges()        { return Ranges; }
+  LexicalScope *getParent() const                { return Parent; }
+  const MDNode *getDesc() const                  { return Desc; }
+  const MDNode *getInlinedAt() const             { return InlinedAtLocation; }
+  const MDNode *getScopeNode() const             { return Desc; }
+  bool isAbstractScope() const                   { return AbstractScope; }
+  SmallVectorImpl<LexicalScope *> &getChildren() { return Children; }
+  SmallVectorImpl<InsnRange> &getRanges()        { return Ranges; }
 
   /// addChild - Add a child scope.
   void addChild(LexicalScope *S) { Children.push_back(S); }
@@ -209,7 +209,7 @@ public:
       Parent->closeInsnRange(NewScope);
   }
 
-  /// dominates - Return true if current scope dominsates given lexical scope.
+  /// dominates - Return true if current scope dominates given lexical scope.
   bool dominates(const LexicalScope *S) const {
     if (S == this)
       return true;
@@ -225,7 +225,7 @@ public:
   void setDFSIn(unsigned I)             { DFSIn = I; }
 
   /// dump - print lexical scope.
-  void dump() const;
+  void dump(unsigned Indent = 0) const;
 
 private:
   LexicalScope *Parent;                          // Parent to this scope.
@@ -241,7 +241,6 @@ private:
   const MachineInstr *FirstInsn;      // First instruction of this scope.
   unsigned DFSIn, DFSOut;             // In & Out Depth use to determine
                                       // scope nesting.
-  mutable unsigned IndentLevel;       // Private state for dump()
 };
 
 } // end llvm namespace

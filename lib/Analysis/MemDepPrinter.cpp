@@ -10,15 +10,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Analysis/MemoryDependenceAnalysis.h"
-#include "llvm/LLVMContext.h"
 #include "llvm/Analysis/Passes.h"
-#include "llvm/Assembly/Writer.h"
-#include "llvm/Support/CallSite.h"
-#include "llvm/Support/InstIterator.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Analysis/MemoryDependenceAnalysis.h"
+#include "llvm/Assembly/Writer.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/CallSite.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/InstIterator.h"
+#include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
 namespace {
@@ -32,7 +32,7 @@ namespace {
       Unknown
     };
 
-    static const char* DepTypeStr[];
+    static const char *const DepTypeStr[];
 
     typedef PointerIntPair<const Instruction *, 2, DepType> InstTypePair;
     typedef std::pair<InstTypePair, const BasicBlock *> Dep;
@@ -88,7 +88,7 @@ FunctionPass *llvm::createMemDepPrinter() {
   return new MemDepPrinter();
 }
 
-const char* MemDepPrinter::DepTypeStr[]
+const char *const MemDepPrinter::DepTypeStr[]
   = {"Clobber", "Def", "NonFuncLocal", "Unknown"};
 
 bool MemDepPrinter::runOnFunction(Function &F) {
