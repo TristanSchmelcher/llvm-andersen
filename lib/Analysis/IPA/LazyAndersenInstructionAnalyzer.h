@@ -15,7 +15,7 @@
 #define LAZYANDERSENINSTRUCTIONANALYZER_H
 
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/InstVisitor.h"
+#include "llvm/InstVisitor.h"
 
 namespace llvm {
   class LazyAndersenData;

@@ -22,8 +22,8 @@
 #include "LazyAndersenReturnedToCallerRelation.h"
 #include "LazyAndersenStoredToRelation.h"
 #include "LazyAndersenValueInfo.h"
-#include "llvm/User.h"
-#include "llvm/Value.h"
+#include "llvm/IR/User.h"
+#include "llvm/IR/Value.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;

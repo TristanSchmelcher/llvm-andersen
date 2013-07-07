@@ -15,8 +15,8 @@
 
 #include "LazyAndersenData.h"
 #include "LazyAndersenRelation.h"
+#include "llvm/IR/Value.h"
 #include "llvm/Support/raw_os_ostream.h"
-#include "llvm/Value.h"
 
 #include <sstream>
 
