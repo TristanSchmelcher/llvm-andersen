@@ -25,6 +25,7 @@ namespace lazyandersen {
 
   template<typename NodeTy>
   class SavedIterator : private IntrusiveListNode<SavedIterator<NodeTy> > {
+    friend struct ilist_ghostly_sentinel_traits<SavedIterator>;
     friend struct ilist_nextprev_traits<SavedIterator>;
     friend struct ilist_node_traits<SavedIterator>;
     friend struct IntrusiveListTraits<SavedIterator>;

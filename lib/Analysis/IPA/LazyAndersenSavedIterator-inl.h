@@ -17,6 +17,7 @@
 #include "LazyAndersenSavedIterator.h"
 
 #include "LazyAndersenIntrusiveListWithSavedIteratorSupportNode-inl.h"
+#include "llvm/Support/ErrorHandling.h"
 
 namespace llvm {
 namespace lazyandersen {
@@ -62,8 +63,8 @@ namespace llvm {
   template<typename NodeTy>
   void ilist_traits<lazyandersen::SavedIterator<NodeTy> >::deleteNode(
       lazyandersen::SavedIterator<NodeTy> *Node) {
-    // SavedIterator should never be deleted through the tracking list.
-    assert(false);
+    llvm_unreachable(
+        "SavedIterator should never be deleted through the tracking list");
   }
 }
 

@@ -25,6 +25,7 @@ namespace lazyandersen {
 
   class HalfRelationBase : public HasDirection,
       private IntrusiveListNode<HalfRelationBase> {
+    friend struct ilist_ghostly_sentinel_traits<HalfRelationBase>;
     friend struct ilist_nextprev_traits<HalfRelationBase>;
     friend struct ilist_node_traits<HalfRelationBase>;
     friend struct IntrusiveListTraits<HalfRelationBase>;
