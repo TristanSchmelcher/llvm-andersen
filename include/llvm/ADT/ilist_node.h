@@ -44,16 +44,16 @@ struct ilist_nextprev_traits;
 /// that use ilist_nextprev_traits or ilist_default_traits.
 ///
 template<typename NodeTy>
-class ilist_node : private ilist_half_node<NodeTy> {
+class ilist_node : protected ilist_half_node<NodeTy> {
   friend struct ilist_ghostly_sentinel_traits<NodeTy, ilist_half_node<NodeTy> >;
   friend struct ilist_nextprev_traits<NodeTy>;
   friend struct ilist_traits<NodeTy>;
   NodeTy *Next;
+protected:
+  ilist_node() : Next(0) {}
   NodeTy *getNext() { return Next; }
   const NodeTy *getNext() const { return Next; }
   void setNext(NodeTy *N) { Next = N; }
-protected:
-  ilist_node() : Next(0) {}
 
 public:
   /// @name Adjacent Node Accessors
