@@ -7,7 +7,6 @@ add_llvm_library(LLVMipa
   IPA.cpp
   InlineCost.cpp
   LazyAndersen.cpp
-  LazyAndersenAlgorithmResultCache.cpp
   LazyAndersenAliasAnalysis.cpp
   LazyAndersenAnalysisResult.cpp
   LazyAndersenAnalysisResultCacheEntry.cpp

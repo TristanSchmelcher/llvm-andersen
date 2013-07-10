@@ -29,8 +29,7 @@ namespace llvm {
 namespace lazyandersen {
   class ValueInfo : private RefCountedBase<ValueInfo>,
       private HalfRelationList<INCOMING>,
-      private HalfRelationList<OUTGOING>,
-      public AlgorithmResultCache<ValueInfoAlgorithmId> {
+      private HalfRelationList<OUTGOING> {
     friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
     friend class RefCountedBase<ValueInfo>;
     // The Value that maps to this object. (If this analysis applies to
@@ -43,6 +42,7 @@ namespace lazyandersen {
     typedef DenseMap<const Value *, Ref> Map;
 
   private:
+    AlgorithmResultCache<ValueInfoAlgorithmId> ResultCache;
     // The map that this analysis is in.
     Map *ContainingMap;
 
@@ -77,6 +77,11 @@ namespace lazyandersen {
     template<RelationDirection Direction>
     const HalfRelationList<Direction> *getRelations() const {
       return static_cast<const HalfRelationList<Direction> *>(this);
+    }
+
+    template<ValueInfoAlgorithmId Id>
+    AnalysisResult *getAlgorithmResult() {
+      return ResultCache.getAlgorithmResult<Id>(this);
     }
 
   private:

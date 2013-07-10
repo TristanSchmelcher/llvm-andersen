@@ -21,13 +21,19 @@
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult : public AnalysisResultEntryList,
-      public AlgorithmResultCache<AnalysisResultAlgorithmId> {
+  class AnalysisResult : public AnalysisResultEntryList {
+    AlgorithmResultCache<AnalysisResultAlgorithmId> ResultCache;
+
   public:
     typedef OwningPtr<AnalysisResult> Ref;
 
     AnalysisResult();
     ~AnalysisResult();
+
+    template<AnalysisResultAlgorithmId Id>
+    AnalysisResult *getAlgorithmResult() {
+      return ResultCache.getAlgorithmResult<Id>(this);
+    }
   };
 }
 }

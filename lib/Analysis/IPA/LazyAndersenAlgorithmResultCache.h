@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares a cache for algorithm results for a particular group.
+// This file defines a cache for algorithm results for a particular group.
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,20 +31,27 @@ namespace lazyandersen {
     OwningPtr<OutputTy> Results[NumAlgorithms];
 
   public:
-    AlgorithmResultCache();
-    ~AlgorithmResultCache();
-
     template<AlgorithmIdTy AlgorithmId>
-    OutputTy *getAlgorithmResult() {
+    OutputTy *getAlgorithmResult(InputTy *Input) {
       assert(AlgorithmId < NumAlgorithms);
+      // Look up the algorithm function and dispatch to an internal method to do
+      // the rest. The internal method will have the same compilation for all
+      // template arguments, so the compiler can combine them into one
+      // symbol.
       return getAlgorithmResultInternal(AlgorithmId,
-          &runAlgorithm<AlgorithmIdTy, AlgorithmId>,
-          static_cast<InputTy *>(this));
+          &runAlgorithm<AlgorithmIdTy, AlgorithmId>, Input);
     }
 
   private:
     OutputTy *getAlgorithmResultInternal(AlgorithmIdTy AlgorithmId,
-        AlgorithmTy Algorithm, InputTy *Input);
+        AlgorithmTy Algorithm, InputTy *Input) {
+      OutputTy *Result = Results[AlgorithmId].get();
+      if (!Result) {
+        Result = (*Algorithm)(Input);
+        Results[AlgorithmId].reset(Result);
+      }
+      return Result;
+    }
   };
 }
 }
