@@ -22,6 +22,7 @@ namespace lazyandersen {
 
   enum AnalysisResultAlgorithmId {
     CONTENT_POINTS_TO_SET,
+    CONTENT_POINTS_TO_SET_STEP2,
     CONTENT_REVERSE_POINTS_TO_SET,
     RETURN_VALUE_POINTS_TO_SET,
     RETURN_VALUE_REVERSE_POINTS_TO_SET,
@@ -44,6 +45,10 @@ namespace lazyandersen {
   template<>
   AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
                                CONTENT_POINTS_TO_SET>(AnalysisResult *);
+
+  template<>
+  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+                               CONTENT_POINTS_TO_SET_STEP2>(AnalysisResult *);
 
   template<>
   AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,

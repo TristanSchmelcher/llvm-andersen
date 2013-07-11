@@ -13,6 +13,8 @@
 
 #include "LazyAndersenDependsOnRelation.h"
 
+#include "LazyAndersenAnalysisResult-inl.h"
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -33,4 +35,10 @@ AnalysisResult *DependsOnRelation::analyzeOutgoingReversePointsToSet()
 AnalysisResult *DependsOnRelation::analyzeIncomingReversePointsToSet()
     const {
   return getValueInfo<OUTGOING>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
+}
+
+AnalysisResult *DependsOnRelation::analyzeStoredValuesPointsToSet()
+    const {
+  // No effect on stored values points-to set.
+  return 0;
 }

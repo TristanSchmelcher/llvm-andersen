@@ -36,3 +36,8 @@ AnalysisResult *StoredToRelation::analyzeIncomingReversePointsToSet() const {
   // No effect on reverse points-to set.
   return 0;
 }
+
+AnalysisResult *StoredToRelation::analyzeStoredValuesPointsToSet()
+    const {
+  return getValueInfo<OUTGOING>()->getAlgorithmResult<POINTS_TO_SET>();
+}

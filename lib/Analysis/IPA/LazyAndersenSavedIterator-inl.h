@@ -22,38 +22,38 @@
 namespace llvm {
 namespace lazyandersen {
   template<typename NodeTy>
-  SavedIterator<NodeTy>::SavedIterator(ilist<NodeTy> *List,
-                                       const ilist_iterator<NodeTy> &i)
-    : List(List) {
-    save(i);
-  }
+  SavedIterator<NodeTy>::SavedIterator(ilist<NodeTy> *List) : List(List) {}
 
   template<typename NodeTy>
   SavedIterator<NodeTy>::~SavedIterator() {
-    // restore() removes us from the saved iterators list that we are in.
-    restore();
+    clear();
   }
 
   template<typename NodeTy>
-  ilist_iterator<NodeTy> SavedIterator<NodeTy>::restore() {
+  ilist_iterator<NodeTy> SavedIterator<NodeTy>::get() {
     if (IntrusiveListNode<SavedIterator<NodeTy> >::getList()) {
-      ilist_iterator<NodeTy> Ret = ilist_iterator<NodeTy>(static_cast<NodeTy *>(
+      return ilist_iterator<NodeTy>(static_cast<NodeTy *>(
           IntrusiveListNode<SavedIterator<NodeTy> >::getList()));
-      IntrusiveListNode<SavedIterator<NodeTy> >::getList()->remove(
-          typename ilist<SavedIterator<NodeTy> >::iterator(this));
-      assert(!IntrusiveListNode<SavedIterator<NodeTy> >::getList());
-      return Ret;
     } else {
       return List->end();
     }
   }
 
   template<typename NodeTy>
-  void SavedIterator<NodeTy>::save(const ilist_iterator<NodeTy> &i) {
-    assert(!IntrusiveListNode<SavedIterator<NodeTy> >::getList());
+  void SavedIterator<NodeTy>::set(ilist_iterator<NodeTy> i) {
+    clear();
     if (i != List->end()) {
       i->getSavedIterators()->push_back(this);
       assert(IntrusiveListNode<SavedIterator<NodeTy> >::getList());
+    }
+  }
+
+  template<typename NodeTy>
+  void SavedIterator<NodeTy>::clear() {
+    if (IntrusiveListNode<SavedIterator<NodeTy> >::getList()) {
+      IntrusiveListNode<SavedIterator<NodeTy> >::getList()->remove(
+          typename ilist<SavedIterator<NodeTy> >::iterator(this));
+      assert(!IntrusiveListNode<SavedIterator<NodeTy> >::getList());
     }
   }
 }

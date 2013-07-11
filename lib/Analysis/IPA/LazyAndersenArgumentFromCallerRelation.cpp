@@ -39,3 +39,9 @@ AnalysisResult *ArgumentFromCallerRelation::analyzeIncomingReversePointsToSet()
   // No effect on reverse points-to set.
   return 0;
 }
+
+AnalysisResult *ArgumentFromCallerRelation::analyzeStoredValuesPointsToSet()
+    const {
+  // No effect on stored values points-to set.
+  return 0;
+}

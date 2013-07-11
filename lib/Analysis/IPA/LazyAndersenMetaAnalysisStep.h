@@ -7,30 +7,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares a type for meta analysis--i.e., analysis of other analysis
-// results.
+// This file defines a template type for meta analysis--i.e., analysis of other
+// analysis results.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef LAZYANDERSENMETAANALYSISSTEP_H
 #define LAZYANDERSENMETAANALYSISSTEP_H
 
-#include "LazyAndersenAnalysisResultEntry.h"
-#include "LazyAndersenIterativeAnalysisStep.h"
-#include "LazyAndersenSavedIterator.h"
+#include "LazyAndersenMetaAnalysisStepBase.h"
+
+#include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenAnalysisResultAlgorithmId.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult;
-
-  class MetaAnalysisStep : public IterativeAnalysisStep {
-    SavedIterator<AnalysisResultEntry> Iterator;
-
+  template<AnalysisResultAlgorithmId Id>
+  class MetaAnalysisStep : public MetaAnalysisStepBase {
   public:
-    explicit MetaAnalysisStep(AnalysisResult *AR);
-    ~MetaAnalysisStep();
+    explicit MetaAnalysisStep(AnalysisResult *AR) : MetaAnalysisStepBase(AR) {}
 
-    virtual void run();
+    virtual AnalysisResult *analyzeRecursive(AnalysisResult *AR) {
+      return AR->getAlgorithmResult<Id>();
+    }
   };
 }
 }

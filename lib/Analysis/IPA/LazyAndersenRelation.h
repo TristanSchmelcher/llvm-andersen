@@ -75,6 +75,7 @@ namespace lazyandersen {
     virtual AnalysisResult *analyzePointsToSet() const = 0;
     virtual AnalysisResult *analyzeOutgoingReversePointsToSet() const = 0;
     virtual AnalysisResult *analyzeIncomingReversePointsToSet() const = 0;
+    virtual AnalysisResult *analyzeStoredValuesPointsToSet() const = 0;
   };
 }
 }

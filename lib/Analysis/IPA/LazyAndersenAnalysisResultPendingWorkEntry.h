@@ -25,6 +25,10 @@ namespace lazyandersen {
     virtual ~AnalysisResultPendingWorkEntry();
     virtual EntryType getEntryType() const;
     virtual void run() = 0;
+
+    static bool classof(const AnalysisResultEntry *Base) {
+      return Base->getEntryType() == PENDING_WORK_ENTRY;
+    }
   };
 }
 }

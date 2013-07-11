@@ -33,6 +33,10 @@ namespace lazyandersen {
     CachedTy *getCachedValue() const {
       return CachedValue;
     }
+
+    static bool classof(const AnalysisResultEntry *Base) {
+      return Base->getEntryType() == EntryTypeVal;
+    }
   };
 
   class AnalysisResult;
