@@ -42,3 +42,9 @@ AnalysisResult *DependsOnRelation::analyzeStoredValuesPointsToSet()
   // No effect on stored values points-to set.
   return 0;
 }
+
+AnalysisResult *
+DependsOnRelation::analyzeLoadedValuesReversePointsToSet() const {
+  // No effect on loaded values reverse points-to set.
+  return 0;
+}

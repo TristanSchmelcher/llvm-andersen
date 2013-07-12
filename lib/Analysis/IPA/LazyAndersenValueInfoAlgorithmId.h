@@ -25,6 +25,7 @@ namespace lazyandersen {
     POINTS_TO_SET,
     REVERSE_POINTS_TO_SET,
     CONTENT_POINTS_TO_SET_STEP3,
+    CONTENT_REVERSE_POINTS_TO_SET_STEP3,
     // TODO
     NUM_VALUE_INFO_ALGORITHMS
   };
@@ -50,6 +51,11 @@ namespace lazyandersen {
   template<>
   AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
                                CONTENT_POINTS_TO_SET_STEP3>(
+      ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               CONTENT_REVERSE_POINTS_TO_SET_STEP3>(
       ValueInfo *);
 }
 }

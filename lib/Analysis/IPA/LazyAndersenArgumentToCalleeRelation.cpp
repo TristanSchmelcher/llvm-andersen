@@ -44,3 +44,9 @@ AnalysisResult *ArgumentToCalleeRelation::analyzeStoredValuesPointsToSet()
   // No effect on stored values points-to set.
   return 0;
 }
+
+AnalysisResult *
+ArgumentToCalleeRelation::analyzeLoadedValuesReversePointsToSet() const {
+  // No effect on loaded values reverse points-to set.
+  return 0;
+}
