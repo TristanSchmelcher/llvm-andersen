@@ -53,3 +53,8 @@ AnalysisResult *DependsOnRelation::analyzeArgumentsPointsToSet() const {
   // No effect on arguments points-to set.
   return 0;
 }
+
+AnalysisResult *DependsOnRelation::analyzeArgumentsReversePointsToSet() const {
+  // No effect on arguments reverse points-to set.
+  return 0;
+}

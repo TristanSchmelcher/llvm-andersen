@@ -13,6 +13,38 @@
 
 #include "LazyAndersenAnalysisResultAlgorithmId.h"
 
+#include "LazyAndersenMetaAnalysisStep.h"
+#include "LazyAndersenRelation.h"
+#include "LazyAndersenRelationsAnalysisStep.h"
+#include "LazyAndersenValueInfo.h"
+
+using namespace llvm;
+using namespace llvm::lazyandersen;
+
+namespace {
+  class ArgumentReversePointsToAnalysisStep
+    : public MetaAnalysisStep<ARGUMENT_REVERSE_POINTS_TO_SET> {
+  public:
+    explicit ArgumentReversePointsToAnalysisStep(AnalysisResult *Input)
+      : MetaAnalysisStep<ARGUMENT_REVERSE_POINTS_TO_SET>(Input) {}
+
+    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
+      return VI->getAlgorithmResult<ARGUMENT_REVERSE_POINTS_TO_SET_STEP2>();
+    }
+  };
+
+  class ArgumentReversePointsToAnalysisStep2
+    : public RelationsAnalysisStep<INCOMING> {
+  public:
+    explicit ArgumentReversePointsToAnalysisStep2(ValueInfo *Input)
+      : RelationsAnalysisStep<INCOMING>(Input) {}
+
+    virtual AnalysisResult *analyzeRelation(Relation *R) {
+      return R->analyzeArgumentsReversePointsToSet();
+    }
+  };
+}
+
 namespace llvm {
 namespace lazyandersen {
 
@@ -20,9 +52,18 @@ namespace lazyandersen {
   AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
                                ARGUMENT_REVERSE_POINTS_TO_SET>(
       AnalysisResult *Input) {
-    // TODO
-    return 0;
+    AnalysisResult *Output = new AnalysisResult();
+    Output->push_back(new ArgumentReversePointsToAnalysisStep(Input));
+    return Output;
   }
 
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               ARGUMENT_REVERSE_POINTS_TO_SET_STEP2>(
+      ValueInfo *Input) {
+    AnalysisResult *Output = new AnalysisResult();
+    Output->push_back(new ArgumentReversePointsToAnalysisStep2(Input));
+    return Output;
+  }
 }
 }

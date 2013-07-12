@@ -29,6 +29,7 @@ namespace lazyandersen {
     virtual AnalysisResult *analyzeStoredValuesPointsToSet() const;
     virtual AnalysisResult *analyzeLoadedValuesReversePointsToSet() const;
     virtual AnalysisResult *analyzeArgumentsPointsToSet() const;
+    virtual AnalysisResult *analyzeArgumentsReversePointsToSet() const;
   };
 
   inline ArgumentFromCallerRelation::ArgumentFromCallerRelation(
