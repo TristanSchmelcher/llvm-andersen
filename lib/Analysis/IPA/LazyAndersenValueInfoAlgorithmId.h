@@ -29,7 +29,7 @@ namespace lazyandersen {
     ARGUMENT_POINTS_TO_SET_STEP2,
     ARGUMENT_REVERSE_POINTS_TO_SET_STEP2,
     RETURN_VALUE_POINTS_TO_SET_STEP2,
-    // TODO
+    RETURN_VALUE_REVERSE_POINTS_TO_SET_STEP2,
     NUM_VALUE_INFO_ALGORITHMS
   };
 
@@ -59,6 +59,26 @@ namespace lazyandersen {
   template<>
   AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
                                CONTENT_REVERSE_POINTS_TO_SET_STEP3>(
+      ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               ARGUMENT_POINTS_TO_SET_STEP2>(
+      ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               ARGUMENT_REVERSE_POINTS_TO_SET_STEP2>(
+      ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               RETURN_VALUE_POINTS_TO_SET_STEP2>(
+      ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               RETURN_VALUE_REVERSE_POINTS_TO_SET_STEP2>(
       ValueInfo *);
 }
 }

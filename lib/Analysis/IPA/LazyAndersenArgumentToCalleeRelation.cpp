@@ -66,3 +66,9 @@ ArgumentToCalleeRelation::analyzeReturnValuePointsToSet() const {
   // No effect on return value points-to set.
   return 0;
 }
+
+AnalysisResult *
+ArgumentToCalleeRelation::analyzeReturnValueReversePointsToSet() const {
+  // No effect on return value reverse points-to set.
+  return 0;
+}

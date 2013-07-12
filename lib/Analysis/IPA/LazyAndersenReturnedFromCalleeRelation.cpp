@@ -68,3 +68,8 @@ ReturnedFromCalleeRelation::analyzeReturnValuePointsToSet() const {
   // No effect on return value points-to set.
   return 0;
 }
+
+AnalysisResult *
+ReturnedFromCalleeRelation::analyzeReturnValueReversePointsToSet() const {
+  return getValueInfo<OUTGOING>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
+}

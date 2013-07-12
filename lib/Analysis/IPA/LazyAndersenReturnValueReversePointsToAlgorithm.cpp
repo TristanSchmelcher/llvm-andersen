@@ -13,14 +13,56 @@
 
 #include "LazyAndersenAnalysisResultAlgorithmId.h"
 
+#include "LazyAndersenMetaAnalysisStep.h"
+#include "LazyAndersenRelation.h"
+#include "LazyAndersenRelationsAnalysisStep.h"
+#include "LazyAndersenValueInfo.h"
+
+using namespace llvm;
+using namespace llvm::lazyandersen;
+
+namespace {
+  class ReturnValueReversePointsToAnalysisStep
+    : public MetaAnalysisStep<RETURN_VALUE_REVERSE_POINTS_TO_SET> {
+  public:
+    explicit ReturnValueReversePointsToAnalysisStep(AnalysisResult *Input)
+      : MetaAnalysisStep<RETURN_VALUE_REVERSE_POINTS_TO_SET>(Input) {}
+
+    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
+      return VI->getAlgorithmResult<RETURN_VALUE_REVERSE_POINTS_TO_SET_STEP2>();
+    }
+  };
+
+  class ReturnValueReversePointsToAnalysisStep2
+    : public RelationsAnalysisStep<INCOMING> {
+  public:
+    explicit ReturnValueReversePointsToAnalysisStep2(ValueInfo *Input)
+      : RelationsAnalysisStep<INCOMING>(Input) {}
+
+    virtual AnalysisResult *analyzeRelation(Relation *R) {
+      return R->analyzeReturnValueReversePointsToSet();
+    }
+  };
+}
+
 namespace llvm {
 namespace lazyandersen {
   template<>
   AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
                                RETURN_VALUE_REVERSE_POINTS_TO_SET>(
       AnalysisResult *Input) {
-    // TODO
-    return 0;
+    AnalysisResult *Output = new AnalysisResult();
+    Output->push_back(new ReturnValueReversePointsToAnalysisStep(Input));
+    return Output;
+  }
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               RETURN_VALUE_REVERSE_POINTS_TO_SET_STEP2>(
+      ValueInfo *Input) {
+    AnalysisResult *Output = new AnalysisResult();
+    Output->push_back(new ReturnValueReversePointsToAnalysisStep2(Input));
+    return Output;
   }
 }
 }
