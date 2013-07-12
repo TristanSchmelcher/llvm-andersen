@@ -59,7 +59,6 @@ namespace {
 
 namespace llvm {
 namespace lazyandersen {
-
   template<>
   AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
                                CONTENT_REVERSE_POINTS_TO_SET>(
@@ -86,6 +85,5 @@ namespace lazyandersen {
     Output->push_back(new ContentReversePointsToAnalysisStep3(Input));
     return Output;
   }
-
 }
 }

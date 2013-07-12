@@ -37,7 +37,6 @@ namespace {
 
 namespace llvm {
 namespace lazyandersen {
-
   template<>
   AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, POINTS_TO_SET>(
       ValueInfo *Input) {
@@ -45,6 +44,5 @@ namespace lazyandersen {
     Output->push_back(new PointsToRelationsAnalysisStep(Input));
     return Output;
   }
-
 }
 }

@@ -47,7 +47,6 @@ namespace {
 
 namespace llvm {
 namespace lazyandersen {
-
   template<>
   AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
                                ARGUMENT_REVERSE_POINTS_TO_SET>(

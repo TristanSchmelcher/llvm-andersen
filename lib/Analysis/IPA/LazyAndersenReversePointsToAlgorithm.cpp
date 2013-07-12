@@ -55,7 +55,6 @@ namespace {
 
 namespace llvm {
 namespace lazyandersen {
-
   template<>
   AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET>(
       ValueInfo *Input) {
@@ -67,6 +66,5 @@ namespace lazyandersen {
         Input));
     return Output;
   }
-
 }
 }

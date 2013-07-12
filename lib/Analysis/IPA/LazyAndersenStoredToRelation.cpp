@@ -57,3 +57,8 @@ AnalysisResult *StoredToRelation::analyzeArgumentsReversePointsToSet() const {
   // No effect on arguments reverse points-to set.
   return 0;
 }
+
+AnalysisResult *StoredToRelation::analyzeReturnValuePointsToSet() const {
+  // No effect on return value points-to set.
+  return 0;
+}

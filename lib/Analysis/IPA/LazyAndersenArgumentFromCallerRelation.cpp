@@ -62,3 +62,9 @@ AnalysisResult *
 ArgumentFromCallerRelation::analyzeArgumentsReversePointsToSet() const {
   return getValueInfo<OUTGOING>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
 }
+
+AnalysisResult *
+ArgumentFromCallerRelation::analyzeReturnValuePointsToSet() const {
+  // No effect on return value points-to set.
+  return 0;
+}

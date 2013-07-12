@@ -15,7 +15,6 @@
 
 namespace llvm {
 namespace lazyandersen {
-
   template<>
   AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
                                RETURN_VALUE_REVERSE_POINTS_TO_SET>(
@@ -23,6 +22,5 @@ namespace lazyandersen {
     // TODO
     return 0;
   }
-
 }
 }
