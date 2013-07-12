@@ -47,3 +47,8 @@ AnalysisResult *
 LoadedFromRelation::analyzeLoadedValuesReversePointsToSet() const {
   return getValueInfo<OUTGOING>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
 }
+
+AnalysisResult *LoadedFromRelation::analyzeArgumentsPointsToSet() const {
+  // No effect on arguments points-to set.
+  return 0;
+}

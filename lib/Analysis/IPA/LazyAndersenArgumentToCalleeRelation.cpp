@@ -50,3 +50,7 @@ ArgumentToCalleeRelation::analyzeLoadedValuesReversePointsToSet() const {
   // No effect on loaded values reverse points-to set.
   return 0;
 }
+
+AnalysisResult *ArgumentToCalleeRelation::analyzeArgumentsPointsToSet() const {
+  return getValueInfo<OUTGOING>()->getAlgorithmResult<POINTS_TO_SET>();
+}

@@ -47,3 +47,8 @@ StoredToRelation::analyzeLoadedValuesReversePointsToSet() const {
   // No effect on loaded values reverse points-to set.
   return 0;
 }
+
+AnalysisResult *StoredToRelation::analyzeArgumentsPointsToSet() const {
+  // No effect on arguments points-to set.
+  return 0;
+}
