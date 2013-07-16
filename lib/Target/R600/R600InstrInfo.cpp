@@ -114,9 +114,7 @@ bool R600InstrInfo::isPlaceHolderOpcode(unsigned Opcode) const {
 }
 
 bool R600InstrInfo::isReductionOp(unsigned Opcode) const {
-  switch(Opcode) {
-    default: return false;
-  }
+  return false;
 }
 
 bool R600InstrInfo::isCubeOp(unsigned Opcode) const {
@@ -521,7 +519,7 @@ R600InstrInfo::fitsConstReadLimitations(const std::vector<MachineInstr *> &MIs)
     if (!isALUInstr(MI->getOpcode()))
       continue;
 
-    const SmallVector<std::pair<MachineOperand *, int64_t>, 3> &Srcs =
+    const SmallVectorImpl<std::pair<MachineOperand *, int64_t> > &Srcs =
         getSrcs(MI);
 
     for (unsigned j = 0, e = Srcs.size(); j < e; j++) {
@@ -651,6 +649,17 @@ int R600InstrInfo::getBranchInstr(const MachineOperand &op) const {
   };
 }
 
+static
+MachineBasicBlock::iterator FindLastAluClause(MachineBasicBlock &MBB) {
+  for (MachineBasicBlock::reverse_iterator It = MBB.rbegin(), E = MBB.rend();
+      It != E; ++It) {
+    if (It->getOpcode() == AMDGPU::CF_ALU ||
+        It->getOpcode() == AMDGPU::CF_ALU_PUSH_BEFORE)
+      return llvm::prior(It.base());
+  }
+  return MBB.end();
+}
+
 unsigned
 R600InstrInfo::InsertBranch(MachineBasicBlock &MBB,
                             MachineBasicBlock *TBB,
@@ -672,6 +681,11 @@ R600InstrInfo::InsertBranch(MachineBasicBlock &MBB,
       BuildMI(&MBB, DL, get(AMDGPU::JUMP_COND))
              .addMBB(TBB)
              .addReg(AMDGPU::PREDICATE_BIT, RegState::Kill);
+      MachineBasicBlock::iterator CfAlu = FindLastAluClause(MBB);
+      if (CfAlu == MBB.end())
+        return 1;
+      assert (CfAlu->getOpcode() == AMDGPU::CF_ALU);
+      CfAlu->setDesc(get(AMDGPU::CF_ALU_PUSH_BEFORE));
       return 1;
     }
   } else {
@@ -683,6 +697,11 @@ R600InstrInfo::InsertBranch(MachineBasicBlock &MBB,
             .addMBB(TBB)
             .addReg(AMDGPU::PREDICATE_BIT, RegState::Kill);
     BuildMI(&MBB, DL, get(AMDGPU::JUMP)).addMBB(FBB);
+    MachineBasicBlock::iterator CfAlu = FindLastAluClause(MBB);
+    if (CfAlu == MBB.end())
+      return 2;
+    assert (CfAlu->getOpcode() == AMDGPU::CF_ALU);
+    CfAlu->setDesc(get(AMDGPU::CF_ALU_PUSH_BEFORE));
     return 2;
   }
 }
@@ -706,6 +725,11 @@ R600InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
     MachineInstr *predSet = findFirstPredicateSetterFrom(MBB, I);
     clearFlag(predSet, 0, MO_FLAG_PUSH);
     I->eraseFromParent();
+    MachineBasicBlock::iterator CfAlu = FindLastAluClause(MBB);
+    if (CfAlu == MBB.end())
+      break;
+    assert (CfAlu->getOpcode() == AMDGPU::CF_ALU_PUSH_BEFORE);
+    CfAlu->setDesc(get(AMDGPU::CF_ALU));
     break;
   }
   case AMDGPU::JUMP:
@@ -726,6 +750,11 @@ R600InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
     MachineInstr *predSet = findFirstPredicateSetterFrom(MBB, I);
     clearFlag(predSet, 0, MO_FLAG_PUSH);
     I->eraseFromParent();
+    MachineBasicBlock::iterator CfAlu = FindLastAluClause(MBB);
+    if (CfAlu == MBB.end())
+      break;
+    assert (CfAlu->getOpcode() == AMDGPU::CF_ALU_PUSH_BEFORE);
+    CfAlu->setDesc(get(AMDGPU::CF_ALU));
     break;
   }
   case AMDGPU::JUMP:
@@ -760,6 +789,15 @@ R600InstrInfo::isPredicable(MachineInstr *MI) const {
 
   if (MI->getOpcode() == AMDGPU::KILLGT) {
     return false;
+  } else if (MI->getOpcode() == AMDGPU::CF_ALU) {
+    // If the clause start in the middle of MBB then the MBB has more
+    // than a single clause, unable to predicate several clauses.
+    if (MI->getParent()->begin() != MachineBasicBlock::iterator(MI))
+      return false;
+    // TODO: We don't support KC merging atm
+    if (MI->getOperand(3).getImm() != 0 || MI->getOperand(4).getImm() != 0)
+      return false;
+    return true;
   } else if (isVector(*MI)) {
     return false;
   } else {
@@ -854,6 +892,11 @@ bool
 R600InstrInfo::PredicateInstruction(MachineInstr *MI,
                       const SmallVectorImpl<MachineOperand> &Pred) const {
   int PIdx = MI->findFirstPredOperandIdx();
+
+  if (MI->getOpcode() == AMDGPU::CF_ALU) {
+    MI->getOperand(8).setImm(0);
+    return true;
+  }
 
   if (PIdx != -1) {
     MachineOperand &PMO = MI->getOperand(PIdx);

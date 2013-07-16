@@ -96,33 +96,28 @@ struct space_info {
   uint64_t available;
 };
 
-
 enum perms {
-  no_perms     = 0,
-  owner_read   = 0400, 
-  owner_write  = 0200, 
-  owner_exe    = 0100, 
-  owner_all    = owner_read | owner_write | owner_exe,
-  group_read   =  040, 
-  group_write  =  020, 
-  group_exe    =  010, 
-  group_all    = group_read | group_write | group_exe,
-  others_read  =   04, 
-  others_write =   02, 
-  others_exe   =   01, 
-  others_all   = others_read | others_write | others_exe, 
-  all_read     = owner_read | group_read | others_read,
-  all_write    = owner_write | group_write | others_write,
-  all_exe      = owner_exe | group_exe | others_exe,
-  all_all      = owner_all | group_all | others_all,
-  set_uid_on_exe  = 04000, 
-  set_gid_on_exe  = 02000, 
-  sticky_bit      = 01000,
-  perms_mask      = all_all | set_uid_on_exe | set_gid_on_exe | sticky_bit, 
-  perms_not_known = 0xFFFF,
-  add_perms       = 0x1000,
-  remove_perms    = 0x2000, 
-  symlink_perms   = 0x4000
+  no_perms = 0,
+  owner_read = 0400,
+  owner_write = 0200,
+  owner_exe = 0100,
+  owner_all = owner_read | owner_write | owner_exe,
+  group_read = 040,
+  group_write = 020,
+  group_exe = 010,
+  group_all = group_read | group_write | group_exe,
+  others_read = 04,
+  others_write = 02,
+  others_exe = 01,
+  others_all = others_read | others_write | others_exe,
+  all_read = owner_read | group_read | others_read,
+  all_write = owner_write | group_write | others_write,
+  all_exe = owner_exe | group_exe | others_exe,
+  all_all = owner_all | group_all | others_all,
+  set_uid_on_exe = 04000,
+  set_gid_on_exe = 02000,
+  sticky_bit = 01000,
+  perms_not_known = 0xFFFF
 };
 
 // Helper functions so that you can use & and | to manipulate perms bits:
@@ -158,6 +153,7 @@ class file_status
   time_t fs_st_mtime;
   uid_t fs_st_uid;
   gid_t fs_st_gid;
+  off_t fs_st_size;
   #elif defined (LLVM_ON_WIN32)
   uint32_t LastWriteTimeHigh;
   uint32_t LastWriteTimeLow;
@@ -185,12 +181,16 @@ public:
   #if defined(LLVM_ON_UNIX)
   uint32_t getUser() const { return fs_st_uid; }
   uint32_t getGroup() const { return fs_st_gid; }
+  uint64_t getSize() const { return fs_st_size; }
   #elif defined (LLVM_ON_WIN32)
   uint32_t getUser() const {
     return 9999; // Not applicable to Windows, so...
   }
   uint32_t getGroup() const {
     return 9999; // Not applicable to Windows, so...
+  }
+  uint64_t getSize() const {
+    return (uint64_t(FileSizeHigh) << 32) + FileSizeLow;
   }
   #endif
 
@@ -436,11 +436,18 @@ inline bool equivalent(const Twine &A, const Twine &B) {
 
 /// @brief Get file size.
 ///
-/// @param path Input path.
-/// @param result Set to the size of the file in \a path.
+/// @param Path Input path.
+/// @param Result Set to the size of the file in \a Path.
 /// @returns errc::success if result has been successfully set, otherwise a
 ///          platform specific error_code.
-error_code file_size(const Twine &path, uint64_t &result);
+inline error_code file_size(const Twine &Path, uint64_t &Result) {
+  file_status Status;
+  error_code EC = status(Path, Status);
+  if (EC)
+    return EC;
+  Result = Status.getSize();
+  return error_code::success();
+}
 
 /// @brief Does status represent a directory?
 ///
@@ -521,13 +528,6 @@ error_code is_symlink(const Twine &path, bool &result);
 /// @returns errc::success if result has been successfully set, otherwise a
 ///          platform specific error_code.
 error_code status(const Twine &path, file_status &result);
-
-/// @brief Modifies permission bits on a file
-///
-/// @param path Input path.
-/// @returns errc::success if permissions have been changed, otherwise a
-///          platform specific error_code.
-error_code permissions(const Twine &path, perms prms);
 
 error_code setLastModificationAndAccessTime(int FD, TimeValue Time);
 

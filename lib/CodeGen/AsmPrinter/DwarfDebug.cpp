@@ -92,8 +92,8 @@ static cl::opt<DefaultOnOff> SplitDwarf("split-dwarf", cl::Hidden,
      cl::init(Default));
 
 namespace {
-  const char *DWARFGroupName = "DWARF Emission";
-  const char *DbgTimerName = "DWARF Debug Writer";
+  const char *const DWARFGroupName = "DWARF Emission";
+  const char *const DbgTimerName = "DWARF Debug Writer";
 
   struct CompareFirst {
     template <typename T> bool operator()(const T &lhs, const T &rhs) const {
@@ -934,7 +934,7 @@ void DwarfDebug::collectDeadVariables() {
       for (unsigned i = 0, e = Subprograms.getNumElements(); i != e; ++i) {
         DISubprogram SP(Subprograms.getElement(i));
         if (ProcessedSPNodes.count(SP) != 0) continue;
-        if (!SP.Verify()) continue;
+        if (!SP.isSubprogram()) continue;
         if (!SP.isDefinition()) continue;
         DIArray Variables = SP.getVariables();
         if (Variables.getNumElements() == 0) continue;
@@ -950,7 +950,7 @@ void DwarfDebug::collectDeadVariables() {
         DIE *ScopeDIE = SPCU->getDIE(SP);
         for (unsigned vi = 0, ve = Variables.getNumElements(); vi != ve; ++vi) {
           DIVariable DV(Variables.getElement(vi));
-          if (!DV.Verify()) continue;
+          if (!DV.isVariable()) continue;
           DbgVariable *NewVar = new DbgVariable(DV, NULL);
           if (DIE *VariableDIE =
               SPCU->constructVariableDIE(NewVar, Scope->isAbstractScope()))
@@ -1184,7 +1184,8 @@ static bool isDbgValueInDefinedReg(const MachineInstr *MI) {
   assert(MI->isDebugValue() && "Invalid DBG_VALUE machine instruction!");
   return MI->getNumOperands() == 3 &&
          MI->getOperand(0).isReg() && MI->getOperand(0).getReg() &&
-         MI->getOperand(1).isImm() && MI->getOperand(1).getImm() == 0;
+         (MI->getOperand(1).isImm() ||
+          (MI->getOperand(1).isReg() && MI->getOperand(1).getReg() == 0U));
 }
 
 // Get .debug_loc entry for the instruction range starting at MI.
@@ -1195,12 +1196,11 @@ static DotDebugLocEntry getDebugLocEntry(AsmPrinter *Asm,
   const MDNode *Var =  MI->getOperand(MI->getNumOperands() - 1).getMetadata();
 
   assert(MI->getNumOperands() == 3);
-  if (MI->getOperand(0).isReg() && MI->getOperand(1).isImm()) {
+  if (MI->getOperand(0).isReg()) {
     MachineLocation MLoc;
-    // TODO: Currently an offset of 0 in a DBG_VALUE means
-    // we need to generate a direct register value.
-    // There is no way to specify an indirect value with offset 0.
-    if (MI->getOperand(1).getImm() == 0)
+    // If the second operand is an immediate, this is a
+    // register-indirect address.
+    if (!MI->getOperand(1).isImm())
       MLoc.set(MI->getOperand(0).getReg());
     else
       MLoc.set(MI->getOperand(0).getReg(), MI->getOperand(1).getImm());
@@ -1314,7 +1314,7 @@ DwarfDebug::collectVariableInfo(const MachineFunction *MF,
   DIArray Variables = DISubprogram(FnScope->getScopeNode()).getVariables();
   for (unsigned i = 0, e = Variables.getNumElements(); i != e; ++i) {
     DIVariable DV(Variables.getElement(i));
-    if (!DV || !DV.Verify() || !Processed.insert(DV))
+    if (!DV || !DV.isVariable() || !Processed.insert(DV))
       continue;
     if (LexicalScope *Scope = LScopes.findLexicalScope(DV.getContext()))
       addScopeVariable(Scope, new DbgVariable(DV, NULL));
@@ -1445,7 +1445,7 @@ static MDNode *getScopeNode(DebugLoc DL, const LLVMContext &Ctx) {
 static DebugLoc getFnDebugLoc(DebugLoc DL, const LLVMContext &Ctx) {
   const MDNode *Scope = getScopeNode(DL, Ctx);
   DISubprogram SP = getDISubprogram(Scope);
-  if (SP.Verify()) {
+  if (SP.isSubprogram()) {
     // Check for number of operands since the compatibility is
     // cheap here.
     if (SP->getNumOperands() > 19)
@@ -1513,7 +1513,7 @@ void DwarfDebug::beginFunction(const MachineFunction *MF) {
           // The first mention of a function argument gets the FunctionBeginSym
           // label, so arguments are visible when breaking at function entry.
           DIVariable DV(Var);
-          if (DV.Verify() && DV.getTag() == dwarf::DW_TAG_arg_variable &&
+          if (DV.isVariable() && DV.getTag() == dwarf::DW_TAG_arg_variable &&
               DISubprogram(getDISubprogram(DV.getContext()))
                 .describes(MF->getFunction()))
             LabelsBeforeInsn[MI] = FunctionBeginSym;
@@ -1699,12 +1699,12 @@ void DwarfDebug::endFunction(const MachineFunction *MF) {
   for (unsigned i = 0, e = AList.size(); i != e; ++i) {
     LexicalScope *AScope = AList[i];
     DISubprogram SP(AScope->getScopeNode());
-    if (SP.Verify()) {
+    if (SP.isSubprogram()) {
       // Collect info for variables that were optimized out.
       DIArray Variables = SP.getVariables();
       for (unsigned i = 0, e = Variables.getNumElements(); i != e; ++i) {
         DIVariable DV(Variables.getElement(i));
-        if (!DV || !DV.Verify() || !ProcessedVars.insert(DV))
+        if (!DV || !DV.isVariable() || !ProcessedVars.insert(DV))
           continue;
         // Check that DbgVariable for DV wasn't created earlier, when
         // findAbstractVariable() was called for inlined instance of DV.
@@ -2383,21 +2383,17 @@ void DwarfUnits::emitAddresses(const MCSection *AddrSection) {
   // Start the dwarf addr section.
   Asm->OutStreamer.SwitchSection(AddrSection);
 
-  // Get all of the address pool entries and put them in an array by their ID so
-  // we can sort them.
-  SmallVector<std::pair<unsigned, const MCExpr *>, 64> Entries;
+  // Order the address pool entries by ID
+  SmallVector<const MCExpr *, 64> Entries(AddressPool.size());
 
-  for (DenseMap<const MCExpr *, unsigned>::iterator
-           I = AddressPool.begin(),
-           E = AddressPool.end();
+  for (DenseMap<const MCExpr *, unsigned>::iterator I = AddressPool.begin(),
+                                                    E = AddressPool.end();
        I != E; ++I)
-    Entries.push_back(std::make_pair(I->second, I->first));
-
-  array_pod_sort(Entries.begin(), Entries.end());
+    Entries[I->second] = I->first;
 
   for (unsigned i = 0, e = Entries.size(); i != e; ++i) {
     // Emit an expression for reference from debug information entries.
-    if (const MCExpr *Expr = Entries[i].second)
+    if (const MCExpr *Expr = Entries[i])
       Asm->OutStreamer.EmitValue(Expr, Asm->getDataLayout().getPointerSize());
     else
       Asm->OutStreamer.EmitIntValue(0, Asm->getDataLayout().getPointerSize());

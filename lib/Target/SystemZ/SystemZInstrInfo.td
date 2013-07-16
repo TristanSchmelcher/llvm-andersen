@@ -288,6 +288,26 @@ let mayLoad = 1, mayStore = 1 in
                                       bdaddr12only:$BD2),
                    "mvc\t$BDL1, $BD2", []>;
 
+let mayLoad = 1, mayStore = 1, usesCustomInserter = 1 in
+  def MVCWrapper : Pseudo<(outs), (ins bdaddr12only:$dest, bdaddr12only:$src,
+                                       imm32len8:$length),
+                          [(z_mvc bdaddr12only:$dest, bdaddr12only:$src,
+                                  imm32len8:$length)]>;
+
+defm LoadStore8_32  : MVCLoadStore<anyextloadi8, truncstorei8, i32,
+                                   MVCWrapper, 1>;
+defm LoadStore16_32 : MVCLoadStore<anyextloadi16, truncstorei16, i32,
+                                   MVCWrapper, 2>;
+defm LoadStore32_32 : MVCLoadStore<load, store, i32, MVCWrapper, 4>;
+
+defm LoadStore8  : MVCLoadStore<anyextloadi8, truncstorei8, i64,
+                                MVCWrapper, 1>;
+defm LoadStore16 : MVCLoadStore<anyextloadi16, truncstorei16, i64,
+                                MVCWrapper, 2>;
+defm LoadStore32 : MVCLoadStore<anyextloadi32, truncstorei32, i64,
+                                MVCWrapper, 4>;
+defm LoadStore64 : MVCLoadStore<load, store, i64, MVCWrapper, 8>;
+
 //===----------------------------------------------------------------------===//
 // Sign extensions
 //===----------------------------------------------------------------------===//
@@ -332,6 +352,14 @@ def : Pat<(i32 (extloadi16 bdxaddr20pair:$src)), (LHY bdxaddr20pair:$src)>;
 def : Pat<(i64 (extloadi8  bdxaddr20only:$src)), (LGB bdxaddr20only:$src)>;
 def : Pat<(i64 (extloadi16 bdxaddr20only:$src)), (LGH bdxaddr20only:$src)>;
 def : Pat<(i64 (extloadi32 bdxaddr20only:$src)), (LGF bdxaddr20only:$src)>;
+
+// We want PC-relative addresses to be tried ahead of BD and BDX addresses.
+// However, BDXs have two extra operands and are therefore 6 units more
+// complex.
+let AddedComplexity = 7 in {
+  def : Pat<(i32 (extloadi16 pcrel32:$src)), (LHRL  pcrel32:$src)>;
+  def : Pat<(i64 (extloadi16 pcrel32:$src)), (LGHRL pcrel32:$src)>;
+}
 
 //===----------------------------------------------------------------------===//
 // Zero extensions
@@ -1045,3 +1073,12 @@ def  : Pat<(add GR64:$src1, imm64zx32n:$src2),
            (SLGFI GR64:$src1, imm64zx32n:$src2)>;
 def  : Pat<(sub GR64:$src1, (zextloadi32 bdxaddr20only:$addr)),
            (SLGF GR64:$src1, bdxaddr20only:$addr)>;
+
+// Optimize sign-extended 1/0 selects to -1/0 selects.  This is important
+// for vector legalization.
+def : Pat<(sra (shl (i32 (z_select_ccmask 1, 0, imm:$cc)), (i32 31)), (i32 31)),
+          (Select32 (LHI -1), (LHI 0), imm:$cc)>;
+def : Pat<(sra (shl (i64 (anyext (i32 (z_select_ccmask 1, 0, imm:$cc)))),
+                    (i32 63)),
+               (i32 63)),
+          (Select64 (LGHI -1), (LGHI 0), imm:$cc)>;

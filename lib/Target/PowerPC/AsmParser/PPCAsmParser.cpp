@@ -190,12 +190,14 @@ class PPCAsmParser : public MCTargetAsmParser {
 
   const MCExpr *ExtractModifierFromExpr(const MCExpr *E,
                                         PPCMCExpr::VariantKind &Variant);
+  const MCExpr *FixupVariantKind(const MCExpr *E);
   bool ParseExpression(const MCExpr *&EVal);
 
   bool ParseOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands);
 
   bool ParseDirectiveWord(unsigned Size, SMLoc L);
   bool ParseDirectiveTC(unsigned Size, SMLoc L);
+  bool ParseDirectiveMachine(SMLoc L);
 
   bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                SmallVectorImpl<MCParsedAsmOperand*> &Operands,
@@ -229,6 +231,8 @@ public:
                                 SmallVectorImpl<MCParsedAsmOperand*> &Operands);
 
   virtual bool ParseDirective(AsmToken DirectiveID);
+
+  unsigned validateTargetOperandClass(MCParsedAsmOperand *Op, unsigned Kind);
 };
 
 /// PPCOperand - Instances of this class represent a parsed PowerPC machine
@@ -1003,6 +1007,57 @@ ExtractModifierFromExpr(const MCExpr *E,
   llvm_unreachable("Invalid expression kind!");
 }
 
+/// Find all VK_TLSGD/VK_TLSLD symbol references in expression and replace
+/// them by VK_PPC_TLSGD/VK_PPC_TLSLD.  This is necessary to avoid having
+/// _GLOBAL_OFFSET_TABLE_ created via ELFObjectWriter::RelocNeedsGOT.
+/// FIXME: This is a hack.
+const MCExpr *PPCAsmParser::
+FixupVariantKind(const MCExpr *E) {
+  MCContext &Context = getParser().getContext();
+
+  switch (E->getKind()) {
+  case MCExpr::Target:
+  case MCExpr::Constant:
+    return E;
+
+  case MCExpr::SymbolRef: {
+    const MCSymbolRefExpr *SRE = cast<MCSymbolRefExpr>(E);
+    MCSymbolRefExpr::VariantKind Variant = MCSymbolRefExpr::VK_None;
+
+    switch (SRE->getKind()) {
+    case MCSymbolRefExpr::VK_TLSGD:
+      Variant = MCSymbolRefExpr::VK_PPC_TLSGD;
+      break;
+    case MCSymbolRefExpr::VK_TLSLD:
+      Variant = MCSymbolRefExpr::VK_PPC_TLSLD;
+      break;
+    default:
+      return E;
+    }
+    return MCSymbolRefExpr::Create(&SRE->getSymbol(), Variant, Context);
+  }
+
+  case MCExpr::Unary: {
+    const MCUnaryExpr *UE = cast<MCUnaryExpr>(E);
+    const MCExpr *Sub = FixupVariantKind(UE->getSubExpr());
+    if (Sub == UE->getSubExpr())
+      return E;
+    return MCUnaryExpr::Create(UE->getOpcode(), Sub, Context);
+  }
+
+  case MCExpr::Binary: {
+    const MCBinaryExpr *BE = cast<MCBinaryExpr>(E);
+    const MCExpr *LHS = FixupVariantKind(BE->getLHS());
+    const MCExpr *RHS = FixupVariantKind(BE->getRHS());
+    if (LHS == BE->getLHS() && RHS == BE->getRHS())
+      return E;
+    return MCBinaryExpr::Create(BE->getOpcode(), LHS, RHS, Context);
+  }
+  }
+
+  llvm_unreachable("Invalid expression kind!");
+}
+
 /// Parse an expression.  This differs from the default "parseExpression"
 /// in that it handles complex \code @l/@ha \endcode modifiers.
 bool PPCAsmParser::
@@ -1010,10 +1065,12 @@ ParseExpression(const MCExpr *&EVal) {
   if (getParser().parseExpression(EVal))
     return true;
 
+  EVal = FixupVariantKind(EVal);
+
   PPCMCExpr::VariantKind Variant;
   const MCExpr *E = ExtractModifierFromExpr(EVal, Variant);
   if (E)
-    EVal = PPCMCExpr::Create(Variant, E, getParser().getContext());
+    EVal = PPCMCExpr::Create(Variant, E, false, getParser().getContext());
 
   return false;
 }
@@ -1175,9 +1232,13 @@ ParseInstruction(ParseInstructionInfo &Info, StringRef Name, SMLoc NameLoc,
 bool PPCAsmParser::ParseDirective(AsmToken DirectiveID) {
   StringRef IDVal = DirectiveID.getIdentifier();
   if (IDVal == ".word")
-    return ParseDirectiveWord(4, DirectiveID.getLoc());
+    return ParseDirectiveWord(2, DirectiveID.getLoc());
+  if (IDVal == ".llong")
+    return ParseDirectiveWord(8, DirectiveID.getLoc());
   if (IDVal == ".tc")
     return ParseDirectiveTC(isPPC64()? 8 : 4, DirectiveID.getLoc());
+  if (IDVal == ".machine")
+    return ParseDirectiveMachine(DirectiveID.getLoc());
   return true;
 }
 
@@ -1223,6 +1284,30 @@ bool PPCAsmParser::ParseDirectiveTC(unsigned Size, SMLoc L) {
   return ParseDirectiveWord(Size, L);
 }
 
+/// ParseDirectiveMachine
+///  ::= .machine [ cpu | "push" | "pop" ]
+bool PPCAsmParser::ParseDirectiveMachine(SMLoc L) {
+  if (getLexer().isNot(AsmToken::Identifier) &&
+      getLexer().isNot(AsmToken::String))
+    return Error(L, "unexpected token in directive");
+
+  StringRef CPU = Parser.getTok().getIdentifier();
+  Parser.Lex();
+
+  // FIXME: Right now, the parser always allows any available
+  // instruction, so the .machine directive is not useful.
+  // Implement ".machine any" (by doing nothing) for the benefit
+  // of existing assembler code.  Likewise, we can then implement
+  // ".machine push" and ".machine pop" as no-op.
+  if (CPU != "any" && CPU != "push" && CPU != "pop")
+    return Error(L, "unrecognized machine type");
+
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return Error(L, "unexpected token in directive");
+
+  return false;
+}
+
 /// Force static initialization.
 extern "C" void LLVMInitializePowerPCAsmParser() {
   RegisterMCAsmParser<PPCAsmParser> A(ThePPC32Target);
@@ -1232,3 +1317,25 @@ extern "C" void LLVMInitializePowerPCAsmParser() {
 #define GET_REGISTER_MATCHER
 #define GET_MATCHER_IMPLEMENTATION
 #include "PPCGenAsmMatcher.inc"
+
+// Define this matcher function after the auto-generated include so we
+// have the match class enum definitions.
+unsigned PPCAsmParser::validateTargetOperandClass(MCParsedAsmOperand *AsmOp,
+                                                  unsigned Kind) {
+  // If the kind is a token for a literal immediate, check if our asm
+  // operand matches. This is for InstAliases which have a fixed-value
+  // immediate in the syntax.
+  int64_t ImmVal;
+  switch (Kind) {
+    case MCK_0: ImmVal = 0; break;
+    case MCK_1: ImmVal = 1; break;
+    default: return Match_InvalidOperand;
+  }
+
+  PPCOperand *Op = static_cast<PPCOperand*>(AsmOp);
+  if (Op->isImm() && Op->getImm() == ImmVal)
+    return Match_Success;
+
+  return Match_InvalidOperand;
+}
+

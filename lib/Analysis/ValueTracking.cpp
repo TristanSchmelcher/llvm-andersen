@@ -861,16 +861,14 @@ bool llvm::isKnownToBeAPowerOfTwo(Value *V, bool OrZero, unsigned Depth) {
         // Adding a power of two to the same power of two is a power of two or
         // zero.
         if (BinaryOperator *XBO = dyn_cast<BinaryOperator>(X))
-          if (XBO->getOpcode() == Instruction::And ||
-              XBO->getOpcode() == Instruction::Xor)
+          if (XBO->getOpcode() == Instruction::And)
             if (XBO->getOperand(0) == Y || XBO->getOperand(1) == Y)
-              if (isKnownToBeAPowerOfTwo(Y, /*OrZero*/true, Depth))
+              if (isKnownToBeAPowerOfTwo(Y, OrZero, Depth))
                 return true;
         if (BinaryOperator *YBO = dyn_cast<BinaryOperator>(Y))
-          if (YBO->getOpcode() == Instruction::And ||
-              YBO->getOpcode() == Instruction::Xor)
+          if (YBO->getOpcode() == Instruction::And)
             if (YBO->getOperand(0) == X || YBO->getOperand(1) == X)
-              if (isKnownToBeAPowerOfTwo(X, /*OrZero*/true, Depth))
+              if (isKnownToBeAPowerOfTwo(X, OrZero, Depth))
                 return true;
       }
 
@@ -1528,7 +1526,7 @@ Value *llvm::isBytewiseValue(Value *V) {
 // struct. To is the result struct built so far, new insertvalue instructions
 // build on that.
 static Value *BuildSubAggregate(Value *From, Value* To, Type *IndexedType,
-                                SmallVector<unsigned, 10> &Idxs,
+                                SmallVectorImpl<unsigned> &Idxs,
                                 unsigned IdxSkip,
                                 Instruction *InsertBefore) {
   llvm::StructType *STy = dyn_cast<llvm::StructType>(IndexedType);
