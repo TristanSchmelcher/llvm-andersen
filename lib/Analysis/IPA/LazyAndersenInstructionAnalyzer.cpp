@@ -13,6 +13,8 @@
 
 #include "LazyAndersenInstructionAnalyzer.h"
 
+#include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenArgumentFromCallerRelation.h"
 #include "LazyAndersenArgumentToCalleeRelation.h"
 #include "LazyAndersenData.h"
@@ -216,8 +218,11 @@ ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
 }
 
 ValueInfo *InstructionAnalyzer::createFinalizedValueInfo(const Value *V) {
-  // TODO: Pass finalized points-to set as argument and pre-create the set.
-  return createValueInfo(V);
+  ValueInfo *VI = createValueInfo(V);
+  AnalysisResult *AR = new AnalysisResult();
+  AR->push_back(new AnalysisResultValueInfoEntry(VI));
+  VI->setAlgorithmResultSpecialCase(POINTS_TO_SET, AR);
+  return VI;
 }
 
 ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
@@ -245,7 +250,8 @@ ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
 ValueInfo *InstructionAnalyzer::analyzeGlobalValue(const GlobalValue *G) {
   // TODO: Need to be aware of linkage here. Also, GlobalAlias may be
   // special. Also, a global might be initialized with a value that points
-  // to something else.
+  // to something else, in which case we need to pre-create the
+  // CONTENT_POINTS_TO_SET result.
   return createFinalizedValueInfo(G);
 }
 

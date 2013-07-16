@@ -19,6 +19,7 @@
 
 namespace llvm {
   class LazyAndersenData;
+  class Module;
 }
 
 namespace llvm {
@@ -176,12 +177,10 @@ namespace llvm {
   };
 }
 
-#ifndef NDEBUG
 namespace llvm {
 namespace lazyandersen {
-void viewLazyAndersenGraph(LazyAndersenData *Data);
+void viewLazyAndersenGraph(LazyAndersenData *Data, const Module *M = 0);
 }
 }
-#endif
 
 #endif

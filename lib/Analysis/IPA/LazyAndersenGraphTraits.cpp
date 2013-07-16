@@ -15,6 +15,8 @@
 
 #include "LazyAndersenData.h"
 #include "LazyAndersenRelation.h"
+#include "LazyAndersenValuePrinter.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_os_ostream.h"
 
@@ -55,35 +57,6 @@ GraphTraits<ValueInfo::Map>::nodes_end(
   return nodes_iterator(Map.end());
 }
 
-namespace {
-  // Trim functions taken from
-  // http://stackoverflow.com/questions/216823/whats-the-best-way-to-trim-stdstring
-  std::string &ltrim(std::string &s) {
-    s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(
-        std::ptr_fun<int, int>(std::isspace))));
-    return s;
-  }
-
-  std::string &rtrim(std::string &s) {
-    s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(
-        std::ptr_fun<int, int>(std::isspace))).base(), s.end());
-    return s;
-  }
-
-  std::string &trim(std::string &s) {
-    return ltrim(rtrim(s));
-  }
-
-  inline std::string getPrintedValue(const Value *V) {
-    std::ostringstream OSS;
-    {
-      raw_os_ostream OS(OSS);
-      V->print(OS);
-    }
-    return OSS.str();
-  }
-}
-
 DOTGraphTraits<ValueInfo::Map>::DOTGraphTraits(bool simple)
   : DefaultDOTGraphTraits(simple) {}
 
@@ -91,24 +64,8 @@ std::string DOTGraphTraits<ValueInfo::Map>::getNodeLabel(
     GraphTraits<ValueInfo::Map>::NodeType *Node,
     const ValueInfo::Map &Map) {
   static const size_t MaxPrintedSize = 16;
-
   const Value *V = Node->first;
-  std::ostringstream OSS;
-  {
-    std::string PrintedValue(getPrintedValue(V));
-    trim(PrintedValue);
-    if (PrintedValue.size() > MaxPrintedSize) {
-      PrintedValue.erase(MaxPrintedSize);
-      rtrim(PrintedValue);
-      OSS << PrintedValue << " ...";
-    } else {
-      OSS << PrintedValue;
-    }
-  }
-  if (V->hasName()) {
-    OSS << " (" << V->getName().str() << ')';
-  }
-  return OSS.str();
+  return prettyPrintValue(V, MaxPrintedSize);
 }
 
 std::string DOTGraphTraits<ValueInfo::Map>::getEdgeSourceLabel(
@@ -123,13 +80,15 @@ bool DOTGraphTraits<ValueInfo::Map>::isNodeHidden(
   return !Node->second.getPtr() || Node->first != Node->second->getValue();
 }
 
-#ifndef NDEBUG
 namespace llvm {
 namespace lazyandersen {
-void viewLazyAndersenGraph(LazyAndersenData *Data) {
-  ViewGraph(Data->ValueInfos, "LazyAndersen", false,
-      "LazyAndersen analysis results");
+void viewLazyAndersenGraph(LazyAndersenData *Data, const Module *M) {
+  std::ostringstream OSS;
+  OSS << "LazyAndersen analysis results";
+  if (M) {
+    OSS << " for module " << M->getModuleIdentifier();
+  }
+  ViewGraph(Data->ValueInfos, "LazyAndersen", false, OSS.str());
 }
 }
 }
-#endif

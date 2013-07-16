@@ -15,10 +15,12 @@
 #ifndef LLVM_ANALYSIS_LAZYANDERSEN_H
 #define LLVM_ANALYSIS_LAZYANDERSEN_H
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Pass.h"
 
 namespace llvm {
   class LazyAndersenData;
+  class Value;
 
   /// LazyAndersen - An LLVM pass which implements a lazy version of Andersen's
   /// algorithm for points-to analysis.
@@ -29,11 +31,13 @@ namespace llvm {
     static char ID; // Pass identification, replacement for typeid
     LazyAndersen();
 
+    DenseSet<const Value *> getPointsToSet(const Value *V) const;
+
   private:
     virtual bool runOnModule(Module &M);
     virtual void releaseMemory();
     virtual void getAnalysisUsage(AnalysisUsage &AU) const;
-    virtual void print(raw_ostream &OS, const Module* = 0) const;
+    virtual void print(raw_ostream &OS, const Module * = 0) const;
   };
 }
 

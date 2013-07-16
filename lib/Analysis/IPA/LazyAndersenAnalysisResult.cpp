@@ -16,6 +16,6 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-AnalysisResult::AnalysisResult() {}
+AnalysisResult::AnalysisResult() : Enumerating(false) {}
 
 AnalysisResult::~AnalysisResult() {}

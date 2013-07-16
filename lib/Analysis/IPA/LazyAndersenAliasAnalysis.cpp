@@ -17,6 +17,7 @@
 #include "llvm/Analysis/LazyAndersen.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Pass.h"
+
 using namespace llvm;
 
 namespace {
@@ -38,7 +39,7 @@ namespace {
     /// specified pass info.
     virtual void *getAdjustedAnalysisPointer(AnalysisID PI) {
       if (PI == &AliasAnalysis::ID)
-        return (AliasAnalysis*)this;
+        return (AliasAnalysis *)this;
       return this;
     }
 
@@ -90,6 +91,7 @@ AliasAnalysis::AliasResult
 LazyAndersenAliasAnalysis::alias(const Location &LocA,
                                  const Location &LocB) {
   // TODO
+  DenseSet<const Value *> PointsTo(LA->getPointsToSet(LocA.Ptr));
   return AliasAnalysis::alias(LocA, LocB);
 }
 

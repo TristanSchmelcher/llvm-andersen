@@ -24,3 +24,8 @@ ValueInfo::ValueInfo(const Value *V, Map *ContainingMap)
   : V(V), ContainingMap(ContainingMap) {}
 
 ValueInfo::~ValueInfo() {}
+
+void ValueInfo::setAlgorithmResultSpecialCase(ValueInfoAlgorithmId Id,
+    AnalysisResult *AR) {
+  ResultCache.setAlgorithmResultSpecialCase(Id, AR);
+}

@@ -42,6 +42,12 @@ namespace lazyandersen {
           &runAlgorithm<AlgorithmIdTy, AlgorithmId>, Input);
     }
 
+    void setAlgorithmResultSpecialCase(AlgorithmIdTy AlgorithmId,
+        OutputTy *Output) {
+      assert(!Results[AlgorithmId].get());
+      Results[AlgorithmId].reset(Output);
+    }
+
   private:
     OutputTy *getAlgorithmResultInternal(AlgorithmIdTy AlgorithmId,
         AlgorithmTy Algorithm, InputTy *Input) {

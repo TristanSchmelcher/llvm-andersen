@@ -19,16 +19,36 @@
 #include "LazyAndersenAnalysisResultEntryList.h"
 #include "llvm/ADT/OwningPtr.h"
 
+#include <cassert>
+
 namespace llvm {
 namespace lazyandersen {
   class AnalysisResult : public AnalysisResultEntryList {
     AlgorithmResultCache<AnalysisResultAlgorithmId> ResultCache;
+    bool Enumerating;
 
   public:
+    class ScopedSetEnumeratingFlag {
+      AnalysisResult *AR;
+
+    public:
+      ScopedSetEnumeratingFlag(AnalysisResult *AR) : AR(AR) {
+        assert(!AR->Enumerating);
+        AR->Enumerating = true;
+      }
+
+      ~ScopedSetEnumeratingFlag() {
+        assert(AR->Enumerating);
+        AR->Enumerating = false;
+      }
+    };
+
     typedef OwningPtr<AnalysisResult> Ref;
 
     AnalysisResult();
     ~AnalysisResult();
+
+    bool isEnumerating() const { return Enumerating; }
 
     template<AnalysisResultAlgorithmId Id>
     AnalysisResult *getAlgorithmResult() {

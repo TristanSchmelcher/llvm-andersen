@@ -16,13 +16,22 @@
 #define DEBUG_TYPE "lazy-andersen"
 #include "llvm/Analysis/LazyAndersen.h"
 
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenData.h"
+#include "LazyAndersenEnumerator.h"
 #include "LazyAndersenGraphTraits.h"
 #include "LazyAndersenInstructionAnalyzer.h"
+#include "LazyAndersenValuePrinter.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
+
+cl::opt<bool> NonLazy("andersen-non-lazy",
+                      cl::desc("Perform Andersen analysis non-lazily"));
+cl::opt<bool> GraphRelations("andersen-graph-relations",
+                             cl::desc("Display the Andersen relations graph"));
 
 char LazyAndersen::ID = 0;
 // TODO: What do these two bools mean?
@@ -35,10 +44,27 @@ LazyAndersen::LazyAndersen()
   initializeLazyAndersenPass(*PassRegistry::getPassRegistry());
 }
 
+DenseSet<const Value *> LazyAndersen::getPointsToSet(const Value *V) const {
+  DenseSet<const Value *> Out;
+  if (Data->ValueInfos[V]) {
+    Enumerator::enumerate(
+        Data->ValueInfos[V]->getAlgorithmResult<POINTS_TO_SET>(), &Out);
+  }
+  return Out;
+}
+
 bool LazyAndersen::runOnModule(Module &M) {
   assert(!Data);
   Data = InstructionAnalyzer::run(M);
-  print(dbgs(), &M);
+  if (NonLazy) {
+    for (ValueInfo::Map::const_iterator i = Data->ValueInfos.begin();
+         i != Data->ValueInfos.end(); ++i) {
+      getPointsToSet(i->first);
+    }
+  }
+  if (GraphRelations) {
+    lazyandersen::viewLazyAndersenGraph(Data, &M);
+  }
   return false;
 }
 
@@ -53,11 +79,18 @@ void LazyAndersen::getAnalysisUsage(AnalysisUsage &AU) const {
 
 void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
   assert(Data);
-  WriteGraph(OS, Data->ValueInfos, false,
-      Twine("LazyAndersen analysis results for module ")
-          + M->getModuleIdentifier());
-#ifndef NDEBUG
-  // In debug mode, also display the graph.
-  lazyandersen::viewLazyAndersenGraph(Data);
-#endif
+  if (!NonLazy) {
+    OS << "Nothing to print. Re-run with -andersen-non-lazy to see points-to"
+          " analysis results.\n";
+    return;
+  }
+  for (ValueInfo::Map::const_iterator i = Data->ValueInfos.begin();
+       i != Data->ValueInfos.end(); ++i) {
+    DenseSet<const Value *> PointsTo(getPointsToSet(i->first));
+    OS << "Points-to set for " << prettyPrintValue(i->first) << ":\n";
+    for (DenseSet<const Value *>::iterator i = PointsTo.begin();
+         i != PointsTo.end(); ++i) {
+      OS << "  " << prettyPrintValue(*i) << '\n';
+    }
+  }
 }

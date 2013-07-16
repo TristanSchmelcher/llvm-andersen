@@ -19,6 +19,7 @@ add_llvm_library(LLVMipa
   LazyAndersenContentPointsToAlgorithm.cpp
   LazyAndersenContentReversePointsToAlgorithm.cpp
   LazyAndersenDependsOnRelation.cpp
+  LazyAndersenEnumerator.cpp
   LazyAndersenGraphTraits.cpp
   LazyAndersenHalfRelation.cpp
   LazyAndersenHalfRelationBase.cpp
@@ -39,6 +40,7 @@ add_llvm_library(LLVMipa
   LazyAndersenReversePointsToAlgorithm.cpp
   LazyAndersenStoredToRelation.cpp
   LazyAndersenValueInfo.cpp
+  LazyAndersenValuePrinter.cpp
   )
 
 add_dependencies(LLVMipa intrinsics_gen)

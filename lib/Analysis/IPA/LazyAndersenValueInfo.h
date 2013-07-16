@@ -84,6 +84,9 @@ namespace lazyandersen {
       return ResultCache.getAlgorithmResult<Id>(this);
     }
 
+    void setAlgorithmResultSpecialCase(ValueInfoAlgorithmId Id,
+        AnalysisResult *AR);
+
   private:
     ~ValueInfo();
   };
