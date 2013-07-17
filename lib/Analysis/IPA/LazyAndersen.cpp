@@ -19,8 +19,8 @@
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenData.h"
 #include "LazyAndersenEnumerator.h"
-#include "LazyAndersenGraphTraits.h"
 #include "LazyAndersenInstructionAnalyzer.h"
+#include "LazyAndersenRelationsGraphViewer.h"
 #include "LazyAndersenValuePrinter.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -63,7 +63,7 @@ bool LazyAndersen::runOnModule(Module &M) {
     }
   }
   if (GraphRelations) {
-    lazyandersen::viewLazyAndersenGraph(Data, &M);
+    lazyandersen::viewRelationsGraph(Data, &M);
   }
   return false;
 }
@@ -90,7 +90,7 @@ void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
     OS << "Points-to set for " << prettyPrintValue(i->first) << ":\n";
     for (DenseSet<const Value *>::iterator i = PointsTo.begin();
          i != PointsTo.end(); ++i) {
-      OS << "  " << prettyPrintValue(*i) << '\n';
+      OS << "  " << prettyPrintValue(*i) << "\n";
     }
   }
 }

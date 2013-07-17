@@ -20,7 +20,6 @@ add_llvm_library(LLVMipa
   LazyAndersenContentReversePointsToAlgorithm.cpp
   LazyAndersenDependsOnRelation.cpp
   LazyAndersenEnumerator.cpp
-  LazyAndersenGraphTraits.cpp
   LazyAndersenHalfRelation.cpp
   LazyAndersenHalfRelationBase.cpp
   LazyAndersenHalfRelationBaseList.cpp
@@ -33,6 +32,7 @@ add_llvm_library(LLVMipa
   LazyAndersenRelation.cpp
   LazyAndersenRelationsAnalysisStep.cpp
   LazyAndersenRelationsAnalysisStepBase.cpp
+  LazyAndersenRelationsGraphViewer.cpp
   LazyAndersenReturnedFromCalleeRelation.cpp
   LazyAndersenReturnedToCallerRelation.cpp
   LazyAndersenReturnValuePointsToAlgorithm.cpp
