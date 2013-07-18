@@ -34,10 +34,10 @@ namespace {
   };
 
   class ArgumentReversePointsToAnalysisStep2
-    : public RelationsAnalysisStep<INCOMING> {
+    : public RelationsAnalysisStep<DESTINATION> {
   public:
     explicit ArgumentReversePointsToAnalysisStep2(ValueInfo *Input)
-      : RelationsAnalysisStep<INCOMING>(Input) {}
+      : RelationsAnalysisStep<DESTINATION>(Input) {}
 
     virtual AnalysisResult *analyzeRelation(Relation *R) {
       return R->analyzeArgumentsReversePointsToSet();

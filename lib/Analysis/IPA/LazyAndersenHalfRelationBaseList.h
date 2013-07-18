@@ -15,17 +15,17 @@
 #ifndef LAZYANDERSENHALFRELATIONBASELIST_H
 #define LAZYANDERSENHALFRELATIONBASELIST_H
 
+#include "LazyAndersenEdgeEndpointType.h"
 #include "LazyAndersenHalfRelationBase.h"
-#include "LazyAndersenRelationDirection.h"
 #include "llvm/ADT/ilist.h"
 
 namespace llvm {
 namespace lazyandersen {
-  template<RelationDirection Direction> class HalfRelationList;
+  template<EdgeEndpointType Endpoint> class HalfRelationList;
 
-  class HalfRelationBaseList : public HasDirection,
+  class HalfRelationBaseList : public HasEdgeEndpointType,
       public ilist<HalfRelationBase> {
-    template<RelationDirection Direction> friend class HalfRelationList;
+    template<EdgeEndpointType Endpoint> friend class HalfRelationList;
 
   public:
     static HalfRelationBaseList *get(ilist<HalfRelationBase> *List) {

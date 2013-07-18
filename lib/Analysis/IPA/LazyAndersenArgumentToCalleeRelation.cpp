@@ -29,7 +29,7 @@ AnalysisResult *ArgumentToCalleeRelation::analyzePointsToSet() const {
 
 AnalysisResult *ArgumentToCalleeRelation::analyzeOutgoingReversePointsToSet()
     const {
-  return getValueInfo<INCOMING>()->getAlgorithmResult<POINTS_TO_SET>()
+  return getValueInfo<DESTINATION>()->getAlgorithmResult<POINTS_TO_SET>()
       ->getAlgorithmResult<ARGUMENT_REVERSE_POINTS_TO_SET>();
 }
 
@@ -52,7 +52,7 @@ ArgumentToCalleeRelation::analyzeLoadedValuesReversePointsToSet() const {
 }
 
 AnalysisResult *ArgumentToCalleeRelation::analyzeArgumentsPointsToSet() const {
-  return getValueInfo<OUTGOING>()->getAlgorithmResult<POINTS_TO_SET>();
+  return getValueInfo<SOURCE>()->getAlgorithmResult<POINTS_TO_SET>();
 }
 
 AnalysisResult *

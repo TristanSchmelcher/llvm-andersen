@@ -16,20 +16,20 @@
 using namespace llvm;
 using namespace lazyandersen;
 
-template<RelationDirection Direction>
-RelationDirection HalfRelation<Direction>::getDirection() const {
-  return Direction;
+template<EdgeEndpointType Endpoint>
+EdgeEndpointType HalfRelation<Endpoint>::getEdgeEndpointType() const {
+  return Endpoint;
 }
 
-template<RelationDirection Direction>
-ValueInfo *HalfRelation<Direction>::getValueInfo() const {
+template<EdgeEndpointType Endpoint>
+ValueInfo *HalfRelation<Endpoint>::getValueInfo() const {
   assert(getList());
-  return ValueInfo::get(HalfRelationList<Direction>::from(
+  return ValueInfo::get(HalfRelationList<Endpoint>::from(
       HalfRelationBaseList::get(getList())));
 }
 
-template<RelationDirection Direction>
-HalfRelation<Direction>::~HalfRelation() {}
+template<EdgeEndpointType Endpoint>
+HalfRelation<Endpoint>::~HalfRelation() {}
 
-template class HalfRelation<INCOMING>;
-template class HalfRelation<OUTGOING>;
+template class HalfRelation<SOURCE>;
+template class HalfRelation<DESTINATION>;

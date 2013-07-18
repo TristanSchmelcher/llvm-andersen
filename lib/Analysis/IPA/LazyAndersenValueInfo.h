@@ -15,8 +15,8 @@
 #define LAZYANDERSENVALUEINFO_H
 
 #include "LazyAndersenAlgorithmResultCache.h"
+#include "LazyAndersenEdgeEndpointType.h"
 #include "LazyAndersenHalfRelationList.h"
-#include "LazyAndersenRelationDirection.h"
 #include "LazyAndersenValueInfoAlgorithmId.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
@@ -28,8 +28,8 @@ namespace llvm {
 namespace llvm {
 namespace lazyandersen {
   class ValueInfo : private RefCountedBase<ValueInfo>,
-      private HalfRelationList<INCOMING>,
-      private HalfRelationList<OUTGOING> {
+      private HalfRelationList<SOURCE>,
+      private HalfRelationList<DESTINATION> {
     friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
     friend class RefCountedBase<ValueInfo>;
     // The Value that maps to this object. (If this analysis applies to
@@ -59,24 +59,24 @@ namespace lazyandersen {
       return ContainingMap;
     }
 
-    template<RelationDirection Direction>
-    static ValueInfo *get(HalfRelationList<Direction> *List) {
+    template<EdgeEndpointType Endpoint>
+    static ValueInfo *get(HalfRelationList<Endpoint> *List) {
       return static_cast<ValueInfo *>(List);
     }
 
-    template<RelationDirection Direction>
-    static const ValueInfo *get(const HalfRelationList<Direction> *List) {
+    template<EdgeEndpointType Endpoint>
+    static const ValueInfo *get(const HalfRelationList<Endpoint> *List) {
       return static_cast<const ValueInfo *>(List);
     }
 
-    template<RelationDirection Direction>
-    HalfRelationList<Direction> *getRelations() {
-      return static_cast<HalfRelationList<Direction> *>(this);
+    template<EdgeEndpointType Endpoint>
+    HalfRelationList<Endpoint> *getRelations() {
+      return static_cast<HalfRelationList<Endpoint> *>(this);
     }
 
-    template<RelationDirection Direction>
-    const HalfRelationList<Direction> *getRelations() const {
-      return static_cast<const HalfRelationList<Direction> *>(this);
+    template<EdgeEndpointType Endpoint>
+    const HalfRelationList<Endpoint> *getRelations() const {
+      return static_cast<const HalfRelationList<Endpoint> *>(this);
     }
 
     template<ValueInfoAlgorithmId Id>

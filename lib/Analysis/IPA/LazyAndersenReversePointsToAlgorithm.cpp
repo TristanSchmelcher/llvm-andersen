@@ -23,10 +23,10 @@ using namespace llvm::lazyandersen;
 
 namespace {
   class ReversePointsToOutgoingRelationsAnalysisStep :
-      public RelationsAnalysisStep<OUTGOING> {
+      public RelationsAnalysisStep<SOURCE> {
   public:
     explicit ReversePointsToOutgoingRelationsAnalysisStep(ValueInfo *VI)
-      : RelationsAnalysisStep<OUTGOING>(VI) {}
+      : RelationsAnalysisStep<SOURCE>(VI) {}
 
   protected:
     virtual AnalysisResult *analyzeRelation(Relation *R);
@@ -38,10 +38,10 @@ namespace {
   }
 
   class ReversePointsToIncomingRelationsAnalysisStep :
-      public RelationsAnalysisStep<INCOMING> {
+      public RelationsAnalysisStep<DESTINATION> {
   public:
     explicit ReversePointsToIncomingRelationsAnalysisStep(ValueInfo *VI)
-      : RelationsAnalysisStep<INCOMING>(VI) {}
+      : RelationsAnalysisStep<DESTINATION>(VI) {}
 
   protected:
     virtual AnalysisResult *analyzeRelation(Relation *R);

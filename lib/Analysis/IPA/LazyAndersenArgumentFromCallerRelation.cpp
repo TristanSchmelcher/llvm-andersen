@@ -23,7 +23,7 @@ const char *ArgumentFromCallerRelation::getRelationName() const {
 }
 
 AnalysisResult *ArgumentFromCallerRelation::analyzePointsToSet() const {
-  return getValueInfo<INCOMING>()
+  return getValueInfo<DESTINATION>()
       ->getAlgorithmResult<REVERSE_POINTS_TO_SET>()
           ->getAlgorithmResult<ARGUMENT_POINTS_TO_SET>();
 }
@@ -60,7 +60,7 @@ ArgumentFromCallerRelation::analyzeArgumentsPointsToSet() const {
 
 AnalysisResult *
 ArgumentFromCallerRelation::analyzeArgumentsReversePointsToSet() const {
-  return getValueInfo<OUTGOING>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
+  return getValueInfo<SOURCE>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
 }
 
 AnalysisResult *

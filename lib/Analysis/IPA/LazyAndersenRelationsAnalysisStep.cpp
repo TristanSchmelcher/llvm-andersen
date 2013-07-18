@@ -19,15 +19,15 @@
 using namespace llvm;
 using namespace lazyandersen;
 
-template<RelationDirection Direction>
-RelationsAnalysisStep<Direction>::RelationsAnalysisStep(ValueInfo *VI)
-  : RelationsAnalysisStepBase(VI->getRelations<Direction>()) {}
+template<EdgeEndpointType Endpoint>
+RelationsAnalysisStep<Endpoint>::RelationsAnalysisStep(ValueInfo *VI)
+  : RelationsAnalysisStepBase(VI->getRelations<Endpoint>()) {}
 
-template<RelationDirection Direction>
-AnalysisResult *RelationsAnalysisStep<Direction>::analyzeHalfRelation(
+template<EdgeEndpointType Endpoint>
+AnalysisResult *RelationsAnalysisStep<Endpoint>::analyzeHalfRelation(
     HalfRelationBase *HR) {
-  return analyzeRelation(Relation::get(HalfRelation<Direction>::from(HR)));
+  return analyzeRelation(Relation::get(HalfRelation<Endpoint>::from(HR)));
 }
 
-template class RelationsAnalysisStep<INCOMING>;
-template class RelationsAnalysisStep<OUTGOING>;
+template class RelationsAnalysisStep<SOURCE>;
+template class RelationsAnalysisStep<DESTINATION>;

@@ -29,8 +29,9 @@ AnalysisResult *ReturnedToCallerRelation::analyzePointsToSet() const {
 
 AnalysisResult *ReturnedToCallerRelation::analyzeOutgoingReversePointsToSet()
     const {
-  return getValueInfo<INCOMING>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>()
-      ->getAlgorithmResult<RETURN_VALUE_REVERSE_POINTS_TO_SET>();
+  return getValueInfo<DESTINATION>()
+      ->getAlgorithmResult<REVERSE_POINTS_TO_SET>()
+          ->getAlgorithmResult<RETURN_VALUE_REVERSE_POINTS_TO_SET>();
 }
 
 AnalysisResult *ReturnedToCallerRelation::analyzeIncomingReversePointsToSet()
@@ -64,7 +65,7 @@ ReturnedToCallerRelation::analyzeArgumentsReversePointsToSet() const {
 
 AnalysisResult *
 ReturnedToCallerRelation::analyzeReturnValuePointsToSet() const {
-  return getValueInfo<OUTGOING>()->getAlgorithmResult<POINTS_TO_SET>();
+  return getValueInfo<SOURCE>()->getAlgorithmResult<POINTS_TO_SET>();
 }
 
 AnalysisResult *

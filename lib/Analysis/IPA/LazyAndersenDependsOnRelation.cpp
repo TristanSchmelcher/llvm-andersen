@@ -23,7 +23,7 @@ const char *DependsOnRelation::getRelationName() const {
 }
 
 AnalysisResult *DependsOnRelation::analyzePointsToSet() const {
-  return getValueInfo<INCOMING>()->getAlgorithmResult<POINTS_TO_SET>();
+  return getValueInfo<DESTINATION>()->getAlgorithmResult<POINTS_TO_SET>();
 }
 
 AnalysisResult *DependsOnRelation::analyzeOutgoingReversePointsToSet()
@@ -34,7 +34,7 @@ AnalysisResult *DependsOnRelation::analyzeOutgoingReversePointsToSet()
 
 AnalysisResult *DependsOnRelation::analyzeIncomingReversePointsToSet()
     const {
-  return getValueInfo<OUTGOING>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
+  return getValueInfo<SOURCE>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
 }
 
 AnalysisResult *DependsOnRelation::analyzeStoredValuesPointsToSet()

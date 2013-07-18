@@ -14,8 +14,8 @@
 #ifndef LAZYANDERSENHALFRELATION_H
 #define LAZYANDERSENHALFRELATION_H
 
+#include "LazyAndersenEdgeEndpointType.h"
 #include "LazyAndersenHalfRelationBase.h"
-#include "LazyAndersenRelationDirection.h"
 #include "LazyAndersenValueInfo.h"
 
 namespace llvm {
@@ -23,28 +23,28 @@ namespace lazyandersen {
   class Relation;
   class ValueInfo;
 
-  template<RelationDirection Direction>
+  template<EdgeEndpointType Endpoint>
   class HalfRelation;
 
-  template<RelationDirection Direction>
-  class HalfRelationDirectionTraits : public DirectionTraits<Direction,
+  template<EdgeEndpointType Endpoint>
+  class HalfRelationEdgeEndpointTraits : public EdgeEndpointTraits<Endpoint,
       HalfRelationBase, HalfRelation> {};
 
-  template<RelationDirection Direction>
+  template<EdgeEndpointType Endpoint>
   class HalfRelation : public HalfRelationBase,
-      public HalfRelationDirectionTraits<Direction> {
+      public HalfRelationEdgeEndpointTraits<Endpoint> {
     friend class Relation;
 
   public:
-    using HalfRelationDirectionTraits<Direction>::classof;
+    using HalfRelationEdgeEndpointTraits<Endpoint>::classof;
 
-    virtual RelationDirection getDirection() const;
+    virtual EdgeEndpointType getEdgeEndpointType() const;
 
     ValueInfo *getValueInfo() const;
 
   private:
     explicit HalfRelation(ValueInfo *VI)
-      : HalfRelationBase(VI->getRelations<Direction>()) {}
+      : HalfRelationBase(VI->getRelations<Endpoint>()) {}
     ~HalfRelation();
   };
 }

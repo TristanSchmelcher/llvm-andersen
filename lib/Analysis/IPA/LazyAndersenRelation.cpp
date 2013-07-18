@@ -18,6 +18,6 @@ using namespace llvm;
 using namespace llvm::lazyandersen;
 
 Relation::Relation(ValueInfo *Src, ValueInfo *Dst)
-  : HalfRelation<INCOMING>(Src), HalfRelation<OUTGOING>(Dst) {}
+  : HalfRelation<SOURCE>(Src), HalfRelation<DESTINATION>(Dst) {}
 
 Relation::~Relation() {}

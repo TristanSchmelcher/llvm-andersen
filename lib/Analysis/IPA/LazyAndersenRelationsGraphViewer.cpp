@@ -83,8 +83,8 @@ namespace {
     struct AdapterFunctor {
       ValueInfo::Map::value_type *operator()(const HalfRelationBase &HR)
           const {
-        ValueInfo *VI = Relation::getOppositeDirection(
-            HalfRelation<INCOMING>::from(&HR))->getValueInfo();
+        ValueInfo *VI = Relation::getOppositeEndpoint(
+            HalfRelation<SOURCE>::from(&HR))->getValueInfo();
         return &*VI->getMap()->find(VI->getValue());
       }
     };
@@ -104,12 +104,12 @@ namespace llvm {
 
     static ChildIteratorType child_begin(NodeType *Node) {
       ValueInfo *VI = Node->second.getPtr();
-      return ChildIteratorType(VI->getRelations<INCOMING>()->begin());
+      return ChildIteratorType(VI->getRelations<SOURCE>()->begin());
     }
 
     static ChildIteratorType child_end(NodeType *Node) {
       ValueInfo *VI = Node->second.getPtr();
-      return ChildIteratorType(VI->getRelations<INCOMING>()->end());
+      return ChildIteratorType(VI->getRelations<SOURCE>()->end());
     }
 
     static nodes_iterator nodes_begin(const ValueInfo::Map &Map) {
@@ -137,7 +137,7 @@ namespace llvm {
     static std::string getEdgeSourceLabel(
         GraphTraits<ValueInfo::Map>::NodeType *Node,
         const GraphTraits<ValueInfo::Map>::ChildIteratorType &i) {
-      return Relation::get(HalfRelation<INCOMING>::from(i.wrappedIterator()))
+      return Relation::get(HalfRelation<SOURCE>::from(i.wrappedIterator()))
           ->getRelationName();
     }
 

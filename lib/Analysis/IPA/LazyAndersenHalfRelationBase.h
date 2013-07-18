@@ -14,22 +14,22 @@
 #ifndef LAZYANDERSENHALFRELATIONBASE_H
 #define LAZYANDERSENHALFRELATIONBASE_H
 
+#include "LazyAndersenEdgeEndpointType.h"
 #include "LazyAndersenIntrusiveListNode.h"
 #include "LazyAndersenIntrusiveListTraits.h"
-#include "LazyAndersenRelationDirection.h"
 
 namespace llvm {
 namespace lazyandersen {
-  template<RelationDirection Direction> class HalfRelation;
+  template<EdgeEndpointType Endpoint> class HalfRelation;
   class HalfRelationBaseList;
 
-  class HalfRelationBase : public HasDirection,
+  class HalfRelationBase : public HasEdgeEndpointType,
       private IntrusiveListNode<HalfRelationBase> {
     friend struct ilist_ghostly_sentinel_traits<HalfRelationBase>;
     friend struct ilist_nextprev_traits<HalfRelationBase>;
     friend struct ilist_node_traits<HalfRelationBase>;
     friend struct IntrusiveListTraits<HalfRelationBase>;
-    template<RelationDirection> friend class HalfRelation;
+    template<EdgeEndpointType> friend class HalfRelation;
 
   protected:
     using IntrusiveListNode<HalfRelationBase>::getList;

@@ -14,7 +14,7 @@
 #ifndef LAZYANDERSENRELATIONSANALYSISSTEP_H
 #define LAZYANDERSENRELATIONSANALYSISSTEP_H
 
-#include "LazyAndersenRelationDirection.h"
+#include "LazyAndersenEdgeEndpointType.h"
 #include "LazyAndersenRelationsAnalysisStepBase.h"
 
 namespace llvm {
@@ -22,7 +22,7 @@ namespace lazyandersen {
   class Relation;
   class ValueInfo;
 
-  template<RelationDirection Direction>
+  template<EdgeEndpointType Endpoint>
   class RelationsAnalysisStep : public RelationsAnalysisStepBase {
   public:
     explicit RelationsAnalysisStep(ValueInfo *VI);

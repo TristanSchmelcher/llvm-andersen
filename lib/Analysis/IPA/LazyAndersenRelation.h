@@ -15,8 +15,8 @@
 #ifndef LAZYANDERSENRELATION_H
 #define LAZYANDERSENRELATION_H
 
+#include "LazyAndersenEdgeEndpointType.h"
 #include "LazyAndersenHalfRelation.h"
-#include "LazyAndersenRelationDirection.h"
 
 namespace llvm {
 namespace lazyandersen {
@@ -24,51 +24,51 @@ namespace lazyandersen {
   class ValueInfo;
 
   class Relation :
-      private HalfRelation<INCOMING>,
-      private HalfRelation<OUTGOING> {
+      private HalfRelation<SOURCE>,
+      private HalfRelation<DESTINATION> {
   public:
     Relation(ValueInfo *Src, ValueInfo *Dst);
     virtual ~Relation();
 
-    template<RelationDirection Direction>
-    static Relation *get(HalfRelation<Direction> *HR) {
+    template<EdgeEndpointType Endpoint>
+    static Relation *get(HalfRelation<Endpoint> *HR) {
       return static_cast<Relation *>(HR);
     }
 
-    template<RelationDirection Direction>
-    static const Relation *get(const HalfRelation<Direction> *HR) {
+    template<EdgeEndpointType Endpoint>
+    static const Relation *get(const HalfRelation<Endpoint> *HR) {
       return static_cast<const Relation *>(HR);
     }
 
-    template<RelationDirection Direction>
-    static typename HalfRelationDirectionTraits<Direction>
-        ::OppositeDirectionTy *
-    getOppositeDirection(HalfRelation<Direction> *HR) {
+    template<EdgeEndpointType Endpoint>
+    static typename HalfRelationEdgeEndpointTraits<Endpoint>
+        ::OppositeEndpointTy *
+    getOppositeEndpoint(HalfRelation<Endpoint> *HR) {
       return get(HR)->template getHalf<
-          HalfRelationDirectionTraits<Direction>::OppositeDirection>();
+          HalfRelationEdgeEndpointTraits<Endpoint>::OppositeEndpoint>();
     }
 
-    template<RelationDirection Direction>
-    static const typename HalfRelationDirectionTraits<Direction>
-        ::OppositeDirectionTy *
-    getOppositeDirection(const HalfRelation<Direction> *HR) {
+    template<EdgeEndpointType Endpoint>
+    static const typename HalfRelationEdgeEndpointTraits<Endpoint>
+        ::OppositeEndpointTy *
+    getOppositeEndpoint(const HalfRelation<Endpoint> *HR) {
       return get(HR)->template getHalf<
-          HalfRelationDirectionTraits<Direction>::OppositeDirection>();
+          HalfRelationEdgeEndpointTraits<Endpoint>::OppositeEndpoint>();
     }
 
-    template<RelationDirection Direction>
-    HalfRelation<Direction> *getHalf() {
-      return static_cast<HalfRelation<Direction> *>(this);
+    template<EdgeEndpointType Endpoint>
+    HalfRelation<Endpoint> *getHalf() {
+      return static_cast<HalfRelation<Endpoint> *>(this);
     }
 
-    template<RelationDirection Direction>
-    const HalfRelation<Direction> *getHalf() const {
-      return static_cast<const HalfRelation<Direction> *>(this);
+    template<EdgeEndpointType Endpoint>
+    const HalfRelation<Endpoint> *getHalf() const {
+      return static_cast<const HalfRelation<Endpoint> *>(this);
     }
 
-    template<RelationDirection Direction>
+    template<EdgeEndpointType Endpoint>
     ValueInfo *getValueInfo() const {
-      return getHalf<Direction>()->getValueInfo();
+      return getHalf<Endpoint>()->getValueInfo();
     }
 
     virtual const char *getRelationName() const = 0;

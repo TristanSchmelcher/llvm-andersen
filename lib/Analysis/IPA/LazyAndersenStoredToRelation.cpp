@@ -28,7 +28,7 @@ AnalysisResult *StoredToRelation::analyzePointsToSet() const {
 }
 
 AnalysisResult *StoredToRelation::analyzeOutgoingReversePointsToSet() const {
-  return getValueInfo<INCOMING>()->getAlgorithmResult<POINTS_TO_SET>()
+  return getValueInfo<DESTINATION>()->getAlgorithmResult<POINTS_TO_SET>()
       ->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET>();
 }
 
@@ -39,7 +39,7 @@ AnalysisResult *StoredToRelation::analyzeIncomingReversePointsToSet() const {
 
 AnalysisResult *StoredToRelation::analyzeStoredValuesPointsToSet()
     const {
-  return getValueInfo<OUTGOING>()->getAlgorithmResult<POINTS_TO_SET>();
+  return getValueInfo<SOURCE>()->getAlgorithmResult<POINTS_TO_SET>();
 }
 
 AnalysisResult *

@@ -23,7 +23,7 @@ const char *ReturnedFromCalleeRelation::getRelationName() const {
 }
 
 AnalysisResult *ReturnedFromCalleeRelation::analyzePointsToSet() const {
-  return getValueInfo<INCOMING>()->getAlgorithmResult<POINTS_TO_SET>()
+  return getValueInfo<DESTINATION>()->getAlgorithmResult<POINTS_TO_SET>()
       ->getAlgorithmResult<RETURN_VALUE_POINTS_TO_SET>();
 }
 
@@ -71,5 +71,5 @@ ReturnedFromCalleeRelation::analyzeReturnValuePointsToSet() const {
 
 AnalysisResult *
 ReturnedFromCalleeRelation::analyzeReturnValueReversePointsToSet() const {
-  return getValueInfo<OUTGOING>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
+  return getValueInfo<SOURCE>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
 }

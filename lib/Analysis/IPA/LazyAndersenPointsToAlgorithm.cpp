@@ -21,10 +21,10 @@ using namespace llvm;
 using namespace llvm::lazyandersen;
 
 namespace {
-  class PointsToRelationsAnalysisStep : public RelationsAnalysisStep<OUTGOING> {
+  class PointsToRelationsAnalysisStep : public RelationsAnalysisStep<SOURCE> {
   public:
     explicit PointsToRelationsAnalysisStep(ValueInfo *VI)
-      : RelationsAnalysisStep<OUTGOING>(VI) {}
+      : RelationsAnalysisStep<SOURCE>(VI) {}
 
   protected:
     virtual AnalysisResult *analyzeRelation(Relation *R);

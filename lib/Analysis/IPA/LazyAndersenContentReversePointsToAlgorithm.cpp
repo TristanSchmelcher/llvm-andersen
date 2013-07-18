@@ -46,10 +46,10 @@ namespace {
   };
 
   class ContentReversePointsToAnalysisStep3
-    : public RelationsAnalysisStep<INCOMING> {
+    : public RelationsAnalysisStep<DESTINATION> {
   public:
     explicit ContentReversePointsToAnalysisStep3(ValueInfo *Input)
-      : RelationsAnalysisStep<INCOMING>(Input) {}
+      : RelationsAnalysisStep<DESTINATION>(Input) {}
 
     virtual AnalysisResult *analyzeRelation(Relation *R) {
       return R->analyzeLoadedValuesReversePointsToSet();
