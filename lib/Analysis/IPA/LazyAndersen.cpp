@@ -22,6 +22,7 @@
 #include "LazyAndersenInstructionAnalyzer.h"
 #include "LazyAndersenRelationsGraphViewer.h"
 #include "LazyAndersenValuePrinter.h"
+#include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
@@ -35,9 +36,13 @@ cl::opt<bool> GraphRelations("andersen-graph-relations",
 
 char LazyAndersen::ID = 0;
 // TODO: What do these two bools mean?
-INITIALIZE_PASS(LazyAndersen, "lazy-andersen",
-                "Lazy Andersen's Algorithm for Points-To Analysis", false,
-                true)
+INITIALIZE_PASS_BEGIN(LazyAndersen, "lazy-andersen",
+                      "Lazy Andersen's Algorithm for Points-To Analysis", false,
+                      true)
+INITIALIZE_PASS_DEPENDENCY(DominatorTree)
+INITIALIZE_PASS_END(LazyAndersen, "lazy-andersen",
+                    "Lazy Andersen's Algorithm for Points-To Analysis", false,
+                    true)
 
 LazyAndersen::LazyAndersen()
   : ModulePass(ID), Data(0) {
@@ -55,7 +60,7 @@ DenseSet<const Value *> LazyAndersen::getPointsToSet(const Value *V) const {
 
 bool LazyAndersen::runOnModule(Module &M) {
   assert(!Data);
-  Data = InstructionAnalyzer::run(M);
+  Data = InstructionAnalyzer::run(this, M);
   if (NonLazy) {
     for (ValueInfo::Map::const_iterator i = Data->ValueInfos.begin();
          i != Data->ValueInfos.end(); ++i) {
@@ -75,6 +80,7 @@ void LazyAndersen::releaseMemory() {
 
 void LazyAndersen::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
+  AU.addRequired<DominatorTree>();
 }
 
 void LazyAndersen::print(raw_ostream &OS, const Module *M) const {

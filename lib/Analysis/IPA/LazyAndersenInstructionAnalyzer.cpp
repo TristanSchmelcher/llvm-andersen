@@ -24,8 +24,10 @@
 #include "LazyAndersenReturnedToCallerRelation.h"
 #include "LazyAndersenStoredToRelation.h"
 #include "LazyAndersenValueInfo.h"
+#include "llvm/Analysis/Dominators.h"
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Pass.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
@@ -76,8 +78,8 @@ namespace {
   }
 }
 
-LazyAndersenData *InstructionAnalyzer::run(Module &M) {
-  return InstructionAnalyzer(M).Data;
+LazyAndersenData *InstructionAnalyzer::run(ModulePass *MP, Module &M) {
+  return InstructionAnalyzer(MP, M).Data;
 }
 
 void InstructionAnalyzer::visitReturnInst(ReturnInst &I) {
@@ -149,14 +151,37 @@ void InstructionAnalyzer::visitInstruction(Instruction &I) {
   cache(&I, analyzeUser(&I));
 }
 
-InstructionAnalyzer::InstructionAnalyzer(Module &M)
-  : Data(new LazyAndersenData()) {
+InstructionAnalyzer::InstructionAnalyzer(ModulePass *MP, Module &M)
+  : MP(MP), Data(new LazyAndersenData()) {
   for (Module::iterator i = M.begin(); i != M.end(); ++i) {
     Function &F(*i);
-    CurrentFunction = &F;
-    visit(F);
-    processPHINodes();
+    processFunction(F);
   }
+}
+
+void InstructionAnalyzer::processFunction(Function &F) {
+  CurrentFunction = &F;
+  // Visit the basic blocks in a depth-first traversal of the dominator tree.
+  // This ensures that we visit each instruction before each non-PHI use of it.
+  DomTreeNode *Root = MP->getAnalysis<DominatorTree>(F).getRootNode();
+  for (df_iterator<DomTreeNode *> i = df_begin(Root), End = df_end(Root);
+       i != End; ++i) {
+    visit(i->getBlock());
+  }
+  // Process all the PHI nodes.
+  for (PHINodeWorkVector::const_iterator i = PHINodeWork.begin();
+       i != PHINodeWork.end(); ++i) {
+    const PHINode *PHI = i->first;
+    ValueInfo *PHIAnalysis = i->second;
+    for (PHINode::const_op_iterator i = PHI->op_begin(); i != PHI->op_end();
+        ++i) {
+      ValueInfo *OperandAnalysis = analyzeValue(*i);
+      if (OperandAnalysis) {
+        new DependsOnRelation(PHIAnalysis, OperandAnalysis);
+      }
+    }
+  }
+  PHINodeWork.clear();
 }
 
 void InstructionAnalyzer::visitCallOrInvokeInst(Instruction &I,
@@ -185,22 +210,6 @@ void InstructionAnalyzer::visitCallOrInvokeInst(Instruction &I,
     cache(&I, ReturnedValueInfo);
   }
   // TODO: Record that the current function may call this function.
-}
-
-void InstructionAnalyzer::processPHINodes() {
-  for (PHINodeWorkVector::const_iterator i = PHINodeWork.begin();
-       i != PHINodeWork.end(); ++i) {
-    const PHINode *PHI = i->first;
-    ValueInfo *PHIAnalysis = i->second;
-    for (PHINode::const_op_iterator i = PHI->op_begin(); i != PHI->op_end();
-        ++i) {
-      ValueInfo *OperandAnalysis = analyzeValue(*i);
-      if (OperandAnalysis) {
-        new DependsOnRelation(PHIAnalysis, OperandAnalysis);
-      }
-    }
-  }
-  PHINodeWork.clear();
 }
 
 bool InstructionAnalyzer::analyzed(const Value *V) {

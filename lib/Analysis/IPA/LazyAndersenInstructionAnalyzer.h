@@ -19,6 +19,7 @@
 
 namespace llvm {
   class LazyAndersenData;
+  class ModulePass;
 }
 
 namespace llvm {
@@ -29,12 +30,13 @@ namespace lazyandersen {
   class InstructionAnalyzer : public InstVisitor<InstructionAnalyzer> {
     typedef SmallVector<std::pair<const PHINode *, ValueInfo *>, 3>
         PHINodeWorkVector;
+    ModulePass *MP;
     PHINodeWorkVector PHINodeWork;
     LazyAndersenData *Data;
     Function *CurrentFunction;
 
   public:
-    static LazyAndersenData *run(Module &M);
+    static LazyAndersenData *run(ModulePass *MP, Module &M);
     void visitReturnInst(ReturnInst &I);
     void visitInvokeInst(InvokeInst &I);
     void visitAllocaInst(AllocaInst &I);
@@ -48,10 +50,10 @@ namespace lazyandersen {
     void visitInstruction(Instruction &I);
 
   private:
-    explicit InstructionAnalyzer(Module &M);
+    InstructionAnalyzer(ModulePass *MP, Module &M);
     void visitCallOrInvokeInst(Instruction &I,
         const CallOrInvokeInstWrapperInterface &W);
-    void processPHINodes();
+    void processFunction(Function &F);
     bool analyzed(const Value *V);
     ValueInfo *cache(const Value *V, ValueInfo *VI);
     ValueInfo *createValueInfo(const Value *V);
