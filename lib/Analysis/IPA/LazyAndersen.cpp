@@ -50,6 +50,7 @@ LazyAndersen::LazyAndersen()
 }
 
 DenseSet<const Value *> LazyAndersen::getPointsToSet(const Value *V) const {
+  assert(Data->ValueInfos.count(V));
   DenseSet<const Value *> Out;
   if (Data->ValueInfos[V]) {
     Enumerator::enumerate(

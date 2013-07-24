@@ -155,7 +155,9 @@ InstructionAnalyzer::InstructionAnalyzer(ModulePass *MP, Module &M)
   : MP(MP), Data(new LazyAndersenData()) {
   for (Module::iterator i = M.begin(); i != M.end(); ++i) {
     Function &F(*i);
-    processFunction(F);
+    if (!F.isDeclaration()) {
+      processFunction(F);
+    }
   }
 }
 
@@ -163,6 +165,9 @@ void InstructionAnalyzer::processFunction(Function &F) {
   CurrentFunction = &F;
   // Visit the basic blocks in a depth-first traversal of the dominator tree.
   // This ensures that we visit each instruction before each non-PHI use of it.
+  // TODO: This skips (seemingly) unreachable code, so a future alias lookup on
+  // such code may break. We should depend on a transform pass that removes
+  // unreachable code.
   DomTreeNode *Root = MP->getAnalysis<DominatorTree>(F).getRootNode();
   for (df_iterator<DomTreeNode *> i = df_begin(Root), End = df_end(Root);
        i != End; ++i) {
