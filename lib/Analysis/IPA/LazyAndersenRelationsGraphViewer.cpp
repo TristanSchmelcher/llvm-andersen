@@ -66,19 +66,6 @@ namespace {
     }
   };
 
-  class ValueInfoMapIteratorAdapter {
-    struct AdapterFunctor {
-      const ValueInfo::Map::value_type *operator()(
-          const ValueInfo::Map::value_type &value) const {
-        return &value;
-      }
-    };
-
-  public:
-    typedef forward_iterator_adapter<ValueInfo::Map::const_iterator,
-        const ValueInfo::Map::value_type *, AdapterFunctor> iterator;
-  };
-
   class IncomingHalfRelationIteratorAdapter {
     struct AdapterFunctor {
       ValueInfo::Map::value_type *operator()(const HalfRelationBase &HR)
@@ -99,7 +86,7 @@ namespace llvm {
   template<>
   struct GraphTraits<ValueInfo::Map> {
     typedef const ValueInfo::Map::value_type NodeType;
-    typedef ValueInfoMapIteratorAdapter::iterator nodes_iterator;
+    typedef ValueInfo::Map::const_iterator nodes_iterator;
     typedef IncomingHalfRelationIteratorAdapter::iterator ChildIteratorType;
 
     static ChildIteratorType child_begin(NodeType *Node) {
