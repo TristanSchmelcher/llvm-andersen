@@ -14,13 +14,13 @@
 #include "LazyAndersenRelationsGraphViewer.h"
 
 #include "LazyAndersenData.h"
-#include "LazyAndersenRelation.h"
+#include "LazyAndersenGraphNode.h"
 #include "LazyAndersenValueInfo.h"
 #include "LazyAndersenValuePrinter.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Value.h"
+#include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/GraphWriter.h"
-#include "llvm/Support/raw_os_ostream.h"
 
 #include <sstream>
 
@@ -28,121 +28,114 @@ using namespace llvm;
 using namespace llvm::lazyandersen;
 
 namespace {
-  template<typename OriginalIteratorTy, typename ValueTy,
-      typename AdapterFunctorTy>
-  class forward_iterator_adapter {
-    OriginalIteratorTy i;
-    AdapterFunctorTy AdapterFunctor;
+  class NodeForwardIterator {
+    std::list<GraphEdge> RemainingEdges;
 
   public:
-    typedef typename OriginalIteratorTy::difference_type difference_type;
-    typedef ValueTy value_type;
+    typedef ssize_t difference_type;
+    typedef const GraphNodeBase *value_type;
     typedef value_type *pointer;
     typedef value_type &reference;
     typedef std::forward_iterator_tag iterator_category;
 
-    forward_iterator_adapter() {}
+    NodeForwardIterator() {}
 
-    explicit forward_iterator_adapter(const OriginalIteratorTy &i) : i(i) {}
+    explicit NodeForwardIterator(const std::list<GraphEdge> &Edges)
+      : RemainingEdges(Edges) {}
 
-    OriginalIteratorTy &wrappedIterator() { return i; }
+    const char *getLabel() const { return RemainingEdges.front().Label; }
 
-    const OriginalIteratorTy &wrappedIterator() const { return i; }
+    value_type operator*() const { return RemainingEdges.front().Dst; }
 
-    value_type operator*() const { return AdapterFunctor(*i); }
-
-    bool operator==(const forward_iterator_adapter &that) const {
-      return i == that.i;
+    bool operator==(const NodeForwardIterator &that) const {
+      // Since it's invalid to compare iterators from different objects, it's
+      // sufficient to compare the size here.
+      return RemainingEdges.size() == that.RemainingEdges.size();
     }
 
-    bool operator!=(const forward_iterator_adapter &that) const {
-      return i != that.i;
+    bool operator!=(const NodeForwardIterator &that) const {
+      return !(*this == that);
     }
 
-    forward_iterator_adapter &operator++() { ++i; return *this; }
-
-    forward_iterator_adapter operator++(int) {
-      forward_iterator_adapter tmp = *this; ++*this; return tmp;
+    NodeForwardIterator &operator++() {
+      RemainingEdges.pop_front();
+      return *this;
     }
-  };
 
-  class IncomingHalfRelationIteratorAdapter {
-    struct AdapterFunctor {
-      ValueInfo::Map::value_type *operator()(const HalfRelationBase &HR)
-          const {
-        ValueInfo *VI = Relation::getOppositeEndpoint(
-            HalfRelation<SOURCE>::from(&HR))->getValueInfo();
-        return &*VI->getMap()->find(VI->getValue());
-      }
-    };
-
-  public:
-    typedef forward_iterator_adapter<HalfRelationBaseList::iterator,
-        ValueInfo::Map::value_type *, AdapterFunctor> iterator;
+    NodeForwardIterator operator++(int) {
+      NodeForwardIterator Tmp = *this;
+      ++*this;
+      return Tmp;
+    }
   };
 }
 
 namespace llvm {
   template<>
-  struct GraphTraits<ValueInfo::Map> {
-    typedef const ValueInfo::Map::value_type NodeType;
-    typedef ValueInfo::Map::const_iterator nodes_iterator;
-    typedef IncomingHalfRelationIteratorAdapter::iterator ChildIteratorType;
+  struct GraphTraits<LazyAndersenData> {
+    typedef const GraphNodeBase NodeType;
+    typedef df_iterator<LazyAndersenData> nodes_iterator;
+    typedef NodeForwardIterator ChildIteratorType;
 
     static ChildIteratorType child_begin(NodeType *Node) {
-      ValueInfo *VI = Node->second.getPtr();
-      return ChildIteratorType(VI->getRelations<SOURCE>()->begin());
+      return ChildIteratorType(Node->getOutgoingEdges());
     }
 
     static ChildIteratorType child_end(NodeType *Node) {
-      ValueInfo *VI = Node->second.getPtr();
-      return ChildIteratorType(VI->getRelations<SOURCE>()->end());
+      return ChildIteratorType();
     }
 
-    static nodes_iterator nodes_begin(const ValueInfo::Map &Map) {
-      return nodes_iterator(Map.begin());
+    static NodeType *getEntryNode(const LazyAndersenData &Data) {
+      return &Data;
     }
 
-    static nodes_iterator nodes_end(const ValueInfo::Map &Map) {
-      return nodes_iterator(Map.end());
+    static nodes_iterator nodes_begin(const LazyAndersenData &Data) {
+      return df_begin(Data);
+    }
+
+    static nodes_iterator nodes_end(const LazyAndersenData &Data) {
+      return df_end(Data);
     }
   };
 
   template<>
-  class DOTGraphTraits<ValueInfo::Map> :
-      public DefaultDOTGraphTraits {
+  class DOTGraphTraits<LazyAndersenData> : public DefaultDOTGraphTraits {
   public:
     DOTGraphTraits(bool simple = false) : DefaultDOTGraphTraits(simple) {}
 
-    std::string getNodeLabel(GraphTraits<ValueInfo::Map>::NodeType *Node,
-                             const ValueInfo::Map &Map) {
+    std::string getNodeLabel(const GraphNodeBase *Node,
+                             const LazyAndersenData &Data) {
       static const size_t MaxPrintedSize = 16;
-      const Value *V = Node->first;
-      return prettyPrintValue(V, MaxPrintedSize);
+      switch (Node->getType()) {
+      case GraphNodeBase::VALUE_INFO:
+        return prettyPrintValue(cast<ValueInfo>(Node)->getValue(),
+                                MaxPrintedSize);
+      default:
+        llvm_unreachable("Unexpected node type");
+        break;
+      }
     }
 
-    static std::string getEdgeSourceLabel(
-        GraphTraits<ValueInfo::Map>::NodeType *Node,
-        const GraphTraits<ValueInfo::Map>::ChildIteratorType &i) {
-      return Relation::get(HalfRelation<SOURCE>::from(i.wrappedIterator()))
-          ->getRelationName();
+    static std::string getEdgeSourceLabel(const GraphNodeBase *Node,
+                                          const NodeForwardIterator &i) {
+      return i.getLabel();
     }
 
-    static bool isNodeHidden(GraphTraits<ValueInfo::Map>::NodeType *Node) {
-      return !Node->second.getPtr() || Node->first != Node->second->getValue();
+    static bool isNodeHidden(const GraphNodeBase *Node) {
+      return Node->getType() == GraphNodeBase::ROOT;
     }
   };
 }
 
 namespace llvm {
 namespace lazyandersen {
-  void viewRelationsGraph(LazyAndersenData *Data, const Module *M) {
+  void viewRelationsGraph(const LazyAndersenData *Data, const Module *M) {
     std::ostringstream OSS;
     OSS << "LazyAndersen analysis results";
     if (M) {
       OSS << " for module " << M->getModuleIdentifier();
     }
-    ViewGraph(Data->ValueInfos, "LazyAndersen", false, OSS.str());
+    ViewGraph(*Data, "LazyAndersen", false, OSS.str());
   }
 }
 }

@@ -21,7 +21,7 @@ namespace llvm {
 
 namespace llvm {
 namespace lazyandersen {
-  void viewRelationsGraph(LazyAndersenData *Data, const Module *M = 0);
+  void viewRelationsGraph(const LazyAndersenData *Data, const Module *M = 0);
 }
 }
 

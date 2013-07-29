@@ -14,6 +14,7 @@
 #include "LazyAndersenValueInfo.h"
 
 #include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenRelation.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
@@ -28,4 +29,17 @@ ValueInfo::~ValueInfo() {}
 void ValueInfo::setAlgorithmResultSpecialCase(ValueInfoAlgorithmId Id,
     AnalysisResult *AR) {
   ResultCache.setAlgorithmResultSpecialCase(Id, AR);
+}
+
+std::list<GraphEdge> ValueInfo::getOutgoingEdges() const {
+  std::list<GraphEdge> Result;
+  for (HalfRelationList<SOURCE>::const_iterator
+           i = getRelations<SOURCE>()->begin(),
+           End = getRelations<SOURCE>()->end(); i != End; ++i) {
+    const HalfRelation<SOURCE> *HR = HalfRelation<SOURCE>::from(&*i);
+    Result.push_back(GraphEdge(
+        Relation::getOppositeEndpoint(HR)->getValueInfo(),
+        Relation::get(HR)->getRelationName()));
+  }
+  return Result;
 }

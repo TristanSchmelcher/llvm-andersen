@@ -14,12 +14,20 @@
 #ifndef LAZYANDERSENDATA_H
 #define LAZYANDERSENDATA_H
 
+#include "LazyAndersenGraphNode.h"
 #include "LazyAndersenValueInfo.h"
 
 namespace llvm {
-  class LazyAndersenData {
+  class LazyAndersenData :
+    public lazyandersen::GraphNode<lazyandersen::GraphNodeBase::ROOT> {
   public:
+    using lazyandersen::GraphNode<GraphNodeBase::ROOT>::classof;
+
     lazyandersen::ValueInfo::Map ValueInfos;
+
+    virtual std::list<lazyandersen::GraphEdge> getOutgoingEdges() const;
+
+    virtual ~LazyAndersenData() {}
   };
 }
 

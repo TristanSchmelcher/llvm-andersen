@@ -18,6 +18,7 @@ add_llvm_library(LLVMipa
   LazyAndersenArgumentToCalleeRelation.cpp
   LazyAndersenContentPointsToAlgorithm.cpp
   LazyAndersenContentReversePointsToAlgorithm.cpp
+  LazyAndersenData.cpp
   LazyAndersenDependsOnRelation.cpp
   LazyAndersenEnumerator.cpp
   LazyAndersenHalfRelation.cpp
