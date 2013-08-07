@@ -32,6 +32,9 @@ namespace lazyandersen {
     NUM_ANALYSIS_RESULT_ALGORITHMS
   };
 
+  extern const char *const AnalysisResultAlgorithmNames[
+      NUM_ANALYSIS_RESULT_ALGORITHMS];
+
   template<>
   struct AlgorithmGroupTraits<AnalysisResultAlgorithmId> {
     static const AnalysisResultAlgorithmId NumAlgorithms =

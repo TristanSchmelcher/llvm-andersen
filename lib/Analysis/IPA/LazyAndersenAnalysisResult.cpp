@@ -13,9 +13,29 @@
 
 #include "LazyAndersenAnalysisResult-inl.h"
 
+#include <sstream>
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
 AnalysisResult::AnalysisResult() : Enumerating(false) {}
 
 AnalysisResult::~AnalysisResult() {}
+
+std::list<GraphEdge> AnalysisResult::getOutgoingEdges() const {
+  std::list<GraphEdge> Result;
+  for (AnalysisResultEntryList::const_iterator i = begin(), End = end();
+       i != End; ++i) {
+    const AnalysisResultEntry *Ent = &*i;
+    std::ostringstream OSS;
+    OSS << Ent;
+    Result.push_back(GraphEdge(Ent->getGraphNode(), OSS.str()));
+  }
+  for (int i = 0; i < NUM_ANALYSIS_RESULT_ALGORITHMS; ++i) {
+    AnalysisResult *AR = ResultCache.getAlgorithmResultNoCreate(
+        static_cast<AnalysisResultAlgorithmId>(i));
+    if (!AR) continue;
+    Result.push_back(GraphEdge(AR, AnalysisResultAlgorithmNames[i]));
+  }
+  return Result;
+}

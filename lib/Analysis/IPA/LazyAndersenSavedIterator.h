@@ -39,7 +39,7 @@ namespace lazyandersen {
       return List;
     }
 
-    ilist_iterator<NodeTy> get();
+    ilist_iterator<NodeTy> get() const;
     void set(ilist_iterator<NodeTy> i);
 
   private:

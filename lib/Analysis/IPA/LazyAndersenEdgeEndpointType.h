@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines edge endpoint constants and traits for the LazyAndersen
+// This file declares edge endpoint constants and traits for the LazyAndersen
 // algorithm.
 //
 //===----------------------------------------------------------------------===//
@@ -36,11 +36,13 @@ namespace lazyandersen {
   template<>
   struct EdgeEndpointTraitsBase<SOURCE> {
     static const EdgeEndpointType OppositeEndpoint = DESTINATION;
+    static const char EdgeEndpointTypeShortName[];
   };
 
   template<>
   struct EdgeEndpointTraitsBase<DESTINATION> {
     static const EdgeEndpointType OppositeEndpoint = SOURCE;
+    static const char EdgeEndpointTypeShortName[];
   };
 
   template<EdgeEndpointType Endpoint, typename BaseType,

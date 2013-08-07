@@ -31,6 +31,8 @@ namespace {
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
       return VI->getAlgorithmResult<RETURN_VALUE_POINTS_TO_SET_STEP2>();
     }
+
+    virtual const char *getWorkName() const { return "ReturnValueStep"; }
   };
 
   class ReturnValuePointsToAnalysisStep2
@@ -42,6 +44,8 @@ namespace {
     virtual AnalysisResult *analyzeRelation(Relation *R) {
       return R->analyzeReturnValuePointsToSet();
     }
+
+    virtual const char *getWorkName() const { return "ReturnValueStep2"; }
   };
 }
 

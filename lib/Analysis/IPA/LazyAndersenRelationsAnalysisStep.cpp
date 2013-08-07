@@ -16,6 +16,8 @@
 #include "LazyAndersenRelation.h"
 #include "LazyAndersenValueInfo.h"
 
+#include <sstream>
+
 using namespace llvm;
 using namespace lazyandersen;
 
@@ -27,6 +29,21 @@ template<EdgeEndpointType Endpoint>
 AnalysisResult *RelationsAnalysisStep<Endpoint>::analyzeHalfRelation(
     HalfRelationBase *HR) {
   return analyzeRelation(Relation::get(HalfRelation<Endpoint>::from(HR)));
+}
+
+template<EdgeEndpointType Endpoint>
+std::list<GraphEdge> RelationsAnalysisStep<Endpoint>::getOutgoingEdges() const {
+  std::list<GraphEdge> Result;
+  std::ostringstream OSS;
+  if (i != List->end()) {
+    OSS << Relation::get(HalfRelation<Endpoint>::from(&*i));
+  } else {
+    OSS << "end";
+  }
+  OSS << " of " << EdgeEndpointTraitsBase<Endpoint>::EdgeEndpointTypeShortName;
+  Result.push_back(GraphEdge(
+      ValueInfo::get(HalfRelationList<Endpoint>::from(List)), OSS.str()));
+  return Result;
 }
 
 template class RelationsAnalysisStep<SOURCE>;

@@ -14,6 +14,7 @@
 #ifndef LAZYANDERSENANALYSISRESULTENTRY_H
 #define LAZYANDERSENANALYSISRESULTENTRY_H
 
+#include "LazyAndersenGraphNode.h"
 #include "LazyAndersenIntrusiveListWithSavedIteratorSupportNode.h"
 #include "LazyAndersenIntrusiveListWithSavedIteratorSupportTraits.h"
 
@@ -37,6 +38,7 @@ namespace lazyandersen {
     AnalysisResultEntry();
     virtual ~AnalysisResultEntry();
     virtual EntryType getEntryType() const = 0;
+    virtual const GraphNodeBase *getGraphNode() const;
   };
 }
 }

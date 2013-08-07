@@ -33,6 +33,8 @@ namespace lazyandersen {
     NUM_VALUE_INFO_ALGORITHMS
   };
 
+  extern const char *const ValueInfoAlgorithmNames[NUM_VALUE_INFO_ALGORITHMS];
+
   template<>
   struct AlgorithmGroupTraits<ValueInfoAlgorithmId> {
     static const ValueInfoAlgorithmId NumAlgorithms =

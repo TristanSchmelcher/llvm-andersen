@@ -17,17 +17,21 @@
 #include "LazyAndersenAlgorithmResultCache.h"
 #include "LazyAndersenAnalysisResultAlgorithmId.h"
 #include "LazyAndersenAnalysisResultEntryList.h"
+#include "LazyAndersenGraphNode.h"
 #include "llvm/ADT/OwningPtr.h"
 
 #include <cassert>
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult : public AnalysisResultEntryList {
+  class AnalysisResult : public AnalysisResultEntryList,
+      public GraphNode<GraphNodeBase::ANALYSIS_RESULT> {
     AlgorithmResultCache<AnalysisResultAlgorithmId> ResultCache;
     bool Enumerating;
 
   public:
+    using GraphNode<GraphNodeBase::ANALYSIS_RESULT>::classof;
+
     class ScopedSetEnumeratingFlag {
       AnalysisResult *AR;
 
@@ -46,7 +50,9 @@ namespace lazyandersen {
     typedef OwningPtr<AnalysisResult> Ref;
 
     AnalysisResult();
-    ~AnalysisResult();
+    virtual ~AnalysisResult();
+
+    virtual std::list<GraphEdge> getOutgoingEdges() const;
 
     bool isEnumerating() const { return Enumerating; }
 

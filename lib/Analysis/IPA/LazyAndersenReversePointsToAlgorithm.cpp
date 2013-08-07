@@ -28,6 +28,8 @@ namespace {
     explicit ReversePointsToOutgoingRelationsAnalysisStep(ValueInfo *VI)
       : RelationsAnalysisStep<SOURCE>(VI) {}
 
+    virtual const char *getWorkName() const { return "ReverseOutgoingStep"; }
+
   protected:
     virtual AnalysisResult *analyzeRelation(Relation *R);
   };
@@ -42,6 +44,8 @@ namespace {
   public:
     explicit ReversePointsToIncomingRelationsAnalysisStep(ValueInfo *VI)
       : RelationsAnalysisStep<DESTINATION>(VI) {}
+
+    virtual const char *getWorkName() const { return "ReverseIncomingStep"; }
 
   protected:
     virtual AnalysisResult *analyzeRelation(Relation *R);

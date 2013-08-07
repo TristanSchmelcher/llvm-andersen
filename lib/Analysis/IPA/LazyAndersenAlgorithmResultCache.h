@@ -42,6 +42,11 @@ namespace lazyandersen {
           &runAlgorithm<AlgorithmIdTy, AlgorithmId>, Input);
     }
 
+    OutputTy *getAlgorithmResultNoCreate(AlgorithmIdTy AlgorithmId) const {
+      assert(AlgorithmId < NumAlgorithms);
+      return Results[AlgorithmId].get();
+    }
+
     void setAlgorithmResultSpecialCase(AlgorithmIdTy AlgorithmId,
         OutputTy *Output) {
       assert(!Results[AlgorithmId].get());

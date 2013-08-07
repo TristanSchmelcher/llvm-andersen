@@ -26,13 +26,13 @@ namespace {
     explicit PointsToRelationsAnalysisStep(ValueInfo *VI)
       : RelationsAnalysisStep<SOURCE>(VI) {}
 
-  protected:
-    virtual AnalysisResult *analyzeRelation(Relation *R);
-  };
+    virtual const char *getWorkName() const { return "PointsStep"; }
 
-  AnalysisResult *PointsToRelationsAnalysisStep::analyzeRelation(Relation *R) {
-    return R->analyzePointsToSet();
-  }
+  protected:
+    virtual AnalysisResult *analyzeRelation(Relation *R) {
+      return R->analyzePointsToSet();
+    }
+  };
 }
 
 namespace llvm {

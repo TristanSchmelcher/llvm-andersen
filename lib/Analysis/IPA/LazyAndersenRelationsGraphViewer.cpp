@@ -13,12 +13,14 @@
 
 #include "LazyAndersenRelationsGraphViewer.h"
 
+#include "LazyAndersenAnalysisResultPendingWorkEntry.h"
 #include "LazyAndersenData.h"
 #include "LazyAndersenGraphNode.h"
 #include "LazyAndersenValueInfo.h"
 #include "LazyAndersenValuePrinter.h"
 #include "llvm/IR/Module.h"
 #include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/GraphWriter.h"
 
@@ -43,7 +45,7 @@ namespace {
     explicit NodeForwardIterator(const std::list<GraphEdge> &Edges)
       : RemainingEdges(Edges) {}
 
-    const char *getLabel() const { return RemainingEdges.front().Label; }
+    const std::string &getLabel() const { return RemainingEdges.front().Label; }
 
     value_type operator*() const { return RemainingEdges.front().Dst; }
 
@@ -110,6 +112,10 @@ namespace llvm {
       case GraphNodeBase::VALUE_INFO:
         return prettyPrintValue(cast<ValueInfo>(Node)->getValue(),
                                 MaxPrintedSize);
+      case GraphNodeBase::ANALYSIS_RESULT:
+        return std::string();
+      case GraphNodeBase::ANALYSIS_RESULT_PENDING_WORK_ENTRY:
+        return cast<AnalysisResultPendingWorkEntry>(Node)->getWorkName();
       default:
         llvm_unreachable("Unexpected node type");
         break;

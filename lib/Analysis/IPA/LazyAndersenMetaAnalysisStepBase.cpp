@@ -21,6 +21,8 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 
+#include <sstream>
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -59,4 +61,19 @@ void MetaAnalysisStepBase::run() {
   }
   // No entries left to analyze.
   done();
+}
+
+std::list<GraphEdge> MetaAnalysisStepBase::getOutgoingEdges() const {
+  std::list<GraphEdge> Result;
+  std::ostringstream OSS;
+  ilist<AnalysisResultEntry>::const_iterator i(SI.get());
+  if (i != SI.getList()->end()) {
+    OSS << &*i;
+  } else {
+    OSS << "end";
+  }
+  OSS << " of SRC";
+  Result.push_back(GraphEdge(static_cast<AnalysisResult *>(SI.getList()),
+                             OSS.str()));
+  return Result;
 }

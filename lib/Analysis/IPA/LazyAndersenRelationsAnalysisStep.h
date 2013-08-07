@@ -26,6 +26,7 @@ namespace lazyandersen {
   class RelationsAnalysisStep : public RelationsAnalysisStepBase {
   public:
     explicit RelationsAnalysisStep(ValueInfo *VI);
+    virtual std::list<GraphEdge> getOutgoingEdges() const;
 
   protected:
     virtual AnalysisResult *analyzeRelation(Relation *R) = 0;

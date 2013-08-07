@@ -31,6 +31,8 @@ namespace {
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
       return VI->getAlgorithmResult<ARGUMENT_REVERSE_POINTS_TO_SET_STEP2>();
     }
+
+    virtual const char *getWorkName() const { return "ArgumentReverseStep"; }
   };
 
   class ArgumentReversePointsToAnalysisStep2
@@ -42,6 +44,8 @@ namespace {
     virtual AnalysisResult *analyzeRelation(Relation *R) {
       return R->analyzeArgumentsReversePointsToSet();
     }
+
+    virtual const char *getWorkName() const { return "ArgumentReverseStep2"; }
   };
 }
 

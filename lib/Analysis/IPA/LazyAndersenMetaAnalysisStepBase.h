@@ -30,6 +30,7 @@ namespace lazyandersen {
   public:
     explicit MetaAnalysisStepBase(AnalysisResult *AR);
     virtual ~MetaAnalysisStepBase();
+    virtual std::list<GraphEdge> getOutgoingEdges() const;
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) = 0;
     virtual AnalysisResult *analyzeRecursive(AnalysisResult *AR) = 0;

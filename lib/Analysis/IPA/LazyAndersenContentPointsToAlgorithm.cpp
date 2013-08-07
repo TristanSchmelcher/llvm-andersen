@@ -32,6 +32,8 @@ namespace {
       return VI->getAlgorithmResult<REVERSE_POINTS_TO_SET>()
           ->getAlgorithmResult<CONTENT_POINTS_TO_SET_STEP2>();
     }
+
+    virtual const char *getWorkName() const { return "ContentStep"; }
   };
 
   class ContentPointsToAnalysisStep2
@@ -43,6 +45,8 @@ namespace {
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
       return VI->getAlgorithmResult<CONTENT_POINTS_TO_SET_STEP3>();
     }
+
+    virtual const char *getWorkName() const { return "ContentStep2"; }
   };
 
   class ContentPointsToAnalysisStep3
@@ -54,6 +58,8 @@ namespace {
     virtual AnalysisResult *analyzeRelation(Relation *R) {
       return R->analyzeStoredValuesPointsToSet();
     }
+
+    virtual const char *getWorkName() const { return "ContentStep3"; }
   };
 }
 

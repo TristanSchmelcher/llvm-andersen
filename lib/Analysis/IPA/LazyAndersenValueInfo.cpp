@@ -16,6 +16,8 @@
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenRelation.h"
 
+#include <sstream>
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -37,9 +39,18 @@ std::list<GraphEdge> ValueInfo::getOutgoingEdges() const {
            i = getRelations<SOURCE>()->begin(),
            End = getRelations<SOURCE>()->end(); i != End; ++i) {
     const HalfRelation<SOURCE> *HR = HalfRelation<SOURCE>::from(&*i);
+    const Relation *R = Relation::get(HR);
+    std::ostringstream OSS;
+    OSS << R << " " << R->getRelationName();
     Result.push_back(GraphEdge(
         Relation::getOppositeEndpoint(HR)->getValueInfo(),
-        Relation::get(HR)->getRelationName()));
+        OSS.str()));
+  }
+  for (int i = 0; i < NUM_VALUE_INFO_ALGORITHMS; ++i) {
+    AnalysisResult *AR = ResultCache.getAlgorithmResultNoCreate(
+        static_cast<ValueInfoAlgorithmId>(i));
+    if (!AR) continue;
+    Result.push_back(GraphEdge(AR, ValueInfoAlgorithmNames[i]));
   }
   return Result;
 }

@@ -14,6 +14,8 @@
 #ifndef LAZYANDERSENGRAPHNODEBASE_H
 #define LAZYANDERSENGRAPHNODEBASE_H
 
+#include "llvm/ADT/StringRef.h"
+
 #include <list>
 
 namespace llvm {
@@ -21,18 +23,21 @@ namespace lazyandersen {
   class GraphNodeBase;
 
   struct GraphEdge {
-    GraphEdge() : Dst(0), Label(0) {}
-    GraphEdge(GraphNodeBase *Dst, const char *Label) : Dst(Dst), Label(Label) {}
+    GraphEdge() : Dst(0) {}
+    GraphEdge(const GraphNodeBase *Dst, StringRef Label)
+      : Dst(Dst), Label(Label.str()) {}
 
-    GraphNodeBase *Dst;
-    const char *Label;
+    const GraphNodeBase *Dst;
+    std::string Label;
   };
 
   class GraphNodeBase {
   public:
     enum Type {
       ROOT,
-      VALUE_INFO
+      VALUE_INFO,
+      ANALYSIS_RESULT,
+      ANALYSIS_RESULT_PENDING_WORK_ENTRY
     };
 
     virtual Type getType() const = 0;

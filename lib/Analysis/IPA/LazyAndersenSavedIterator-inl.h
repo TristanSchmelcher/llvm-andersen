@@ -30,7 +30,7 @@ namespace lazyandersen {
   }
 
   template<typename NodeTy>
-  ilist_iterator<NodeTy> SavedIterator<NodeTy>::get() {
+  ilist_iterator<NodeTy> SavedIterator<NodeTy>::get() const {
     if (IntrusiveListNode<SavedIterator<NodeTy> >::getList()) {
       return ilist_iterator<NodeTy>(static_cast<NodeTy *>(
           IntrusiveListNode<SavedIterator<NodeTy> >::getList()));

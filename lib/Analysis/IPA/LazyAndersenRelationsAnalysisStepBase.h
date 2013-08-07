@@ -22,6 +22,7 @@ namespace lazyandersen {
   class AnalysisResult;
 
   class RelationsAnalysisStepBase : public IterativeAnalysisStep {
+  protected:
     HalfRelationBaseList *List;
     HalfRelationBaseList::iterator i;
 
