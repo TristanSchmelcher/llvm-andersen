@@ -17,18 +17,12 @@
 using namespace llvm;
 using namespace lazyandersen;
 
-template<typename CachedTy, AnalysisResultEntry::EntryType EntryTypeVal>
+template<typename CachedTy, AnalysisResultEntryBase::EntryType EntryTypeVal>
 AnalysisResultCacheEntry<CachedTy, EntryTypeVal>::AnalysisResultCacheEntry(
     CachedTy *CachedValue)
   : CachedValue(CachedValue) {}
 
-template<typename CachedTy, AnalysisResultEntry::EntryType EntryTypeVal>
-AnalysisResultEntry::EntryType
-AnalysisResultCacheEntry<CachedTy, EntryTypeVal>::getEntryType() const {
-  return EntryTypeVal;
-}
-
 template class AnalysisResultCacheEntry<ValueInfo,
-    AnalysisResultEntry::VALUE_INFO_ENTRY>;
+    AnalysisResultEntryBase::VALUE_INFO_ENTRY>;
 template class AnalysisResultCacheEntry<AnalysisResult,
-    AnalysisResultEntry::RECURSIVE_ENTRY>;
+    AnalysisResultEntryBase::RECURSIVE_ENTRY>;

@@ -20,8 +20,3 @@ using namespace llvm::lazyandersen;
 AnalysisResultPendingWorkEntry::AnalysisResultPendingWorkEntry() {}
 
 AnalysisResultPendingWorkEntry::~AnalysisResultPendingWorkEntry() {}
-
-AnalysisResultEntry::EntryType
-AnalysisResultPendingWorkEntry::getEntryType() const {
-  return PENDING_WORK_ENTRY;
-}

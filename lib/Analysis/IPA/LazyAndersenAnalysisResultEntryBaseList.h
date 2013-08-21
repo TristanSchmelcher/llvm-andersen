@@ -1,4 +1,4 @@
-//===- LazyAndersenAnalysisResultEntryList.h - analysis classes -----------===//
+//===- LazyAndersenAnalysisResultEntryBaseList.h - analysis classes -------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,15 +11,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENANALYSISRESULTENTRYLIST_H
-#define LAZYANDERSENANALYSISRESULTENTRYLIST_H
+#ifndef LAZYANDERSENANALYSISRESULTENTRYBASELIST_H
+#define LAZYANDERSENANALYSISRESULTENTRYBASELIST_H
 
-#include "LazyAndersenAnalysisResultEntry.h"
+#include "LazyAndersenAnalysisResultEntryBase.h"
 
 namespace llvm {
 namespace lazyandersen {
   // Currently we do not need any extra information in these lists.
-  typedef ilist<AnalysisResultEntry> AnalysisResultEntryList;
+  typedef ilist<AnalysisResultEntryBase> AnalysisResultEntryBaseList;
 }
 }
 

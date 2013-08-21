@@ -20,20 +20,18 @@
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResultPendingWorkEntry : public AnalysisResultEntry,
+  class AnalysisResultPendingWorkEntry :
+      public AnalysisResultEntry<AnalysisResultEntryBase::PENDING_WORK_ENTRY>,
       public GraphNode<GraphNodeBase::ANALYSIS_RESULT_PENDING_WORK_ENTRY> {
   public:
+    using AnalysisResultEntry<AnalysisResultEntryBase::PENDING_WORK_ENTRY>
+        ::classof;
     using GraphNode<GraphNodeBase::ANALYSIS_RESULT_PENDING_WORK_ENTRY>::classof;
 
     AnalysisResultPendingWorkEntry();
     virtual ~AnalysisResultPendingWorkEntry();
-    virtual EntryType getEntryType() const;
     virtual void run() = 0;
     virtual const char *getWorkName() const = 0;
-
-    static bool classof(const AnalysisResultEntry *Base) {
-      return Base->getEntryType() == PENDING_WORK_ENTRY;
-    }
   };
 }
 }

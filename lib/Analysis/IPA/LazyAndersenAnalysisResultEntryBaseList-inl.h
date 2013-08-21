@@ -1,4 +1,4 @@
-//===- LazyAndersenAnalysisResultEntryList-inl.h - analysis classes -------===//
+//===- LazyAndersenAnalysisResultEntryBaseList-inl.h - analysis classes ---===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,14 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the inline methods for AnalysisResultEntryList.
+// This file defines the inline methods for AnalysisResultEntryBaseList.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENANALYSISRESULTENTRYLIST_INL_H
-#define LAZYANDERSENANALYSISRESULTENTRYLIST_INL_H
+#ifndef LAZYANDERSENANALYSISRESULTENTRYBASELIST_INL_H
+#define LAZYANDERSENANALYSISRESULTENTRYBASELIST_INL_H
 
-#include "LazyAndersenAnalysisResultEntryList.h"
+#include "LazyAndersenAnalysisResultEntryBaseList.h"
 
 #include "LazyAndersenIntrusiveListWithSavedIteratorSupportTraits-inl.h"
 

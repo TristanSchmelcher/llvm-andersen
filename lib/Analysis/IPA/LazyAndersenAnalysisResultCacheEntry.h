@@ -19,23 +19,19 @@
 
 namespace llvm {
 namespace lazyandersen {
-  template<typename CachedTy, AnalysisResultEntry::EntryType EntryTypeVal>
-  class AnalysisResultCacheEntry : public AnalysisResultEntry {
+  template<typename CachedTy, AnalysisResultEntryBase::EntryType EntryTypeVal>
+  class AnalysisResultCacheEntry : public AnalysisResultEntry<EntryTypeVal> {
     // We assume here that--once created--each value will persist for the
     // lifetime of the LazyAndersenData. If not, we'll need weak pointers.
     CachedTy *CachedValue;
 
   public:
-    explicit AnalysisResultCacheEntry(CachedTy *CachedValue);
+    using AnalysisResultEntry<EntryTypeVal>::classof;
 
-    virtual EntryType getEntryType() const;
+    explicit AnalysisResultCacheEntry(CachedTy *CachedValue);
 
     CachedTy *getCachedValue() const {
       return CachedValue;
-    }
-
-    static bool classof(const AnalysisResultEntry *Base) {
-      return Base->getEntryType() == EntryTypeVal;
     }
   };
 
@@ -43,9 +39,9 @@ namespace lazyandersen {
   class ValueInfo;
 
   typedef AnalysisResultCacheEntry<ValueInfo,
-      AnalysisResultEntry::VALUE_INFO_ENTRY> AnalysisResultValueInfoEntry;
+      AnalysisResultEntryBase::VALUE_INFO_ENTRY> AnalysisResultValueInfoEntry;
   typedef AnalysisResultCacheEntry<AnalysisResult,
-      AnalysisResultEntry::RECURSIVE_ENTRY> AnalysisResultRecursiveEntry;
+      AnalysisResultEntryBase::RECURSIVE_ENTRY> AnalysisResultRecursiveEntry;
 }
 }
 

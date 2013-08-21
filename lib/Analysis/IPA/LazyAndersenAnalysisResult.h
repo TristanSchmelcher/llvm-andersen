@@ -16,7 +16,7 @@
 
 #include "LazyAndersenAlgorithmResultCache.h"
 #include "LazyAndersenAnalysisResultAlgorithmId.h"
-#include "LazyAndersenAnalysisResultEntryList.h"
+#include "LazyAndersenAnalysisResultEntryBaseList.h"
 #include "LazyAndersenGraphNode.h"
 #include "llvm/ADT/OwningPtr.h"
 
@@ -24,7 +24,7 @@
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult : public AnalysisResultEntryList,
+  class AnalysisResult : public AnalysisResultEntryBaseList,
       public GraphNode<GraphNodeBase::ANALYSIS_RESULT> {
     AlgorithmResultCache<AnalysisResultAlgorithmId> ResultCache;
     bool Enumerating;

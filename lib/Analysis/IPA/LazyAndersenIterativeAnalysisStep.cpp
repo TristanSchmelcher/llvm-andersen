@@ -13,16 +13,16 @@
 
 #include "LazyAndersenIterativeAnalysisStep.h"
 
-#include "LazyAndersenAnalysisResultEntryList.h"
+#include "LazyAndersenAnalysisResultEntryBaseList.h"
 
 #include <cassert>
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-void IterativeAnalysisStep::emit(AnalysisResultEntry *Entry) {
+void IterativeAnalysisStep::emit(AnalysisResultEntryBase *Entry) {
   assert(getList());
-  getList()->insert(AnalysisResultEntryList::iterator(this), Entry);
+  getList()->insert(AnalysisResultEntryBaseList::iterator(this), Entry);
   // Move any saved iterators onto the emitted entry.
   Entry->getSavedIterators()->splice(Entry->getSavedIterators()->end(),
                                      *getSavedIterators());

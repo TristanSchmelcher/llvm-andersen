@@ -7,48 +7,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares a type for entries in analysis results.
+// This file defines a template type for entries in analysis results.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef LAZYANDERSENANALYSISRESULTENTRY_H
 #define LAZYANDERSENANALYSISRESULTENTRY_H
 
-#include "LazyAndersenGraphNode.h"
-#include "LazyAndersenIntrusiveListWithSavedIteratorSupportNode.h"
-#include "LazyAndersenIntrusiveListWithSavedIteratorSupportTraits.h"
+#include "LazyAndersenAnalysisResultEntryBase.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResultEntry :
-      public IntrusiveListWithSavedIteratorSupportNode<AnalysisResultEntry> {
-    friend struct ilist_nextprev_traits<AnalysisResultEntry>;
-    friend struct ilist_node_traits<AnalysisResultEntry>;
-    friend struct IntrusiveListTraits<AnalysisResultEntry>;
-    friend struct IntrusiveListWithSavedIteratorSupportTraits<
-        AnalysisResultEntry>;
-
+  template<AnalysisResultEntryBase::EntryType Ty>
+  class AnalysisResultEntry : public AnalysisResultEntryBase {
   public:
-    enum EntryType {
-      VALUE_INFO_ENTRY,
-      RECURSIVE_ENTRY,
-      PENDING_WORK_ENTRY
-    };
+    virtual EntryType getEntryType() const {
+      return Ty;
+    }
 
-    AnalysisResultEntry();
-    virtual ~AnalysisResultEntry();
-    virtual EntryType getEntryType() const = 0;
-    virtual const GraphNodeBase *getGraphNode() const;
+  protected:
+    static bool classof(const AnalysisResultEntryBase *Base) {
+      return Base->getEntryType() == Ty;
+    }
   };
 }
-}
-
-namespace llvm {
-  template<>
-  struct ilist_traits<lazyandersen::AnalysisResultEntry> :
-      public lazyandersen::IntrusiveListWithSavedIteratorSupportTraits<
-          lazyandersen::AnalysisResultEntry> {
-  };
 }
 
 #endif

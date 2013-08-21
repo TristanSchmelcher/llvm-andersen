@@ -15,7 +15,7 @@
 #ifndef LAZYANDERSENMETAANALYSISSTEPBASE_H
 #define LAZYANDERSENMETAANALYSISSTEPBASE_H
 
-#include "LazyAndersenAnalysisResultEntry.h"
+#include "LazyAndersenAnalysisResultEntryBase.h"
 #include "LazyAndersenIterativeAnalysisStep.h"
 #include "LazyAndersenSavedIterator.h"
 
@@ -25,7 +25,7 @@ namespace lazyandersen {
   class ValueInfo;
 
   class MetaAnalysisStepBase : public IterativeAnalysisStep {
-    SavedIterator<AnalysisResultEntry> SI;
+    SavedIterator<AnalysisResultEntryBase> SI;
 
   public:
     explicit MetaAnalysisStepBase(AnalysisResult *AR);

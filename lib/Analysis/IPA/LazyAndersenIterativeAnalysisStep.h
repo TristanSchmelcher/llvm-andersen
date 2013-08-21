@@ -21,7 +21,7 @@ namespace lazyandersen {
   class IterativeAnalysisStep : public AnalysisResultPendingWorkEntry {
   protected:
     // Push the next iteration onto the entry list.
-    void emit(AnalysisResultEntry *Entry);
+    void emit(AnalysisResultEntryBase *Entry);
     // Pop this completed entry off the stack (thus deleting it).
     void done();
   };

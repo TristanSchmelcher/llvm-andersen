@@ -1,4 +1,4 @@
-//===- LazyAndersenAnalysisResultEntry.cpp - analysis classes -------------===//
+//===- LazyAndersenAnalysisResultEntryBase.cpp - analysis classes ---------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,11 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a type for entries in analysis results.
+// This file defines a base type for entries in analysis results.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenAnalysisResultEntry.h"
+#include "LazyAndersenAnalysisResultEntryBase.h"
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenAnalysisResultCacheEntry.h"
@@ -24,22 +24,22 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-AnalysisResultEntry::AnalysisResultEntry() {}
+AnalysisResultEntryBase::AnalysisResultEntryBase() {}
 
-AnalysisResultEntry::~AnalysisResultEntry() {
+AnalysisResultEntryBase::~AnalysisResultEntryBase() {
   assert(!getList());
 }
 
-const GraphNodeBase *AnalysisResultEntry::getGraphNode() const {
+const GraphNodeBase *AnalysisResultEntryBase::getGraphNode() const {
   switch (getEntryType()) {
-  case AnalysisResultEntry::VALUE_INFO_ENTRY:
+  case AnalysisResultEntryBase::VALUE_INFO_ENTRY:
     return cast<AnalysisResultValueInfoEntry>(this)->getCachedValue();
-  case AnalysisResultEntry::RECURSIVE_ENTRY:
+  case AnalysisResultEntryBase::RECURSIVE_ENTRY:
     return cast<AnalysisResultRecursiveEntry>(this)->getCachedValue();
-  case AnalysisResultEntry::PENDING_WORK_ENTRY:
+  case AnalysisResultEntryBase::PENDING_WORK_ENTRY:
     return cast<AnalysisResultPendingWorkEntry>(this);
   default:
-    llvm_unreachable("Unrecognized AnalysisResultEntry type");
+    llvm_unreachable("Unrecognized AnalysisResultEntryBase type");
     return 0;
   }
 }

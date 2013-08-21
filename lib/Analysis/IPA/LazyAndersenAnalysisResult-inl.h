@@ -16,6 +16,6 @@
 
 #include "LazyAndersenAnalysisResult.h"
 
-#include "LazyAndersenAnalysisResultEntryList-inl.h"
+#include "LazyAndersenAnalysisResultEntryBaseList-inl.h"
 
 #endif

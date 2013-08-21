@@ -13,6 +13,8 @@
 
 #include "LazyAndersenAnalysisResult-inl.h"
 
+#include "LazyAndersenAnalysisResultEntryBase.h"
+
 #include <sstream>
 
 using namespace llvm;
@@ -24,9 +26,9 @@ AnalysisResult::~AnalysisResult() {}
 
 std::list<GraphEdge> AnalysisResult::getOutgoingEdges() const {
   std::list<GraphEdge> Result;
-  for (AnalysisResultEntryList::const_iterator i = begin(), End = end();
+  for (AnalysisResultEntryBaseList::const_iterator i = begin(), End = end();
        i != End; ++i) {
-    const AnalysisResultEntry *Ent = &*i;
+    const AnalysisResultEntryBase *Ent = &*i;
     std::ostringstream OSS;
     OSS << Ent;
     Result.push_back(GraphEdge(Ent->getGraphNode(), OSS.str()));
