@@ -18,13 +18,13 @@
 #include "llvm/InstVisitor.h"
 
 namespace llvm {
-  class LazyAndersenData;
   class ModulePass;
 }
 
 namespace llvm {
 namespace lazyandersen {
   class CallOrInvokeInstWrapperInterface;
+  class LazyAndersenData;
   class ValueInfo;
 
   class InstructionAnalyzer : public InstVisitor<InstructionAnalyzer> {

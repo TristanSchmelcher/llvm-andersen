@@ -23,7 +23,8 @@ GraphEdgeDeque LazyAndersenData::getOutgoingEdges() const {
   for (ValueInfo::Map::const_iterator
            i = ValueInfos.begin(), End = ValueInfos.end(); i != End; ++i) {
     if (!i->second.getPtr() || i->first != i->second->getValue()) continue;
-    Result.push_back(GraphEdge(i->second.getPtr(), "hidden edge"));
+    // No edge label needed because this edge will not be printed.
+    Result.push_back(GraphEdge(i->second.getPtr(), std::string()));
   }
   return Result;
 }

@@ -146,6 +146,8 @@ void initializeJumpThreadingPass(PassRegistry&);
 void initializeLCSSAPass(PassRegistry&);
 void initializeLICMPass(PassRegistry&);
 void initializeLazyAndersenAliasAnalysisPass(PassRegistry&);
+void initializeLazyAndersenGraphPrinterPass(PassRegistry&);
+void initializeLazyAndersenGraphViewerPass(PassRegistry&);
 void initializeLazyAndersenPass(PassRegistry&);
 void initializeLazyValueInfoPass(PassRegistry&);
 void initializeLibCallAliasAnalysisPass(PassRegistry&);

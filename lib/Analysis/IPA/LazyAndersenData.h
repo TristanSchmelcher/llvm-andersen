@@ -18,17 +18,20 @@
 #include "LazyAndersenValueInfo.h"
 
 namespace llvm {
-  class LazyAndersenData :
-    public lazyandersen::GraphNode {
-  public:
-    lazyandersen::ValueInfo::Map ValueInfos;
+namespace lazyandersen {
 
-    virtual lazyandersen::GraphEdgeDeque getOutgoingEdges() const;
-    virtual std::string getNodeLabel() const;
-    virtual bool isNodeHidden() const;
+class LazyAndersenData : public GraphNode {
+public:
+  ValueInfo::Map ValueInfos;
 
-    virtual ~LazyAndersenData() {}
-  };
+  virtual GraphEdgeDeque getOutgoingEdges() const;
+  virtual std::string getNodeLabel() const;
+  virtual bool isNodeHidden() const;
+
+  virtual ~LazyAndersenData() {}
+};
+
+}
 }
 
 #endif

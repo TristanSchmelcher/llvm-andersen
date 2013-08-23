@@ -20,7 +20,6 @@
 #include "LazyAndersenData.h"
 #include "LazyAndersenEnumerator.h"
 #include "LazyAndersenInstructionAnalyzer.h"
-#include "LazyAndersenRelationsGraphViewer.h"
 #include "LazyAndersenValuePrinter.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/CommandLine.h"
@@ -31,8 +30,6 @@ using namespace llvm::lazyandersen;
 
 cl::opt<bool> NonLazy("andersen-non-lazy",
                       cl::desc("Perform Andersen analysis non-lazily"));
-cl::opt<bool> GraphRelations("andersen-graph-relations",
-                             cl::desc("Display the Andersen relations graph"));
 
 char LazyAndersen::ID = 0;
 // TODO: What do these two bools mean?
@@ -67,9 +64,6 @@ bool LazyAndersen::runOnModule(Module &M) {
          i != Data->ValueInfos.end(); ++i) {
       getPointsToSet(i->first);
     }
-  }
-  if (GraphRelations) {
-    lazyandersen::viewRelationsGraph(Data, &M);
   }
   return false;
 }
