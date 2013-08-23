@@ -31,7 +31,7 @@ namespace lazyandersen {
   class ValueInfo : private RefCountedBase<ValueInfo>,
       private HalfRelationList<SOURCE>,
       private HalfRelationList<DESTINATION>,
-      public GraphNode<GraphNodeBase::VALUE_INFO> {
+      public GraphNode {
     friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
     friend class RefCountedBase<ValueInfo>;
     // The Value that maps to this object. (If this analysis applies to
@@ -49,8 +49,6 @@ namespace lazyandersen {
     Map *ContainingMap;
 
   public:
-    using GraphNode<GraphNodeBase::VALUE_INFO>::classof;
-
     static ValueInfo *const Nil;
 
     ValueInfo(const Value *V, Map *Map);
@@ -88,7 +86,9 @@ namespace lazyandersen {
       return ResultCache.getAlgorithmResult<Id>(this);
     }
 
-    virtual std::list<GraphEdge> getOutgoingEdges() const;
+    virtual GraphEdgeDeque getOutgoingEdges() const;
+    virtual std::string getNodeLabel() const;
+    virtual bool isNodeHidden() const;
 
     void setAlgorithmResultSpecialCase(ValueInfoAlgorithmId Id,
         AnalysisResult *AR);

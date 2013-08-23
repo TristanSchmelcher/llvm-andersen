@@ -30,7 +30,7 @@ AnalysisResultEntryBase::~AnalysisResultEntryBase() {
   assert(!getList());
 }
 
-const GraphNodeBase *AnalysisResultEntryBase::getGraphNode() const {
+const GraphNode *AnalysisResultEntryBase::getGraphNode() const {
   switch (getEntryType()) {
   case AnalysisResultEntryBase::VALUE_INFO_ENTRY:
     return cast<AnalysisResultValueInfoEntry>(this)->getCachedValue();

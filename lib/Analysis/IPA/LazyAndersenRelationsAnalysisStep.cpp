@@ -32,8 +32,8 @@ AnalysisResult *RelationsAnalysisStep<Endpoint>::analyzeHalfRelation(
 }
 
 template<EdgeEndpointType Endpoint>
-std::list<GraphEdge> RelationsAnalysisStep<Endpoint>::getOutgoingEdges() const {
-  std::list<GraphEdge> Result;
+GraphEdgeDeque RelationsAnalysisStep<Endpoint>::getOutgoingEdges() const {
+  GraphEdgeDeque Result;
   std::ostringstream OSS;
   if (i != List->end()) {
     OSS << Relation::get(HalfRelation<Endpoint>::from(&*i));

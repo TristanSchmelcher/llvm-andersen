@@ -25,13 +25,11 @@
 namespace llvm {
 namespace lazyandersen {
   class AnalysisResult : public AnalysisResultEntryBaseList,
-      public GraphNode<GraphNodeBase::ANALYSIS_RESULT> {
+      public GraphNode {
     AlgorithmResultCache<AnalysisResultAlgorithmId> ResultCache;
     bool Enumerating;
 
   public:
-    using GraphNode<GraphNodeBase::ANALYSIS_RESULT>::classof;
-
     class ScopedSetEnumeratingFlag {
       AnalysisResult *AR;
 
@@ -52,7 +50,9 @@ namespace lazyandersen {
     AnalysisResult();
     virtual ~AnalysisResult();
 
-    virtual std::list<GraphEdge> getOutgoingEdges() const;
+    virtual GraphEdgeDeque getOutgoingEdges() const;
+    virtual std::string getNodeLabel() const;
+    virtual bool isNodeHidden() const;
 
     bool isEnumerating() const { return Enumerating; }
 

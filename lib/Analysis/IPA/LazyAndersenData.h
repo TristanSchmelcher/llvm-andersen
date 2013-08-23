@@ -19,13 +19,13 @@
 
 namespace llvm {
   class LazyAndersenData :
-    public lazyandersen::GraphNode<lazyandersen::GraphNodeBase::ROOT> {
+    public lazyandersen::GraphNode {
   public:
-    using lazyandersen::GraphNode<GraphNodeBase::ROOT>::classof;
-
     lazyandersen::ValueInfo::Map ValueInfos;
 
-    virtual std::list<lazyandersen::GraphEdge> getOutgoingEdges() const;
+    virtual lazyandersen::GraphEdgeDeque getOutgoingEdges() const;
+    virtual std::string getNodeLabel() const;
+    virtual bool isNodeHidden() const;
 
     virtual ~LazyAndersenData() {}
   };

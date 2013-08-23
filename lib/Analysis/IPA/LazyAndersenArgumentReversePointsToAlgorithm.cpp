@@ -32,7 +32,7 @@ namespace {
       return VI->getAlgorithmResult<ARGUMENT_REVERSE_POINTS_TO_SET_STEP2>();
     }
 
-    virtual const char *getWorkName() const { return "ArgumentReverseStep"; }
+    virtual std::string getNodeLabel() const { return "ArgumentReverseStep"; }
   };
 
   class ArgumentReversePointsToAnalysisStep2
@@ -45,7 +45,7 @@ namespace {
       return R->analyzeArgumentsReversePointsToSet();
     }
 
-    virtual const char *getWorkName() const { return "ArgumentReverseStep2"; }
+    virtual std::string getNodeLabel() const { return "ArgumentReverseStep2"; }
   };
 }
 

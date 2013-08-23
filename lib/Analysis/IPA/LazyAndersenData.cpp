@@ -13,15 +13,26 @@
 
 #include "LazyAndersenData.h"
 
+#include "llvm/Support/ErrorHandling.h"
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-std::list<GraphEdge> LazyAndersenData::getOutgoingEdges() const {
-  std::list<GraphEdge> Result;
+GraphEdgeDeque LazyAndersenData::getOutgoingEdges() const {
+  GraphEdgeDeque Result;
   for (ValueInfo::Map::const_iterator
            i = ValueInfos.begin(), End = ValueInfos.end(); i != End; ++i) {
     if (!i->second.getPtr() || i->first != i->second->getValue()) continue;
     Result.push_back(GraphEdge(i->second.getPtr(), "hidden edge"));
   }
   return Result;
+}
+
+std::string LazyAndersenData::getNodeLabel() const {
+  llvm_unreachable("LazyAndersenData should not be emitted in the graph");
+  return std::string();
+}
+
+bool LazyAndersenData::isNodeHidden() const {
+  return true;
 }

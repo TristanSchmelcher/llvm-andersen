@@ -64,8 +64,8 @@ void MetaAnalysisStepBase::run() {
   done();
 }
 
-std::list<GraphEdge> MetaAnalysisStepBase::getOutgoingEdges() const {
-  std::list<GraphEdge> Result;
+GraphEdgeDeque MetaAnalysisStepBase::getOutgoingEdges() const {
+  GraphEdgeDeque Result;
   std::ostringstream OSS;
   AnalysisResultEntryBaseList::const_iterator i(SI.get());
   if (i != SI.getList()->end()) {

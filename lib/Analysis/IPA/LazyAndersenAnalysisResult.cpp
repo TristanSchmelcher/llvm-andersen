@@ -24,8 +24,8 @@ AnalysisResult::AnalysisResult() : Enumerating(false) {}
 
 AnalysisResult::~AnalysisResult() {}
 
-std::list<GraphEdge> AnalysisResult::getOutgoingEdges() const {
-  std::list<GraphEdge> Result;
+GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
+  GraphEdgeDeque Result;
   for (AnalysisResultEntryBaseList::const_iterator i = begin(), End = end();
        i != End; ++i) {
     const AnalysisResultEntryBase *Ent = &*i;
@@ -40,4 +40,12 @@ std::list<GraphEdge> AnalysisResult::getOutgoingEdges() const {
     Result.push_back(GraphEdge(AR, AnalysisResultAlgorithmNames[i]));
   }
   return Result;
+}
+
+std::string AnalysisResult::getNodeLabel() const {
+  return std::string();
+}
+
+bool AnalysisResult::isNodeHidden() const {
+  return false;
 }

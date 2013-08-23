@@ -15,6 +15,7 @@
 #define LAZYANDERSENANALYSISRESULTENTRYBASELIST_H
 
 #include "LazyAndersenAnalysisResultEntryBase.h"
+#include "llvm/ADT/ilist.h"
 
 namespace llvm {
 namespace lazyandersen {

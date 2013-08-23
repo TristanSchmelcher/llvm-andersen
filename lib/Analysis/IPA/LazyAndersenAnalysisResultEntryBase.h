@@ -39,7 +39,7 @@ namespace lazyandersen {
     AnalysisResultEntryBase();
     virtual ~AnalysisResultEntryBase();
     virtual EntryType getEntryType() const = 0;
-    virtual const GraphNodeBase *getGraphNode() const;
+    virtual const GraphNode *getGraphNode() const;
   };
 }
 }

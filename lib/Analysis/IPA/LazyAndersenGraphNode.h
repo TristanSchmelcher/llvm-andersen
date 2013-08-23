@@ -7,28 +7,40 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a template type for polymorphic graph nodes.
+// This file defines a type for polymorphic graph nodes.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef LAZYANDERSENGRAPHNODE_H
 #define LAZYANDERSENGRAPHNODE_H
 
-#include "LazyAndersenGraphNodeBase.h"
+#include "llvm/ADT/StringRef.h"
+
+#include <deque>
 
 namespace llvm {
 namespace lazyandersen {
-  template<GraphNodeBase::Type Ty>
-  class GraphNode : public GraphNodeBase {
+  class GraphNode;
+
+  struct GraphEdge {
+    GraphEdge() : Dst(0) {}
+    GraphEdge(const GraphNode *Dst, StringRef Label)
+      : Dst(Dst), Label(Label.str()) {}
+
+    const GraphNode *Dst;
+    std::string Label;
+  };
+
+  typedef std::deque<GraphEdge> GraphEdgeDeque;
+
+  class GraphNode {
   public:
-    virtual GraphNodeBase::Type getType() const {
-      return Ty;
-    }
+    virtual GraphEdgeDeque getOutgoingEdges() const = 0;
+    virtual std::string getNodeLabel() const = 0;
+    virtual bool isNodeHidden() const = 0;
 
   protected:
-    static bool classof(const GraphNodeBase *Base) {
-      return Base->getType() == Ty;
-    }
+    ~GraphNode() {}
   };
 }
 }

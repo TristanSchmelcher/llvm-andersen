@@ -33,7 +33,7 @@ namespace {
           ->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET_STEP2>();
     }
 
-    virtual const char *getWorkName() const { return "ContentReverseStep"; }
+    virtual std::string getNodeLabel() const { return "ContentReverseStep"; }
   };
 
   class ContentReversePointsToAnalysisStep2
@@ -46,7 +46,7 @@ namespace {
       return VI->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET_STEP3>();
     }
 
-    virtual const char *getWorkName() const { return "ContentReverseStep2"; }
+    virtual std::string getNodeLabel() const { return "ContentReverseStep2"; }
   };
 
   class ContentReversePointsToAnalysisStep3
@@ -59,7 +59,7 @@ namespace {
       return R->analyzeLoadedValuesReversePointsToSet();
     }
 
-    virtual const char *getWorkName() const { return "ContentReverseStep3"; }
+    virtual std::string getNodeLabel() const { return "ContentReverseStep3"; }
   };
 }
 

@@ -32,7 +32,7 @@ namespace {
       return VI->getAlgorithmResult<ARGUMENT_POINTS_TO_SET_STEP2>();
     }
 
-    virtual const char *getWorkName() const { return "ArgumentStep"; }
+    virtual std::string getNodeLabel() const { return "ArgumentStep"; }
   };
 
   class ArgumentPointsToAnalysisStep2
@@ -45,7 +45,7 @@ namespace {
       return R->analyzeArgumentsPointsToSet();
     }
 
-    virtual const char *getWorkName() const { return "ArgumentStep2"; }
+    virtual std::string getNodeLabel() const { return "ArgumentStep2"; }
   };
 }
 

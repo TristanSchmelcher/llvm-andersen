@@ -20,3 +20,7 @@ using namespace llvm::lazyandersen;
 AnalysisResultPendingWorkEntry::AnalysisResultPendingWorkEntry() {}
 
 AnalysisResultPendingWorkEntry::~AnalysisResultPendingWorkEntry() {}
+
+bool AnalysisResultPendingWorkEntry::isNodeHidden() const {
+  return false;
+}

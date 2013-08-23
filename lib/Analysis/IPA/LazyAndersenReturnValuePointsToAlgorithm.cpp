@@ -32,7 +32,7 @@ namespace {
       return VI->getAlgorithmResult<RETURN_VALUE_POINTS_TO_SET_STEP2>();
     }
 
-    virtual const char *getWorkName() const { return "ReturnValueStep"; }
+    virtual std::string getNodeLabel() const { return "ReturnValueStep"; }
   };
 
   class ReturnValuePointsToAnalysisStep2
@@ -45,7 +45,7 @@ namespace {
       return R->analyzeReturnValuePointsToSet();
     }
 
-    virtual const char *getWorkName() const { return "ReturnValueStep2"; }
+    virtual std::string getNodeLabel() const { return "ReturnValueStep2"; }
   };
 }
 

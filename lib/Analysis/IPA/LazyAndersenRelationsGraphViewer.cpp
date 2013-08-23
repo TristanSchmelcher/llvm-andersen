@@ -17,7 +17,6 @@
 #include "LazyAndersenData.h"
 #include "LazyAndersenGraphNode.h"
 #include "LazyAndersenValueInfo.h"
-#include "LazyAndersenValuePrinter.h"
 #include "llvm/IR/Module.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/Support/Casting.h"
@@ -31,18 +30,18 @@ using namespace llvm::lazyandersen;
 
 namespace {
   class NodeForwardIterator {
-    std::list<GraphEdge> RemainingEdges;
+    GraphEdgeDeque RemainingEdges;
 
   public:
     typedef ssize_t difference_type;
-    typedef const GraphNodeBase *value_type;
+    typedef const GraphNode *value_type;
     typedef value_type *pointer;
     typedef value_type &reference;
     typedef std::forward_iterator_tag iterator_category;
 
     NodeForwardIterator() {}
 
-    explicit NodeForwardIterator(const std::list<GraphEdge> &Edges)
+    explicit NodeForwardIterator(const GraphEdgeDeque &Edges)
       : RemainingEdges(Edges) {}
 
     const std::string &getLabel() const { return RemainingEdges.front().Label; }
@@ -75,7 +74,7 @@ namespace {
 namespace llvm {
   template<>
   struct GraphTraits<LazyAndersenData> {
-    typedef const GraphNodeBase NodeType;
+    typedef const GraphNode NodeType;
     typedef df_iterator<LazyAndersenData> nodes_iterator;
     typedef NodeForwardIterator ChildIteratorType;
 
@@ -105,30 +104,18 @@ namespace llvm {
   public:
     DOTGraphTraits(bool simple = false) : DefaultDOTGraphTraits(simple) {}
 
-    std::string getNodeLabel(const GraphNodeBase *Node,
+    std::string getNodeLabel(const GraphNode *Node,
                              const LazyAndersenData &Data) {
-      static const size_t MaxPrintedSize = 16;
-      switch (Node->getType()) {
-      case GraphNodeBase::VALUE_INFO:
-        return prettyPrintValue(cast<ValueInfo>(Node)->getValue(),
-                                MaxPrintedSize);
-      case GraphNodeBase::ANALYSIS_RESULT:
-        return std::string();
-      case GraphNodeBase::ANALYSIS_RESULT_PENDING_WORK_ENTRY:
-        return cast<AnalysisResultPendingWorkEntry>(Node)->getWorkName();
-      default:
-        llvm_unreachable("Unexpected node type");
-        break;
-      }
+      return Node->getNodeLabel();
     }
 
-    static std::string getEdgeSourceLabel(const GraphNodeBase *Node,
+    static std::string getEdgeSourceLabel(const GraphNode *Node,
                                           const NodeForwardIterator &i) {
       return i.getLabel();
     }
 
-    static bool isNodeHidden(const GraphNodeBase *Node) {
-      return Node->getType() == GraphNodeBase::ROOT;
+    static bool isNodeHidden(const GraphNode *Node) {
+      return Node->isNodeHidden();
     }
   };
 }

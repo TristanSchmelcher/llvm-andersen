@@ -26,7 +26,7 @@ namespace {
     explicit PointsToRelationsAnalysisStep(ValueInfo *VI)
       : RelationsAnalysisStep<SOURCE>(VI) {}
 
-    virtual const char *getWorkName() const { return "PointsStep"; }
+    virtual std::string getNodeLabel() const { return "PointsStep"; }
 
   protected:
     virtual AnalysisResult *analyzeRelation(Relation *R) {

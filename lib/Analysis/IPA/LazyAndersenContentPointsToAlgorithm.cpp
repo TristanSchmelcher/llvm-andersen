@@ -33,7 +33,7 @@ namespace {
           ->getAlgorithmResult<CONTENT_POINTS_TO_SET_STEP2>();
     }
 
-    virtual const char *getWorkName() const { return "ContentStep"; }
+    virtual std::string getNodeLabel() const { return "ContentStep"; }
   };
 
   class ContentPointsToAnalysisStep2
@@ -46,7 +46,7 @@ namespace {
       return VI->getAlgorithmResult<CONTENT_POINTS_TO_SET_STEP3>();
     }
 
-    virtual const char *getWorkName() const { return "ContentStep2"; }
+    virtual std::string getNodeLabel() const { return "ContentStep2"; }
   };
 
   class ContentPointsToAnalysisStep3
@@ -59,7 +59,7 @@ namespace {
       return R->analyzeStoredValuesPointsToSet();
     }
 
-    virtual const char *getWorkName() const { return "ContentStep3"; }
+    virtual std::string getNodeLabel() const { return "ContentStep3"; }
   };
 }
 

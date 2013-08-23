@@ -15,6 +15,7 @@
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenRelation.h"
+#include "LazyAndersenValuePrinter.h"
 
 #include <sstream>
 
@@ -33,8 +34,8 @@ void ValueInfo::setAlgorithmResultSpecialCase(ValueInfoAlgorithmId Id,
   ResultCache.setAlgorithmResultSpecialCase(Id, AR);
 }
 
-std::list<GraphEdge> ValueInfo::getOutgoingEdges() const {
-  std::list<GraphEdge> Result;
+GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
+  GraphEdgeDeque Result;
   for (HalfRelationList<SOURCE>::const_iterator
            i = getRelations<SOURCE>()->begin(),
            End = getRelations<SOURCE>()->end(); i != End; ++i) {
@@ -53,4 +54,13 @@ std::list<GraphEdge> ValueInfo::getOutgoingEdges() const {
     Result.push_back(GraphEdge(AR, ValueInfoAlgorithmNames[i]));
   }
   return Result;
+}
+
+std::string ValueInfo::getNodeLabel() const {
+  static const size_t MaxPrintedSize = 16;
+  return prettyPrintValue(getValue(), MaxPrintedSize);
+}
+
+bool ValueInfo::isNodeHidden() const {
+  return false;
 }
