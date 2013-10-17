@@ -7,29 +7,37 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a template type for meta analysis--i.e., analysis of other
-// analysis results.
+// This file declares a type for meta analysis--i.e., analysis of other analysis
+// results.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef LAZYANDERSENMETAANALYSISSTEP_H
 #define LAZYANDERSENMETAANALYSISSTEP_H
 
-#include "LazyAndersenMetaAnalysisStepBase.h"
-
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenAnalysisResultAlgorithmId.h"
+#include "LazyAndersenAnalysisResultEntryBase.h"
+#include "LazyAndersenIterativeAnalysisStep.h"
 
 namespace llvm {
 namespace lazyandersen {
-  template<AnalysisResultAlgorithmId Id>
-  class MetaAnalysisStep : public MetaAnalysisStepBase {
-  public:
-    explicit MetaAnalysisStep(AnalysisResult *AR) : MetaAnalysisStepBase(AR) {}
+  class AnalysisResult;
+  class ValueInfo;
 
-    virtual AnalysisResult *analyzeRecursive(AnalysisResult *AR) {
-      return AR->getAlgorithmResult<Id>();
-    }
+  class MetaAnalysisStep : public IterativeAnalysisStep {
+    AnalysisResult::Enumerator E;
+
+  public:
+    explicit MetaAnalysisStep(AnalysisResult *AR);
+    virtual ~MetaAnalysisStep();
+    virtual GraphEdgeDeque getOutgoingEdges() const;
+
+    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) = 0;
+
+    virtual AnalysisResult::EnumerationResult enumerate(
+        AnalysisResult *Owner,
+        AnalysisResultEntryBaseList::iterator *j,
+        int Depth);
   };
 }
 }

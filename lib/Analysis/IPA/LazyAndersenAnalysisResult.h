@@ -14,38 +14,85 @@
 #ifndef LAZYANDERSENANALYSISRESULT_H
 #define LAZYANDERSENANALYSISRESULT_H
 
-#include "LazyAndersenAlgorithmResultCache.h"
-#include "LazyAndersenAnalysisResultAlgorithmId.h"
 #include "LazyAndersenAnalysisResultEntryBaseList.h"
 #include "LazyAndersenGraphNode.h"
-#include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/SetVector.h"
 
 #include <cassert>
 
 namespace llvm {
 namespace lazyandersen {
+  class ValueInfo;
+  typedef SetVector<ValueInfo *> ValueInfoSetVector;
+
   class AnalysisResult : public AnalysisResultEntryBaseList,
       public GraphNode {
-    AlgorithmResultCache<AnalysisResultAlgorithmId> ResultCache;
-    bool Enumerating;
+    int EnumerationDepth;
+    ValueInfoSetVector Set;
 
   public:
-    class ScopedSetEnumeratingFlag {
-      AnalysisResult *AR;
+    class EnumerationResult {
+    public:
+      enum Type {
+        NEXT_VALUE,
+        RETRY,
+        COMPLETE
+      };
+
+    private:
+      Type type;
+      union {
+        ValueInfo *NextValue;
+        AnalysisResult *CancellationPoint;
+        void *Unused;
+      };
+
+      explicit EnumerationResult(ValueInfo *NextValue)
+        : type(NEXT_VALUE), NextValue(NextValue) {}
+      explicit EnumerationResult(AnalysisResult *CancellationPoint)
+        : type(RETRY), CancellationPoint(CancellationPoint) {}
+      EnumerationResult()
+        : type(COMPLETE), Unused(0) {}
 
     public:
-      ScopedSetEnumeratingFlag(AnalysisResult *AR) : AR(AR) {
-        assert(!AR->Enumerating);
-        AR->Enumerating = true;
+      static EnumerationResult makeNextValueResult(ValueInfo *NextValue) {
+        return EnumerationResult(NextValue);
       }
 
-      ~ScopedSetEnumeratingFlag() {
-        assert(AR->Enumerating);
-        AR->Enumerating = false;
+      static EnumerationResult makeRetryResult(
+          AnalysisResult *CancellationPoint) {
+        return EnumerationResult(CancellationPoint);
+      }
+
+      static EnumerationResult makeCompleteResult() {
+        return EnumerationResult();
+      }
+
+      Type getResultType() const {
+        return type;
+      }
+
+      ValueInfo *getNextValue() const {
+        assert(type == NEXT_VALUE);
+        return NextValue;
+      }
+
+      AnalysisResult *getRetryCancellationPoint() const {
+        assert(type == RETRY);
+        return CancellationPoint;
       }
     };
 
-    typedef OwningPtr<AnalysisResult> Ref;
+    class Enumerator {
+    public:
+      explicit Enumerator(AnalysisResult *AR) : AR(AR), i(0) {}
+
+      EnumerationResult enumerate(int Depth);
+
+    private:
+      AnalysisResult *AR;
+      ValueInfoSetVector::size_type i;
+    };
 
     AnalysisResult();
     virtual ~AnalysisResult();
@@ -54,12 +101,10 @@ namespace lazyandersen {
     virtual std::string getNodeLabel() const;
     virtual bool isNodeHidden() const;
 
-    bool isEnumerating() const { return Enumerating; }
+  private:
+    class ScopedSetEnumerating;
 
-    template<AnalysisResultAlgorithmId Id>
-    AnalysisResult *getAlgorithmResult() {
-      return ResultCache.getAlgorithmResult<Id>(this);
-    }
+    bool isEnumerating() const { return EnumerationDepth >= 0; }
   };
 }
 }

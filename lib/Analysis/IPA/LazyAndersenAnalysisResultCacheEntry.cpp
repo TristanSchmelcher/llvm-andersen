@@ -24,5 +24,3 @@ AnalysisResultCacheEntry<CachedTy, EntryTypeVal>::AnalysisResultCacheEntry(
 
 template class AnalysisResultCacheEntry<ValueInfo,
     AnalysisResultEntryBase::VALUE_INFO_ENTRY>;
-template class AnalysisResultCacheEntry<AnalysisResult,
-    AnalysisResultEntryBase::RECURSIVE_ENTRY>;

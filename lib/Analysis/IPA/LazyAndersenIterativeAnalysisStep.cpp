@@ -13,23 +13,20 @@
 
 #include "LazyAndersenIterativeAnalysisStep.h"
 
-#include "LazyAndersenAnalysisResultEntryBaseList.h"
+#include "LazyAndersenRecursiveEnumerate.h"
 
 #include <cassert>
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-void IterativeAnalysisStep::emit(AnalysisResultEntryBase *Entry) {
-  assert(getList());
-  getList()->insert(AnalysisResultEntryBaseList::iterator(this), Entry);
-  // Move any saved iterators onto the emitted entry.
-  Entry->getSavedIterators()->splice(Entry->getSavedIterators()->end(),
-                                     *getSavedIterators());
-}
-
-void IterativeAnalysisStep::done() {
-  assert(getList());
-  // erase deletes this object.
-  getList()->erase(this);
+AnalysisResult::EnumerationResult IterativeAnalysisStep::emit(
+    AnalysisResult *Owner,
+    AnalysisResultEntryBaseList::iterator *j,
+    int Depth,
+    AnalysisResult *Next) {
+  RecursiveEnumerate *RE = new RecursiveEnumerate(Next);
+  assert(AnalysisResultEntryBaseList::iterator(this) == *j);
+  *j = Owner->insert(AnalysisResultEntryBaseList::iterator(this), RE);
+  return RE->enumerate(Owner, j, Depth);
 }

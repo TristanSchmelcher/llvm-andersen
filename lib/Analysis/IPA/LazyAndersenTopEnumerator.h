@@ -11,21 +11,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENENUMERATOR_H
-#define LAZYANDERSENENUMERATOR_H
+#ifndef LAZYANDERSENTOPENUMERATOR_H
+#define LAZYANDERSENTOPENUMERATOR_H
 
-#include "llvm/ADT/DenseSet.h"
+#include "LazyAndersenAnalysisResult.h"
 
 namespace llvm {
-  class Value;
-
 namespace lazyandersen {
-  class AnalysisResult;
+  class TopEnumerator {
+    AnalysisResult::Enumerator E;
 
-  // TODO: Rewrite as an lazy iterator.
-  class Enumerator {
   public:
-    static void enumerate(AnalysisResult *AR, DenseSet<const Value *> *Out);
+    explicit TopEnumerator(AnalysisResult *AR);
+    ~TopEnumerator();
+
+    // Get next VI or null.
+    ValueInfo *enumerate();
   };
 }
 }

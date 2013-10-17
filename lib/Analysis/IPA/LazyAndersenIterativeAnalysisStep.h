@@ -14,16 +14,19 @@
 #ifndef LAZYANDERSENITERATIVEANALYSISSTEP_H
 #define LAZYANDERSENITERATIVEANALYSISSTEP_H
 
+#include "LazyAndersenAnalysisResultEntryBaseList.h"
 #include "LazyAndersenAnalysisResultPendingWorkEntry.h"
 
 namespace llvm {
 namespace lazyandersen {
   class IterativeAnalysisStep : public AnalysisResultPendingWorkEntry {
   protected:
-    // Push the next iteration onto the entry list.
-    void emit(AnalysisResultEntryBase *Entry);
-    // Pop this completed entry off the stack (thus deleting it).
-    void done();
+    // Push the next iteration onto the entry list and defer to it.
+    AnalysisResult::EnumerationResult emit(
+        AnalysisResult *Owner,
+        AnalysisResultEntryBaseList::iterator *j,
+        int Depth,
+        AnalysisResult *Next);
   };
 }
 }

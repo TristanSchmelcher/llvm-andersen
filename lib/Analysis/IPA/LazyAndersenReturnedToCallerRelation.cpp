@@ -30,8 +30,7 @@ AnalysisResult *ReturnedToCallerRelation::analyzePointsToSet() const {
 AnalysisResult *ReturnedToCallerRelation::analyzeOutgoingReversePointsToSet()
     const {
   return getValueInfo<DESTINATION>()
-      ->getAlgorithmResult<REVERSE_POINTS_TO_SET>()
-          ->getAlgorithmResult<RETURN_VALUE_REVERSE_POINTS_TO_SET>();
+      ->getAlgorithmResult<RETURN_VALUE_REVERSE_POINTS_TO_SET>();
 }
 
 AnalysisResult *ReturnedToCallerRelation::analyzeIncomingReversePointsToSet()

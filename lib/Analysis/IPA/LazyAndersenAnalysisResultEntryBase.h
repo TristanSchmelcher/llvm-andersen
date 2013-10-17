@@ -32,7 +32,6 @@ namespace lazyandersen {
   public:
     enum EntryType {
       VALUE_INFO_ENTRY,
-      RECURSIVE_ENTRY,
       PENDING_WORK_ENTRY
     };
 

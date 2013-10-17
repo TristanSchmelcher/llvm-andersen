@@ -24,8 +24,7 @@ const char *ArgumentFromCallerRelation::getRelationName() const {
 
 AnalysisResult *ArgumentFromCallerRelation::analyzePointsToSet() const {
   return getValueInfo<DESTINATION>()
-      ->getAlgorithmResult<REVERSE_POINTS_TO_SET>()
-          ->getAlgorithmResult<ARGUMENT_POINTS_TO_SET>();
+      ->getAlgorithmResult<ARGUMENT_POINTS_TO_SET>();
 }
 
 AnalysisResult *ArgumentFromCallerRelation::analyzeOutgoingReversePointsToSet()

@@ -15,7 +15,9 @@
 #ifndef LAZYANDERSENANALYSISRESULTPENDINGWORKENTRY_H
 #define LAZYANDERSENANALYSISRESULTPENDINGWORKENTRY_H
 
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenAnalysisResultEntry.h"
+#include "LazyAndersenAnalysisResultEntryBaseList.h"
 #include "LazyAndersenGraphNode.h"
 
 namespace llvm {
@@ -29,7 +31,10 @@ namespace lazyandersen {
 
     AnalysisResultPendingWorkEntry();
     virtual ~AnalysisResultPendingWorkEntry();
-    virtual void run() = 0;
+    virtual AnalysisResult::EnumerationResult enumerate(
+        AnalysisResult *Owner,
+        AnalysisResultEntryBaseList::iterator *j,
+        int Depth) = 0;
     virtual bool isNodeHidden() const;
   };
 }

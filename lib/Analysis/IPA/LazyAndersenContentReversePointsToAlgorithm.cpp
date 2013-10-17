@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenAnalysisResultAlgorithmId.h"
+#include "LazyAndersenValueInfoAlgorithmId.h"
 
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenRelation.h"
@@ -22,25 +22,22 @@ using namespace llvm;
 using namespace llvm::lazyandersen;
 
 namespace {
-  class ContentReversePointsToAnalysisStep
-    : public MetaAnalysisStep<CONTENT_REVERSE_POINTS_TO_SET> {
+  class ContentReversePointsToAnalysisStep : public MetaAnalysisStep {
   public:
     explicit ContentReversePointsToAnalysisStep(AnalysisResult *Input)
-      : MetaAnalysisStep<CONTENT_REVERSE_POINTS_TO_SET>(Input) {}
+      : MetaAnalysisStep(Input) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<REVERSE_POINTS_TO_SET>()
-          ->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET_STEP2>();
+      return VI->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET_STEP2>();
     }
 
     virtual std::string getNodeLabel() const { return "ContentReverseStep"; }
   };
 
-  class ContentReversePointsToAnalysisStep2
-    : public MetaAnalysisStep<CONTENT_REVERSE_POINTS_TO_SET_STEP2> {
+  class ContentReversePointsToAnalysisStep2 : public MetaAnalysisStep {
   public:
     explicit ContentReversePointsToAnalysisStep2(AnalysisResult *Input)
-      : MetaAnalysisStep<CONTENT_REVERSE_POINTS_TO_SET_STEP2>(Input) {}
+      : MetaAnalysisStep(Input) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
       return VI->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET_STEP3>();
@@ -66,20 +63,22 @@ namespace {
 namespace llvm {
 namespace lazyandersen {
   template<>
-  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
                                CONTENT_REVERSE_POINTS_TO_SET>(
-      AnalysisResult *Input) {
+      ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ContentReversePointsToAnalysisStep(Input));
+    Output->push_back(new ContentReversePointsToAnalysisStep(
+        Input->getAlgorithmResult<POINTS_TO_SET>()));
     return Output;
   }
 
   template<>
-  AnalysisResult *runAlgorithm<AnalysisResultAlgorithmId,
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
                                CONTENT_REVERSE_POINTS_TO_SET_STEP2>(
-      AnalysisResult *Input) {
+      ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ContentReversePointsToAnalysisStep2(Input));
+    Output->push_back(new ContentReversePointsToAnalysisStep2(
+        Input->getAlgorithmResult<REVERSE_POINTS_TO_SET>()));
     return Output;
   }
 

@@ -13,7 +13,7 @@
 
 #include "LazyAndersenRelationsAnalysisStepBase.h"
 
-#include "LazyAndersenAnalysisResultCacheEntry.h"
+#include "LazyAndersenRecursiveEnumerate.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
@@ -22,17 +22,19 @@ RelationsAnalysisStepBase::RelationsAnalysisStepBase(
     HalfRelationBaseList *List)
   : List(List), i(List->begin()) {}
 
-void RelationsAnalysisStepBase::run() {
+AnalysisResult::EnumerationResult RelationsAnalysisStepBase::enumerate(
+    AnalysisResult *Owner,
+    AnalysisResultEntryBaseList::iterator *j,
+    int Depth) {
   while (i != List->end()) {
     HalfRelationBase *HR = &*i;
     ++i;
     AnalysisResult *LR = analyzeHalfRelation(HR);
     if (LR) {
-      emit(new AnalysisResultRecursiveEntry(LR));
-      return;
+      return emit(Owner, j, Depth, LR);
     }
     // Else nothing to do for this relation; keep going.
   }
   // No relations left to analyze.
-  done();
+  return AnalysisResult::EnumerationResult::makeCompleteResult();
 }

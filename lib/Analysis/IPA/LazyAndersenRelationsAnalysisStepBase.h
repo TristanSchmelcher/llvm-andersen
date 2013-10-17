@@ -28,7 +28,10 @@ namespace lazyandersen {
 
   public:
     explicit RelationsAnalysisStepBase(HalfRelationBaseList *List);
-    virtual void run();
+    virtual AnalysisResult::EnumerationResult enumerate(
+        AnalysisResult *Owner,
+        AnalysisResultEntryBaseList::iterator *j,
+        int Depth);
 
   private:
     virtual AnalysisResult *analyzeHalfRelation(HalfRelationBase *HR) = 0;

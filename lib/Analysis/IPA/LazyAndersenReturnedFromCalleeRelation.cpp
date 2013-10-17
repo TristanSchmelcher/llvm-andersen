@@ -23,7 +23,7 @@ const char *ReturnedFromCalleeRelation::getRelationName() const {
 }
 
 AnalysisResult *ReturnedFromCalleeRelation::analyzePointsToSet() const {
-  return getValueInfo<DESTINATION>()->getAlgorithmResult<POINTS_TO_SET>()
+  return getValueInfo<DESTINATION>()
       ->getAlgorithmResult<RETURN_VALUE_POINTS_TO_SET>();
 }
 

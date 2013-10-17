@@ -40,8 +40,6 @@ namespace lazyandersen {
 
   typedef AnalysisResultCacheEntry<ValueInfo,
       AnalysisResultEntryBase::VALUE_INFO_ENTRY> AnalysisResultValueInfoEntry;
-  typedef AnalysisResultCacheEntry<AnalysisResult,
-      AnalysisResultEntryBase::RECURSIVE_ENTRY> AnalysisResultRecursiveEntry;
 }
 }
 

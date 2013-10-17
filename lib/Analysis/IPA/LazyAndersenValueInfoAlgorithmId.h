@@ -30,6 +30,14 @@ namespace lazyandersen {
     ARGUMENT_REVERSE_POINTS_TO_SET_STEP2,
     RETURN_VALUE_POINTS_TO_SET_STEP2,
     RETURN_VALUE_REVERSE_POINTS_TO_SET_STEP2,
+    CONTENT_POINTS_TO_SET,
+    CONTENT_POINTS_TO_SET_STEP2,
+    CONTENT_REVERSE_POINTS_TO_SET,
+    CONTENT_REVERSE_POINTS_TO_SET_STEP2,
+    RETURN_VALUE_POINTS_TO_SET,
+    RETURN_VALUE_REVERSE_POINTS_TO_SET,
+    ARGUMENT_POINTS_TO_SET,
+    ARGUMENT_REVERSE_POINTS_TO_SET,
     NUM_VALUE_INFO_ALGORITHMS
   };
 
@@ -81,6 +89,41 @@ namespace lazyandersen {
   template<>
   AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
                                RETURN_VALUE_REVERSE_POINTS_TO_SET_STEP2>(
+      ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               CONTENT_POINTS_TO_SET>(ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               CONTENT_POINTS_TO_SET_STEP2>(ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               CONTENT_REVERSE_POINTS_TO_SET>(ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               CONTENT_REVERSE_POINTS_TO_SET_STEP2>(
+      ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               RETURN_VALUE_POINTS_TO_SET>(ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               RETURN_VALUE_REVERSE_POINTS_TO_SET>(
+      ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               ARGUMENT_POINTS_TO_SET>(ValueInfo *);
+
+  template<>
+  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
+                               ARGUMENT_REVERSE_POINTS_TO_SET>(
       ValueInfo *);
 }
 }

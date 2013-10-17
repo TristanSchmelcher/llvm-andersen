@@ -23,7 +23,7 @@ const char *LoadedFromRelation::getRelationName() const {
 }
 
 AnalysisResult *LoadedFromRelation::analyzePointsToSet() const {
-  return getValueInfo<DESTINATION>()->getAlgorithmResult<POINTS_TO_SET>()
+  return getValueInfo<DESTINATION>()
       ->getAlgorithmResult<CONTENT_POINTS_TO_SET>();
 }
 
