@@ -28,8 +28,9 @@ AnalysisResult::EnumerationResult RecursiveEnumerate::enumerate(
 }
 
 GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {
-  // TODO
-  return GraphEdgeDeque();
+  GraphEdgeDeque Result;
+  Result.push_back(E.toGraphEdge());
+  return Result;
 }
 
 std::string RecursiveEnumerate::getNodeLabel() const {

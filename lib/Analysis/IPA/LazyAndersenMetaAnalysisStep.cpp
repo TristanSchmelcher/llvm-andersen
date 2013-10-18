@@ -18,8 +18,6 @@
 #include "LazyAndersenAnalysisResultEntryBaseList.h"
 #include "llvm/Support/ErrorHandling.h"
 
-#include <sstream>
-
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -49,6 +47,7 @@ AnalysisResult::EnumerationResult MetaAnalysisStep::enumerate(
 }
 
 GraphEdgeDeque MetaAnalysisStep::getOutgoingEdges() const {
-  // TODO
-  return GraphEdgeDeque();
+  GraphEdgeDeque Result;
+  Result.push_back(E.toGraphEdge());
+  return Result;
 }

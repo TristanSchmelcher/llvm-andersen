@@ -16,6 +16,7 @@
 #include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenAnalysisResultEntryBase.h"
 #include "LazyAndersenAnalysisResultPendingWorkEntry.h"
+#include "LazyAndersenValueInfo.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -32,11 +33,18 @@ AnalysisResult::~AnalysisResult() {
 
 GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
   GraphEdgeDeque Result;
+  size_t pos = 0;
+  for (ValueInfoSetVector::const_iterator i = Set.begin(), End = Set.end();
+       i != End; ++i, ++pos) {
+    std::ostringstream OSS;
+    OSS << pos;
+    Result.push_back(GraphEdge(*i, OSS.str()));
+  }
   for (AnalysisResultEntryBaseList::const_iterator i = begin(), End = end();
-       i != End; ++i) {
+       i != End; ++i, ++pos) {
     const AnalysisResultEntryBase *Ent = &*i;
     std::ostringstream OSS;
-    OSS << Ent;
+    OSS << pos;
     Result.push_back(GraphEdge(Ent->getGraphNode(), OSS.str()));
   }
   return Result;
@@ -159,4 +167,10 @@ AnalysisResult::EnumerationResult AnalysisResult::Enumerator::enumerate(
       return EnumerationResult::makeRetryResult(RetryCancellationPoint);
     }
   }
+}
+
+GraphEdge AnalysisResult::Enumerator::toGraphEdge() const {
+  std::ostringstream OSS;
+  OSS << "Index " << i;
+  return GraphEdge(AR, OSS.str());
 }

@@ -89,6 +89,8 @@ namespace lazyandersen {
 
       EnumerationResult enumerate(int Depth);
 
+      GraphEdge toGraphEdge() const;
+
     private:
       AnalysisResult *AR;
       ValueInfoSetVector::size_type i;
