@@ -20,7 +20,7 @@
 namespace llvm {
 namespace lazyandersen {
   // Currently we do not need any extra information in these lists.
-  typedef ilist<AnalysisResultEntryBase> AnalysisResultEntryBaseList;
+  typedef iplist<AnalysisResultEntryBase> AnalysisResultEntryBaseList;
 }
 }
 

@@ -28,25 +28,25 @@ namespace lazyandersen {
   class ilist_backptr {
     friend struct ilist_backptr_node_traits<NodeTy>;
 
-    ilist<NodeTy> *List;
+    iplist<NodeTy> *List;
 
   protected:
     ilist_backptr() : List(0) {}
 
-    ilist<NodeTy> *getList() const { return List; }
+    iplist<NodeTy> *getList() const { return List; }
 
   private:
-    void added(ilist<NodeTy> *ToList) {
+    void added(iplist<NodeTy> *ToList) {
       assert(!List);
       List = ToList;
     }
 
-    void removed(ilist<NodeTy> *FromList) {
+    void removed(iplist<NodeTy> *FromList) {
       assert(List == FromList);
       List = 0;
     }
 
-    void transferred(ilist<NodeTy> *ToList, ilist<NodeTy> *FromList) {
+    void transferred(iplist<NodeTy> *ToList, iplist<NodeTy> *FromList) {
       assert(List == FromList);
       List = ToList;
     }
@@ -56,11 +56,11 @@ namespace lazyandersen {
   template<typename NodeTy>
   struct ilist_backptr_node_traits : public ilist_node_traits<NodeTy> {
     void addNodeToList(NodeTy *Node) {
-      Node->added(static_cast<ilist<NodeTy> *>(this));
+      Node->added(static_cast<iplist<NodeTy> *>(this));
     }
 
     void removeNodeFromList(NodeTy *Node) {
-      Node->removed(static_cast<ilist<NodeTy> *>(this));
+      Node->removed(static_cast<iplist<NodeTy> *>(this));
     }
 
     void transferNodesFromList(
@@ -75,8 +75,8 @@ namespace lazyandersen {
       ilist_iterator<NodeTy> first,
       ilist_iterator<NodeTy> last) {
     for (ilist_iterator<NodeTy> i = first; i != last; ++i) {
-      i->transferred(static_cast<ilist<NodeTy> *>(this),
-          static_cast<ilist<NodeTy> *>(&that));
+      i->transferred(static_cast<iplist<NodeTy> *>(this),
+          static_cast<iplist<NodeTy> *>(&that));
     }
   }
 }

@@ -24,16 +24,16 @@ namespace lazyandersen {
   template<EdgeEndpointType Endpoint> class HalfRelationList;
 
   class HalfRelationBaseList : public HasEdgeEndpointType,
-      public ilist<HalfRelationBase> {
+      public iplist<HalfRelationBase> {
     template<EdgeEndpointType Endpoint> friend class HalfRelationList;
 
   public:
-    static HalfRelationBaseList *get(ilist<HalfRelationBase> *List) {
+    static HalfRelationBaseList *get(iplist<HalfRelationBase> *List) {
       return static_cast<HalfRelationBaseList *>(List);
     }
 
     static const HalfRelationBaseList *get(
-        const ilist<HalfRelationBase> *List) {
+        const iplist<HalfRelationBase> *List) {
       return static_cast<const HalfRelationBaseList *>(List);
     }
 
