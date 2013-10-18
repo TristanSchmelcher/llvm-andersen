@@ -15,6 +15,7 @@
 #define LAZYANDERSENVALUEINFO_H
 
 #include "LazyAndersenAlgorithmResultCache.h"
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenEdgeEndpointType.h"
 #include "LazyAndersenGraphNode.h"
 #include "LazyAndersenHalfRelationList.h"

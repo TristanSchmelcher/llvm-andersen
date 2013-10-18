@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenAnalysisResult-inl.h"
+#include "LazyAndersenAnalysisResult.h"
 
 #include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenAnalysisResultEntryBase.h"

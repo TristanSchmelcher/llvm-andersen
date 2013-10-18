@@ -13,8 +13,6 @@
 
 #include "LazyAndersenLoadedFromRelation.h"
 
-#include "LazyAndersenAnalysisResult-inl.h"
-
 using namespace llvm;
 using namespace llvm::lazyandersen;
 

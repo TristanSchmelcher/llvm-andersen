@@ -16,7 +16,6 @@
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenAnalysisResultPendingWorkEntry.h"
-#include "LazyAndersenSavedIterator-inl.h"
 #include "LazyAndersenValueInfo.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
