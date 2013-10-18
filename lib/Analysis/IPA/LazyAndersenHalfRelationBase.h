@@ -15,24 +15,25 @@
 #define LAZYANDERSENHALFRELATIONBASE_H
 
 #include "LazyAndersenEdgeEndpointType.h"
-#include "LazyAndersenIntrusiveListNode.h"
-#include "LazyAndersenIntrusiveListTraits.h"
+#include "ilist_backptr.h"
 
 namespace llvm {
 namespace lazyandersen {
   template<EdgeEndpointType Endpoint> class HalfRelation;
   class HalfRelationBaseList;
 
-  class HalfRelationBase : public HasEdgeEndpointType,
-      private IntrusiveListNode<HalfRelationBase> {
+  class HalfRelationBase
+    : public HasEdgeEndpointType,
+      private ilist_node<HalfRelationBase>,
+      private ilist_backptr<HalfRelationBase> {
     friend struct ilist_ghostly_sentinel_traits<HalfRelationBase>;
     friend struct ilist_nextprev_traits<HalfRelationBase>;
     friend struct ilist_node_traits<HalfRelationBase>;
-    friend struct IntrusiveListTraits<HalfRelationBase>;
+    friend struct ilist_backptr_node_traits<HalfRelationBase>;
     template<EdgeEndpointType> friend class HalfRelation;
 
   protected:
-    using IntrusiveListNode<HalfRelationBase>::getList;
+    using ilist_backptr<HalfRelationBase>::getList;
 
   private:
     explicit HalfRelationBase(HalfRelationBaseList *InitialList);
@@ -45,8 +46,10 @@ namespace lazyandersen {
 
 namespace llvm {
   template<>
-  struct ilist_traits<lazyandersen::HalfRelationBase> :
-      public lazyandersen::IntrusiveListTraits<
+  struct ilist_traits<lazyandersen::HalfRelationBase>
+    : public ilist_nextprev_traits<lazyandersen::HalfRelationBase>,
+      public ilist_ghostly_sentinel_traits<lazyandersen::HalfRelationBase>,
+      public lazyandersen::ilist_backptr_node_traits<
           lazyandersen::HalfRelationBase> {};
 }
 
