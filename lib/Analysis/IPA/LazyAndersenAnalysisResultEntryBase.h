@@ -15,17 +15,12 @@
 #define LAZYANDERSENANALYSISRESULTENTRYBASE_H
 
 #include "LazyAndersenGraphNode.h"
-#include "LazyAndersenIntrusiveListNode.h"
-#include "LazyAndersenIntrusiveListTraits.h"
+#include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResultEntryBase :
-      public IntrusiveListNode<AnalysisResultEntryBase> {
-    friend struct ilist_nextprev_traits<AnalysisResultEntryBase>;
-    friend struct ilist_node_traits<AnalysisResultEntryBase>;
-    friend struct IntrusiveListTraits<AnalysisResultEntryBase>;
-
+  class AnalysisResultEntryBase : public ilist_node<AnalysisResultEntryBase> {
   public:
     enum EntryType {
       VALUE_INFO_ENTRY,
@@ -42,9 +37,10 @@ namespace lazyandersen {
 
 namespace llvm {
   template<>
-  struct ilist_traits<lazyandersen::AnalysisResultEntryBase> :
-      public lazyandersen::IntrusiveListTraits<lazyandersen::AnalysisResultEntryBase> {
-  };
+  struct ilist_traits<lazyandersen::AnalysisResultEntryBase>
+    : public ilist_nextprev_traits<lazyandersen::AnalysisResultEntryBase>,
+      public ilist_ghostly_sentinel_traits<lazyandersen::AnalysisResultEntryBase>,
+      public ilist_node_traits<lazyandersen::AnalysisResultEntryBase> {};
 }
 
 #endif

@@ -25,9 +25,7 @@ using namespace llvm::lazyandersen;
 
 AnalysisResultEntryBase::AnalysisResultEntryBase() {}
 
-AnalysisResultEntryBase::~AnalysisResultEntryBase() {
-  assert(!getList());
-}
+AnalysisResultEntryBase::~AnalysisResultEntryBase() {}
 
 const GraphNode *AnalysisResultEntryBase::getGraphNode() const {
   switch (getEntryType()) {
