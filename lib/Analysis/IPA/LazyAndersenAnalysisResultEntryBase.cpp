@@ -14,7 +14,6 @@
 #include "LazyAndersenAnalysisResultEntryBase.h"
 
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenAnalysisResultPendingWorkEntry.h"
 #include "LazyAndersenValueInfo.h"
 #include "llvm/Support/Casting.h"
@@ -29,8 +28,6 @@ AnalysisResultEntryBase::~AnalysisResultEntryBase() {}
 
 const GraphNode *AnalysisResultEntryBase::getGraphNode() const {
   switch (getEntryType()) {
-  case AnalysisResultEntryBase::VALUE_INFO_ENTRY:
-    return cast<AnalysisResultValueInfoEntry>(this)->getCachedValue();
   case AnalysisResultEntryBase::PENDING_WORK_ENTRY:
     return cast<AnalysisResultPendingWorkEntry>(this);
   default:

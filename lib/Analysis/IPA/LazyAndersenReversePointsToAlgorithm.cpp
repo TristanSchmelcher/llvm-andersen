@@ -14,7 +14,6 @@
 #include "LazyAndersenValueInfoAlgorithmId.h"
 
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenRelation.h"
 #include "LazyAndersenRelationsAnalysisStep.h"
 
@@ -63,7 +62,7 @@ namespace lazyandersen {
   AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new AnalysisResultValueInfoEntry(Input));
+    Output->addValueInfo(Input);
     Output->addWork(new ReversePointsToOutgoingRelationsAnalysisStep(
         Input));
     Output->addWork(new ReversePointsToIncomingRelationsAnalysisStep(

@@ -24,13 +24,12 @@
 namespace llvm {
 namespace lazyandersen {
   class ValueInfo;
-  typedef SetVector<ValueInfo *> ValueInfoSetVector;
-
-  typedef iplist<AnalysisResultEntryBase> AnalysisResultEntryBaseList;
 
   class AnalysisResult : public GraphNode {
     int EnumerationDepth;
+    typedef SetVector<ValueInfo *> ValueInfoSetVector;
     ValueInfoSetVector Set;
+    typedef iplist<AnalysisResultEntryBase> AnalysisResultEntryBaseList;
     AnalysisResultEntryBaseList Work;
 
   public:
@@ -123,6 +122,7 @@ namespace lazyandersen {
     AnalysisResult();
     virtual ~AnalysisResult();
 
+    bool addValueInfo(ValueInfo *VI) { return Set.insert(VI); }
     void addWork(AnalysisResultEntryBase *Entry) { Work.push_back(Entry); }
 
     virtual GraphEdgeDeque getOutgoingEdges() const;

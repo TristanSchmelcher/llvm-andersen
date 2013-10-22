@@ -13,7 +13,6 @@
 
 #include "LazyAndersenAnalysisResult.h"
 
-#include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenAnalysisResultEntryBase.h"
 #include "LazyAndersenAnalysisResultPendingWorkEntry.h"
 #include "LazyAndersenRecursiveEnumerate.h"
@@ -82,6 +81,7 @@ AnalysisResult::Enumerator::Context::Context(AnalysisResult *AR, int Depth)
 
 AnalysisResult::EnumerationResult AnalysisResult::Enumerator::Context::pushWork(
     AnalysisResult *Child) {
+  // TODO: If AR == Child, can skip.
   RecursiveEnumerate *RE = new RecursiveEnumerate(Child);
   Pos = AR->Work.insert(Pos, RE);
   return RE->enumerate(this);
@@ -102,26 +102,13 @@ AnalysisResult::EnumerationResult AnalysisResult::Enumerator::enumerate(
   AnalysisResult *RetryCancellationPoint = 0;
   while (Ctx.Pos != AR->Work.end()) {
     switch (Ctx.Pos->getEntryType()) {
-    case AnalysisResultEntryBase::VALUE_INFO_ENTRY: {
-      // TODO: Since this is so trivial, we should eliminate VALUE_INFO_ENTRY
-      // entirely.
-      ValueInfo *VI = cast<AnalysisResultValueInfoEntry>(&*Ctx.Pos)
-          ->getCachedValue();
-      Ctx.Pos = AR->Work.erase(Ctx.Pos);
-      if (AR->Set.insert(VI)) {
-        ++i;
-        return EnumerationResult::makeNextValueResult(VI);
-      }
-      break;
-    }
-
     case AnalysisResultEntryBase::PENDING_WORK_ENTRY: {
       EnumerationResult ER =
           cast<AnalysisResultPendingWorkEntry>(&*Ctx.Pos)->enumerate(&Ctx);
       switch (ER.getResultType()) {
       case EnumerationResult::NEXT_VALUE: {
         ValueInfo *VI = ER.getNextValue();
-        if (AR->Set.insert(VI)) {
+        if (AR->addValueInfo(VI)) {
           ++i;
           return EnumerationResult::makeNextValueResult(VI);
         }

@@ -23,7 +23,6 @@ namespace lazyandersen {
   class AnalysisResultEntryBase : public ilist_node<AnalysisResultEntryBase> {
   public:
     enum EntryType {
-      VALUE_INFO_ENTRY,
       PENDING_WORK_ENTRY
     };
 

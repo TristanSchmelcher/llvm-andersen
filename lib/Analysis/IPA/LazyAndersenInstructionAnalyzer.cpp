@@ -14,7 +14,6 @@
 #include "LazyAndersenInstructionAnalyzer.h"
 
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenArgumentFromCallerRelation.h"
 #include "LazyAndersenArgumentToCalleeRelation.h"
 #include "LazyAndersenData.h"
@@ -234,7 +233,7 @@ ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
 ValueInfo *InstructionAnalyzer::createFinalizedValueInfo(const Value *V) {
   ValueInfo *VI = createValueInfo(V);
   AnalysisResult *AR = new AnalysisResult();
-  AR->addWork(new AnalysisResultValueInfoEntry(VI));
+  AR->addValueInfo(VI);
   VI->setAlgorithmResultSpecialCase(POINTS_TO_SET, AR);
   return VI;
 }

@@ -10,7 +10,6 @@ add_llvm_library(LLVMipa
   LazyAndersenAliasAnalysis.cpp
   LazyAndersenAnalysisResult.cpp
   LazyAndersenAnalysisResultAlgorithmId.cpp
-  LazyAndersenAnalysisResultCacheEntry.cpp
   LazyAndersenAnalysisResultEntryBase.cpp
   LazyAndersenAnalysisResultPendingWorkEntry.cpp
   LazyAndersenArgumentFromCallerRelation.cpp
