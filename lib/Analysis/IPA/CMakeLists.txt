@@ -27,7 +27,6 @@ add_llvm_library(LLVMipa
   LazyAndersenHalfRelationBaseList.cpp
   LazyAndersenHalfRelationList.cpp
   LazyAndersenInstructionAnalyzer.cpp
-  LazyAndersenIterativeAnalysisStep.cpp
   LazyAndersenLoadedFromRelation.cpp
   LazyAndersenMetaAnalysisStep.cpp
   LazyAndersenPointsToAlgorithm.cpp

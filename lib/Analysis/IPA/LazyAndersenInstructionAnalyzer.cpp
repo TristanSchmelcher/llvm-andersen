@@ -234,7 +234,7 @@ ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
 ValueInfo *InstructionAnalyzer::createFinalizedValueInfo(const Value *V) {
   ValueInfo *VI = createValueInfo(V);
   AnalysisResult *AR = new AnalysisResult();
-  AR->push_back(new AnalysisResultValueInfoEntry(VI));
+  AR->addWork(new AnalysisResultValueInfoEntry(VI));
   VI->setAlgorithmResultSpecialCase(POINTS_TO_SET, AR);
   return VI;
 }

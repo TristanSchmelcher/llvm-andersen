@@ -16,6 +16,7 @@
 #include "LazyAndersenAnalysisResultCacheEntry.h"
 #include "LazyAndersenAnalysisResultEntryBase.h"
 #include "LazyAndersenAnalysisResultPendingWorkEntry.h"
+#include "LazyAndersenRecursiveEnumerate.h"
 #include "LazyAndersenValueInfo.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -33,18 +34,19 @@ AnalysisResult::~AnalysisResult() {
 
 GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
   GraphEdgeDeque Result;
-  size_t pos = 0;
+  size_t Pos = 0;
   for (ValueInfoSetVector::const_iterator i = Set.begin(), End = Set.end();
-       i != End; ++i, ++pos) {
+       i != End; ++i, ++Pos) {
     std::ostringstream OSS;
-    OSS << pos;
+    OSS << Pos;
     Result.push_back(GraphEdge(*i, OSS.str()));
   }
-  for (AnalysisResultEntryBaseList::const_iterator i = begin(), End = end();
-       i != End; ++i, ++pos) {
+  for (AnalysisResultEntryBaseList::const_iterator i = Work.begin(),
+                                                   End = Work.end();
+       i != End; ++i, ++Pos) {
     const AnalysisResultEntryBase *Ent = &*i;
     std::ostringstream OSS;
-    OSS << pos;
+    OSS << Pos;
     Result.push_back(GraphEdge(Ent->getGraphNode(), OSS.str()));
   }
   return Result;
@@ -58,21 +60,32 @@ bool AnalysisResult::isNodeHidden() const {
   return false;
 }
 
-class AnalysisResult::ScopedSetEnumerating {
-  AnalysisResult *AR;
+inline
+AnalysisResult::Enumerator::ScopedSetEnumerating::ScopedSetEnumerating(
+    AnalysisResult *AR, int Depth) : AR(AR) {
+  assert(!AR->isEnumerating());
+  assert(Depth >= 0);
+  AR->EnumerationDepth = Depth;
+}
 
-public:
-  ScopedSetEnumerating(AnalysisResult *AR, int Depth) : AR(AR) {
-    assert(!AR->isEnumerating());
-    assert(Depth >= 0);
-    AR->EnumerationDepth = Depth;
-  }
+inline
+AnalysisResult::Enumerator::ScopedSetEnumerating::~ScopedSetEnumerating() {
+  assert(AR->isEnumerating());
+  AR->EnumerationDepth = -1;
+}
 
-  ~ScopedSetEnumerating() {
-    assert(AR->isEnumerating());
-    AR->EnumerationDepth = -1;
-  }
-};
+inline
+AnalysisResult::Enumerator::Context::Context(AnalysisResult *AR, int Depth)
+  : ScopedSetEnumerating(AR, Depth),
+    NextDepth(Depth + 1),
+    Pos(AR->Work.begin()) {}
+
+AnalysisResult::EnumerationResult AnalysisResult::Enumerator::Context::pushWork(
+    AnalysisResult *Child) {
+  RecursiveEnumerate *RE = new RecursiveEnumerate(Child);
+  Pos = AR->Work.insert(Pos, RE);
+  return RE->enumerate(this);
+}
 
 AnalysisResult::EnumerationResult AnalysisResult::Enumerator::enumerate(
     int Depth) {
@@ -85,15 +98,16 @@ AnalysisResult::EnumerationResult AnalysisResult::Enumerator::enumerate(
     // We have entered a loop. Defer.
     return EnumerationResult::makeRetryResult(AR);
   }
-  ScopedSetEnumerating Enumerating(AR, Depth++);
+  Context Ctx(AR, Depth);
   AnalysisResult *RetryCancellationPoint = 0;
-  for (AnalysisResultEntryBaseList::iterator j(AR->begin()); j != AR->end(); ) {
-    switch (j->getEntryType()) {
+  while (Ctx.Pos != AR->Work.end()) {
+    switch (Ctx.Pos->getEntryType()) {
     case AnalysisResultEntryBase::VALUE_INFO_ENTRY: {
       // TODO: Since this is so trivial, we should eliminate VALUE_INFO_ENTRY
       // entirely.
-      ValueInfo *VI = cast<AnalysisResultValueInfoEntry>(&*j)->getCachedValue();
-      j = AR->erase(j);
+      ValueInfo *VI = cast<AnalysisResultValueInfoEntry>(&*Ctx.Pos)
+          ->getCachedValue();
+      Ctx.Pos = AR->Work.erase(Ctx.Pos);
       if (AR->Set.insert(VI)) {
         ++i;
         return EnumerationResult::makeNextValueResult(VI);
@@ -103,7 +117,7 @@ AnalysisResult::EnumerationResult AnalysisResult::Enumerator::enumerate(
 
     case AnalysisResultEntryBase::PENDING_WORK_ENTRY: {
       EnumerationResult ER =
-          cast<AnalysisResultPendingWorkEntry>(&*j)->enumerate(AR, &j, Depth);
+          cast<AnalysisResultPendingWorkEntry>(&*Ctx.Pos)->enumerate(&Ctx);
       switch (ER.getResultType()) {
       case EnumerationResult::NEXT_VALUE: {
         ValueInfo *VI = ER.getNextValue();
@@ -129,12 +143,12 @@ AnalysisResult::EnumerationResult AnalysisResult::Enumerator::enumerate(
           }
         }
         // Skip it. Will retry later if needed.
-        ++j;
+        ++Ctx.Pos;
         break;
       }
 
       case EnumerationResult::COMPLETE:
-        j = AR->erase(j);
+        Ctx.Pos = AR->Work.erase(Ctx.Pos);
         break;
 
       default:
@@ -151,14 +165,14 @@ AnalysisResult::EnumerationResult AnalysisResult::Enumerator::enumerate(
   }
   // Nothing new added to Set. Either we're done or we need a retry.
   if (!RetryCancellationPoint) {
-    assert(AR->empty());
+    assert(AR->Work.empty());
     return EnumerationResult::makeCompleteResult();
   } else {
-    assert(!AR->empty());
+    assert(!AR->Work.empty());
     if (RetryCancellationPoint == AR) {
       // This AR has self-contained reference cycles but this iteration found
       // no new items. Therefore it's done. Cancel the retry state.
-      AR->clear();
+      AR->Work.clear();
       return EnumerationResult::makeCompleteResult();
     } else {
       // This AR has non-self-contained reference cycles. Must retry

@@ -15,7 +15,6 @@
 #include "LazyAndersenMetaAnalysisStep.h"
 
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenAnalysisResultEntryBaseList.h"
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
@@ -26,13 +25,11 @@ MetaAnalysisStep::MetaAnalysisStep(AnalysisResult *AR) : E(AR) {}
 MetaAnalysisStep::~MetaAnalysisStep() {}
 
 AnalysisResult::EnumerationResult MetaAnalysisStep::enumerate(
-    AnalysisResult *Owner,
-    AnalysisResultEntryBaseList::iterator *j,
-    int Depth) {
-  AnalysisResult::EnumerationResult ER(E.enumerate(Depth));
+    AnalysisResult::Enumerator::Context *Ctx) {
+  AnalysisResult::EnumerationResult ER(E.enumerate(Ctx->getNextDepth()));
   switch (ER.getResultType()) {
   case AnalysisResult::EnumerationResult::NEXT_VALUE:
-    return emit(Owner, j, Depth, analyzeValueInfo(ER.getNextValue()));
+    return Ctx->pushWork(analyzeValueInfo(ER.getNextValue()));
 
   case AnalysisResult::EnumerationResult::RETRY:
   case AnalysisResult::EnumerationResult::COMPLETE:

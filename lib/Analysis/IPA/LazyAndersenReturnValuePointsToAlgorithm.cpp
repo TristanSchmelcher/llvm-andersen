@@ -55,7 +55,7 @@ namespace lazyandersen {
                                RETURN_VALUE_POINTS_TO_SET>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ReturnValuePointsToAnalysisStep(
+    Output->addWork(new ReturnValuePointsToAnalysisStep(
         Input->getAlgorithmResult<POINTS_TO_SET>()));
     return Output;
   }
@@ -65,7 +65,7 @@ namespace lazyandersen {
                                RETURN_VALUE_POINTS_TO_SET_STEP2>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ReturnValuePointsToAnalysisStep2(Input));
+    Output->addWork(new ReturnValuePointsToAnalysisStep2(Input));
     return Output;
   }
 }

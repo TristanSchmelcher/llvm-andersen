@@ -14,8 +14,9 @@
 #ifndef LAZYANDERSENANALYSISRESULT_H
 #define LAZYANDERSENANALYSISRESULT_H
 
-#include "LazyAndersenAnalysisResultEntryBaseList.h"
+#include "LazyAndersenAnalysisResultEntryBase.h"
 #include "LazyAndersenGraphNode.h"
+#include "llvm/ADT/ilist.h"
 #include "llvm/ADT/SetVector.h"
 
 #include <cassert>
@@ -25,10 +26,12 @@ namespace lazyandersen {
   class ValueInfo;
   typedef SetVector<ValueInfo *> ValueInfoSetVector;
 
-  class AnalysisResult : public AnalysisResultEntryBaseList,
-      public GraphNode {
+  typedef iplist<AnalysisResultEntryBase> AnalysisResultEntryBaseList;
+
+  class AnalysisResult : public GraphNode {
     int EnumerationDepth;
     ValueInfoSetVector Set;
+    AnalysisResultEntryBaseList Work;
 
   public:
     class EnumerationResult {
@@ -84,28 +87,49 @@ namespace lazyandersen {
     };
 
     class Enumerator {
+      AnalysisResult *AR;
+      ValueInfoSetVector::size_type i;
+
+      class ScopedSetEnumerating {
+      protected:
+        AnalysisResult *const AR;
+
+      public:
+        ScopedSetEnumerating(AnalysisResult *AR, int Depth);
+        ~ScopedSetEnumerating();
+      };
+
     public:
+      class Context : private ScopedSetEnumerating {
+        friend class Enumerator;
+        const int NextDepth;
+        AnalysisResultEntryBaseList::iterator Pos;
+
+        Context(AnalysisResult *AR, int Depth);
+
+      public:
+        int getNextDepth() const { return NextDepth; }
+
+        EnumerationResult pushWork(AnalysisResult *Child);
+      };
+
       explicit Enumerator(AnalysisResult *AR) : AR(AR), i(0) {}
 
       EnumerationResult enumerate(int Depth);
 
       GraphEdge toGraphEdge() const;
-
-    private:
-      AnalysisResult *AR;
-      ValueInfoSetVector::size_type i;
     };
 
     AnalysisResult();
     virtual ~AnalysisResult();
+
+    void addWork(AnalysisResultEntryBase *Entry) { Work.push_back(Entry); }
 
     virtual GraphEdgeDeque getOutgoingEdges() const;
     virtual std::string getNodeLabel() const;
     virtual bool isNodeHidden() const;
 
   private:
-    class ScopedSetEnumerating;
-
     bool isEnumerating() const { return EnumerationDepth >= 0; }
   };
 }

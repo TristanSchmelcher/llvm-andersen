@@ -21,10 +21,8 @@ RecursiveEnumerate::RecursiveEnumerate(AnalysisResult *AR) : E(AR) {}
 RecursiveEnumerate::~RecursiveEnumerate() {}
 
 AnalysisResult::EnumerationResult RecursiveEnumerate::enumerate(
-    AnalysisResult *Owner,
-    AnalysisResultEntryBaseList::iterator *j,
-    int Depth) {
-  return E.enumerate(Depth);
+    AnalysisResult::Enumerator::Context *Ctx) {
+  return E.enumerate(Ctx->getNextDepth());
 }
 
 GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {

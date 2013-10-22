@@ -59,7 +59,7 @@ namespace lazyandersen {
                                RETURN_VALUE_REVERSE_POINTS_TO_SET>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ReturnValueReversePointsToAnalysisStep(
+    Output->addWork(new ReturnValueReversePointsToAnalysisStep(
         Input->getAlgorithmResult<REVERSE_POINTS_TO_SET>()));
     return Output;
   }
@@ -69,7 +69,7 @@ namespace lazyandersen {
                                RETURN_VALUE_REVERSE_POINTS_TO_SET_STEP2>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ReturnValueReversePointsToAnalysisStep2(Input));
+    Output->addWork(new ReturnValueReversePointsToAnalysisStep2(Input));
     return Output;
   }
 }

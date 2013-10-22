@@ -63,10 +63,10 @@ namespace lazyandersen {
   AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new AnalysisResultValueInfoEntry(Input));
-    Output->push_back(new ReversePointsToOutgoingRelationsAnalysisStep(
+    Output->addWork(new AnalysisResultValueInfoEntry(Input));
+    Output->addWork(new ReversePointsToOutgoingRelationsAnalysisStep(
         Input));
-    Output->push_back(new ReversePointsToIncomingRelationsAnalysisStep(
+    Output->addWork(new ReversePointsToIncomingRelationsAnalysisStep(
         Input));
     return Output;
   }

@@ -41,7 +41,7 @@ namespace lazyandersen {
   AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, POINTS_TO_SET>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new PointsToRelationsAnalysisStep(Input));
+    Output->addWork(new PointsToRelationsAnalysisStep(Input));
     return Output;
   }
 }

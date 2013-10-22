@@ -26,9 +26,7 @@ namespace lazyandersen {
     ~RecursiveEnumerate();
 
     virtual AnalysisResult::EnumerationResult enumerate(
-        AnalysisResult *Owner,
-        AnalysisResultEntryBaseList::iterator *j,
-        int Depth);
+        AnalysisResult::Enumerator::Context *Ctx);
     virtual GraphEdgeDeque getOutgoingEdges() const;
     virtual std::string getNodeLabel() const;
   };

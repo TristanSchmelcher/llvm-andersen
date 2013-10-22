@@ -55,7 +55,7 @@ namespace lazyandersen {
                                ARGUMENT_POINTS_TO_SET>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ArgumentPointsToAnalysisStep(
+    Output->addWork(new ArgumentPointsToAnalysisStep(
         Input->getAlgorithmResult<REVERSE_POINTS_TO_SET>()));
     return Output;
   }
@@ -65,7 +65,7 @@ namespace lazyandersen {
                                ARGUMENT_POINTS_TO_SET_STEP2>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ArgumentPointsToAnalysisStep2(Input));
+    Output->addWork(new ArgumentPointsToAnalysisStep2(Input));
     return Output;
   }
 }

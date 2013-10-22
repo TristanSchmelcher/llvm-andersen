@@ -67,7 +67,7 @@ namespace lazyandersen {
                                CONTENT_REVERSE_POINTS_TO_SET>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ContentReversePointsToAnalysisStep(
+    Output->addWork(new ContentReversePointsToAnalysisStep(
         Input->getAlgorithmResult<POINTS_TO_SET>()));
     return Output;
   }
@@ -77,7 +77,7 @@ namespace lazyandersen {
                                CONTENT_REVERSE_POINTS_TO_SET_STEP2>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ContentReversePointsToAnalysisStep2(
+    Output->addWork(new ContentReversePointsToAnalysisStep2(
         Input->getAlgorithmResult<REVERSE_POINTS_TO_SET>()));
     return Output;
   }
@@ -87,7 +87,7 @@ namespace lazyandersen {
                                CONTENT_REVERSE_POINTS_TO_SET_STEP3>(
       ValueInfo *Input) {
     AnalysisResult *Output = new AnalysisResult();
-    Output->push_back(new ContentReversePointsToAnalysisStep3(Input));
+    Output->addWork(new ContentReversePointsToAnalysisStep3(Input));
     return Output;
   }
 }

@@ -23,15 +23,13 @@ RelationsAnalysisStepBase::RelationsAnalysisStepBase(
   : List(List), i(List->begin()) {}
 
 AnalysisResult::EnumerationResult RelationsAnalysisStepBase::enumerate(
-    AnalysisResult *Owner,
-    AnalysisResultEntryBaseList::iterator *j,
-    int Depth) {
+    AnalysisResult::Enumerator::Context *Ctx) {
   while (i != List->end()) {
     HalfRelationBase *HR = &*i;
     ++i;
     AnalysisResult *LR = analyzeHalfRelation(HR);
     if (LR) {
-      return emit(Owner, j, Depth, LR);
+      return Ctx->pushWork(LR);
     }
     // Else nothing to do for this relation; keep going.
   }

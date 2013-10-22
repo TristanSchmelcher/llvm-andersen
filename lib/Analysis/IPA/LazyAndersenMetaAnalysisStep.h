@@ -16,15 +16,14 @@
 #define LAZYANDERSENMETAANALYSISSTEP_H
 
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenAnalysisResultEntryBase.h"
-#include "LazyAndersenIterativeAnalysisStep.h"
+#include "LazyAndersenAnalysisResultPendingWorkEntry.h"
 
 namespace llvm {
 namespace lazyandersen {
   class AnalysisResult;
   class ValueInfo;
 
-  class MetaAnalysisStep : public IterativeAnalysisStep {
+  class MetaAnalysisStep : public AnalysisResultPendingWorkEntry {
     AnalysisResult::Enumerator E;
 
   public:
@@ -35,9 +34,7 @@ namespace lazyandersen {
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) = 0;
 
     virtual AnalysisResult::EnumerationResult enumerate(
-        AnalysisResult *Owner,
-        AnalysisResultEntryBaseList::iterator *j,
-        int Depth);
+        AnalysisResult::Enumerator::Context *Ctx);
   };
 }
 }
