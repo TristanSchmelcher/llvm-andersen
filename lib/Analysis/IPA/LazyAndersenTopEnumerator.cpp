@@ -23,21 +23,22 @@ TopEnumerator::TopEnumerator(AnalysisResult *AR) : E(AR) {}
 TopEnumerator::~TopEnumerator() {}
 
 ValueInfo *TopEnumerator::enumerate() {
-  AnalysisResult::EnumerationResult ER(E.enumerate(0));
+  EnumerationResult ER(E.enumerate(0));
   switch (ER.getResultType()) {
-  case AnalysisResult::EnumerationResult::NEXT_VALUE:
+  case EnumerationResult::NEXT_VALUE:
     return ER.getNextValue();
 
-  case AnalysisResult::EnumerationResult::RETRY:
+  case EnumerationResult::RETRY:
     llvm_unreachable("Received uncancelled retry-result");
     break;
 
-  case AnalysisResult::EnumerationResult::COMPLETE:
+  case EnumerationResult::COMPLETE:
     return 0;
 
   default:
     llvm_unreachable("Not a recognized EnumerationResult");
     break;
   }
+  // Not reached.
   return 0;
 }

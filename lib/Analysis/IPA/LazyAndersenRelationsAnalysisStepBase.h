@@ -14,22 +14,19 @@
 #ifndef LAZYANDERSENRELATIONSANALYSISSTEPBASE_H
 #define LAZYANDERSENRELATIONSANALYSISSTEPBASE_H
 
-#include "LazyAndersenAnalysisResultPendingWorkEntry.h"
+#include "LazyAndersenAnalysisResultWork.h"
 #include "LazyAndersenHalfRelationBaseList.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult;
-
-  class RelationsAnalysisStepBase : public AnalysisResultPendingWorkEntry {
+  class RelationsAnalysisStepBase : public AnalysisResultWork {
   protected:
     HalfRelationBaseList *List;
     HalfRelationBaseList::iterator i;
 
   public:
     explicit RelationsAnalysisStepBase(HalfRelationBaseList *List);
-    virtual AnalysisResult::EnumerationResult enumerate(
-        AnalysisResult::Enumerator::Context *Ctx);
+    virtual EnumerationResult enumerate(EnumerationContext *Ctx);
 
   private:
     virtual AnalysisResult *analyzeHalfRelation(HalfRelationBase *HR) = 0;

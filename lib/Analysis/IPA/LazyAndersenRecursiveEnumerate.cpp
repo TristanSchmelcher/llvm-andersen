@@ -13,6 +13,8 @@
 
 #include "LazyAndersenRecursiveEnumerate.h"
 
+#include "LazyAndersenEnumerationContext.h"
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -20,8 +22,7 @@ RecursiveEnumerate::RecursiveEnumerate(AnalysisResult *AR) : E(AR) {}
 
 RecursiveEnumerate::~RecursiveEnumerate() {}
 
-AnalysisResult::EnumerationResult RecursiveEnumerate::enumerate(
-    AnalysisResult::Enumerator::Context *Ctx) {
+EnumerationResult RecursiveEnumerate::enumerate(EnumerationContext *Ctx) {
   return E.enumerate(Ctx->getNextDepth());
 }
 

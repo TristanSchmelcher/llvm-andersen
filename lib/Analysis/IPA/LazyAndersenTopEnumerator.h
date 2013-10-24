@@ -1,4 +1,4 @@
-//===- LazyAndersenEnumerator.h - lazy set enumerator ---------------------===//
+//===- LazyAndersenTopEnumerator.h - lazy set enumerator ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,12 +14,15 @@
 #ifndef LAZYANDERSENTOPENUMERATOR_H
 #define LAZYANDERSENTOPENUMERATOR_H
 
-#include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenEnumerator.h"
 
 namespace llvm {
 namespace lazyandersen {
+  class AnalysisResult;
+  class ValueInfo;
+
   class TopEnumerator {
-    AnalysisResult::Enumerator E;
+    Enumerator E;
 
   public:
     explicit TopEnumerator(AnalysisResult *AR);

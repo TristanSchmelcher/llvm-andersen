@@ -14,19 +14,20 @@
 #ifndef LAZYANDERSENRECURSIVEENUMERATE_H
 #define LAZYANDERSENRECURSIVEENUMERATE_H
 
-#include "LazyAndersenAnalysisResultPendingWorkEntry.h"
+#include "LazyAndersenAnalysisResultWork.h"
+#include "LazyAndersenEnumerator.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class RecursiveEnumerate : public AnalysisResultPendingWorkEntry {
-    AnalysisResult::Enumerator E;
+  class AnalysisResult;
+
+  class RecursiveEnumerate : public AnalysisResultWork {
+    Enumerator E;
 
   public:
     RecursiveEnumerate(AnalysisResult *AR);
     ~RecursiveEnumerate();
-
-    virtual AnalysisResult::EnumerationResult enumerate(
-        AnalysisResult::Enumerator::Context *Ctx);
+    virtual EnumerationResult enumerate(EnumerationContext *Ctx);
     virtual GraphEdgeDeque getOutgoingEdges() const;
     virtual std::string getNodeLabel() const;
   };

@@ -1,4 +1,4 @@
-//===- LazyAndersenAnalysisResultPendingWorkEntry.cpp - analysis classes --===//
+//===- LazyAndersenAnalysisResultWork.cpp - analysis classes --------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,20 +7,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a type for entries in analysis results that represent
-// pending work.
+// This file defines a type for pending work for analysis results.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenAnalysisResultPendingWorkEntry.h"
+#include "LazyAndersenAnalysisResultWork.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-AnalysisResultPendingWorkEntry::AnalysisResultPendingWorkEntry() {}
+AnalysisResultWork::AnalysisResultWork() {}
 
-AnalysisResultPendingWorkEntry::~AnalysisResultPendingWorkEntry() {}
+AnalysisResultWork::~AnalysisResultWork() {}
 
-bool AnalysisResultPendingWorkEntry::isNodeHidden() const {
+bool AnalysisResultWork::isNodeHidden() const {
   return false;
 }

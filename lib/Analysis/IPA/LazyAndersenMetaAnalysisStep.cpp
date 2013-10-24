@@ -1,4 +1,4 @@
-//===- LazyAndersenMetaAnalysisStepBase.cpp - analysis classes ------------===//
+//===- LazyAndersenMetaAnalysisStep.cpp - analysis classes ----------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,7 +14,7 @@
 
 #include "LazyAndersenMetaAnalysisStep.h"
 
-#include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenEnumerationContext.h"
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
@@ -24,15 +24,14 @@ MetaAnalysisStep::MetaAnalysisStep(AnalysisResult *AR) : E(AR) {}
 
 MetaAnalysisStep::~MetaAnalysisStep() {}
 
-AnalysisResult::EnumerationResult MetaAnalysisStep::enumerate(
-    AnalysisResult::Enumerator::Context *Ctx) {
-  AnalysisResult::EnumerationResult ER(E.enumerate(Ctx->getNextDepth()));
+EnumerationResult MetaAnalysisStep::enumerate(EnumerationContext *Ctx) {
+  EnumerationResult ER(E.enumerate(Ctx->getNextDepth()));
   switch (ER.getResultType()) {
-  case AnalysisResult::EnumerationResult::NEXT_VALUE:
+  case EnumerationResult::NEXT_VALUE:
     return Ctx->pushWork(analyzeValueInfo(ER.getNextValue()));
 
-  case AnalysisResult::EnumerationResult::RETRY:
-  case AnalysisResult::EnumerationResult::COMPLETE:
+  case EnumerationResult::RETRY:
+  case EnumerationResult::COMPLETE:
     return ER;
 
   default:
@@ -40,7 +39,7 @@ AnalysisResult::EnumerationResult MetaAnalysisStep::enumerate(
     break;
   }
   // Not reached.
-  return AnalysisResult::EnumerationResult::makeCompleteResult();
+  return ER;
 }
 
 GraphEdgeDeque MetaAnalysisStep::getOutgoingEdges() const {
