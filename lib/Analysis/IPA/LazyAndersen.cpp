@@ -19,6 +19,7 @@
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenData.h"
 #include "LazyAndersenInstructionAnalyzer.h"
+#include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenTopEnumerator.h"
 #include "LazyAndersenValuePrinter.h"
 #include "llvm/Analysis/Dominators.h"
@@ -50,7 +51,8 @@ DenseSet<const Value *> LazyAndersen::getPointsToSet(const Value *V) const {
   assert(Data->ValueInfos.count(V));
   DenseSet<const Value *> Out;
   if (Data->ValueInfos[V]) {
-    TopEnumerator TE(Data->ValueInfos[V]->getAlgorithmResult<POINTS_TO_SET>());
+    TopEnumerator TE(
+        Data->ValueInfos[V]->getAlgorithmResult<PointsToAlgorithm>());
     for (ValueInfo *VI; (VI = TE.enumerate()); ) {
       Out.insert(VI->getValue());
     }

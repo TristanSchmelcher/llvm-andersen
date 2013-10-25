@@ -11,9 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenValueInfoAlgorithmId.h"
+#include "LazyAndersenReturnValuePointsToAlgorithm.h"
 
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
+#include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenRelation.h"
 #include "LazyAndersenRelationsAnalysisStep.h"
 #include "LazyAndersenValueInfo.h"
@@ -22,23 +24,11 @@ using namespace llvm;
 using namespace llvm::lazyandersen;
 
 namespace {
-  class ReturnValuePointsToAnalysisStep : public MetaAnalysisStep {
-  public:
-    explicit ReturnValuePointsToAnalysisStep(AnalysisResult *Input)
-      : MetaAnalysisStep(Input) {}
-
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<RETURN_VALUE_POINTS_TO_SET_STEP2>();
-    }
-
-    virtual std::string getNodeLabel() const { return "ReturnValueStep"; }
-  };
-
   class ReturnValuePointsToAnalysisStep2
     : public RelationsAnalysisStep<DESTINATION> {
   public:
-    explicit ReturnValuePointsToAnalysisStep2(ValueInfo *Input)
-      : RelationsAnalysisStep<DESTINATION>(Input) {}
+    explicit ReturnValuePointsToAnalysisStep2(ValueInfo *VI)
+      : RelationsAnalysisStep<DESTINATION>(VI) {}
 
     virtual AnalysisResult *analyzeRelation(Relation *R) {
       return R->analyzeReturnValuePointsToSet();
@@ -46,27 +36,39 @@ namespace {
 
     virtual std::string getNodeLabel() const { return "ReturnValueStep2"; }
   };
-}
 
-namespace llvm {
-namespace lazyandersen {
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
-                               RETURN_VALUE_POINTS_TO_SET>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new ReturnValuePointsToAnalysisStep(
-        Input->getAlgorithmResult<POINTS_TO_SET>()));
-    return Output;
+  struct ReturnValuePointsToAlgorithmStep2 {
+    static const char ID[];
+    static AnalysisResult *run(ValueInfo *VI);
+  };
+
+  const char ReturnValuePointsToAlgorithmStep2::ID[] =
+      "return value points-to 2";
+
+  AnalysisResult *ReturnValuePointsToAlgorithmStep2::run(ValueInfo *VI) {
+    AnalysisResult *AR = new AnalysisResult();
+    AR->addWork(new ReturnValuePointsToAnalysisStep2(VI));
+    return AR;
   }
 
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
-                               RETURN_VALUE_POINTS_TO_SET_STEP2>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new ReturnValuePointsToAnalysisStep2(Input));
-    return Output;
-  }
+  class ReturnValuePointsToAnalysisStep : public MetaAnalysisStep {
+  public:
+    explicit ReturnValuePointsToAnalysisStep(AnalysisResult *VI)
+      : MetaAnalysisStep(VI) {}
+
+    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
+      return VI->getAlgorithmResult<ReturnValuePointsToAlgorithmStep2>();
+    }
+
+    virtual std::string getNodeLabel() const { return "ReturnValueStep"; }
+  };
 }
+
+const char ReturnValuePointsToAlgorithm::ID[] = "return value points-to";
+
+AnalysisResult *ReturnValuePointsToAlgorithm::run(ValueInfo *VI) {
+  AnalysisResult *AR = new AnalysisResult();
+  AR->addWork(new ReturnValuePointsToAnalysisStep(
+      VI->getAlgorithmResult<PointsToAlgorithm>()));
+  return AR;
 }

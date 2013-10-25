@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenValueInfoAlgorithmId.h"
+#include "LazyAndersenReversePointsToAlgorithm.h"
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenRelation.h"
@@ -56,18 +56,14 @@ namespace {
   }
 }
 
-namespace llvm {
-namespace lazyandersen {
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, REVERSE_POINTS_TO_SET>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addValueInfo(Input);
-    Output->addWork(new ReversePointsToOutgoingRelationsAnalysisStep(
-        Input));
-    Output->addWork(new ReversePointsToIncomingRelationsAnalysisStep(
-        Input));
-    return Output;
-  }
-}
+const char ReversePointsToAlgorithm::ID[] = "reverse points-to";
+
+AnalysisResult *ReversePointsToAlgorithm::run(ValueInfo *VI) {
+  AnalysisResult *AR = new AnalysisResult();
+  AR->addValueInfo(VI);
+  AR->addWork(new ReversePointsToOutgoingRelationsAnalysisStep(
+      VI));
+  AR->addWork(new ReversePointsToIncomingRelationsAnalysisStep(
+      VI));
+  return AR;
 }

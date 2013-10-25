@@ -14,56 +14,56 @@
 #ifndef LAZYANDERSENALGORITHMRESULTCACHE_H
 #define LAZYANDERSENALGORITHMRESULTCACHE_H
 
-#include "LazyAndersenAlgorithmGroup.h"
-#include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 
 #include <cassert>
 
 namespace llvm {
 namespace lazyandersen {
-  template<typename AlgorithmIdTy>
-  class AlgorithmResultCache : private AlgorithmGroupTraits<AlgorithmIdTy> {
-    using AlgorithmGroupTraits<AlgorithmIdTy>::NumAlgorithms;
-    typedef typename AlgorithmGroupTraits<AlgorithmIdTy>::InputTy InputTy;
-    typedef typename AlgorithmGroupTraits<AlgorithmIdTy>::OutputTy OutputTy;
-    typedef OutputTy *(*AlgorithmTy)(InputTy *);
-
-    OwningPtr<OutputTy> Results[NumAlgorithms];
+  template<typename InputTy, typename OutputTy, typename AlgorithmIdTy>
+  class AlgorithmResultCache {
+    typedef OutputTy *(*AlgorithmFn)(InputTy *);
+  public:
+    typedef DenseMap<AlgorithmIdTy, OutputTy *> ResultsMapTy;
+  private:
+    ResultsMapTy Results;
 
   public:
-    template<AlgorithmIdTy AlgorithmId>
-    OutputTy *getAlgorithmResult(InputTy *Input) {
-      assert(AlgorithmId < NumAlgorithms);
-      // Look up the algorithm function and dispatch to an internal method to do
-      // the rest. The internal method will have the same compilation for all
-      // template arguments, so the compiler can combine them into one
-      // symbol.
-      return getAlgorithmResultInternal(AlgorithmId,
-          &runAlgorithm<AlgorithmIdTy, AlgorithmId>, Input);
+    ~AlgorithmResultCache() {
+      DeleteContainerSeconds(Results);
     }
 
-    OutputTy *getAlgorithmResultNoCreate(AlgorithmIdTy AlgorithmId) const {
-      assert(AlgorithmId < NumAlgorithms);
-      return Results[AlgorithmId].get();
+    const ResultsMapTy &getResults() const { return Results; }
+
+    template<typename AlgorithmTy>
+    OutputTy *getAlgorithmResult() {
+      // Dispatch to a non-template method for less code size.
+      return getAlgorithmResultInternal(AlgorithmTy::ID, &AlgorithmTy::run);
     }
 
-    void setAlgorithmResultSpecialCase(AlgorithmIdTy AlgorithmId,
-        OutputTy *Output) {
-      assert(!Results[AlgorithmId].get());
-      Results[AlgorithmId].reset(Output);
+    template<typename AlgorithmTy>
+    void preCreateSpecialCaseResult(OutputTy *Output) {
+      OutputTy *&Result = Results[AlgorithmTy::ID];
+      assert(!Result);
+      Result = Output;
+      assert(Result);
     }
 
   private:
-    OutputTy *getAlgorithmResultInternal(AlgorithmIdTy AlgorithmId,
-        AlgorithmTy Algorithm, InputTy *Input) {
-      OutputTy *Result = Results[AlgorithmId].get();
-      if (!Result) {
-        Result = (*Algorithm)(Input);
-        Results[AlgorithmId].reset(Result);
-      }
-      return Result;
-    }
+    OutputTy *getAlgorithmResultInternal(AlgorithmIdTy Id, AlgorithmFn Fn);
   };
+
+  template<typename InputTy, typename OutputTy, typename AlgorithmIdTy>
+  OutputTy *AlgorithmResultCache<InputTy, OutputTy, AlgorithmIdTy>
+      ::getAlgorithmResultInternal(AlgorithmIdTy Id, AlgorithmFn Fn) {
+    OutputTy *&Result = Results[Id];
+    if (!Result) {
+      Result = (*Fn)(static_cast<InputTy *>(this));
+      assert(Result);
+    }
+    return Result;
+  }
 }
 }
 

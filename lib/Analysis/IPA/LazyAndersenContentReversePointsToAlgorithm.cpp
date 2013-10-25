@@ -11,46 +11,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenValueInfoAlgorithmId.h"
+#include "LazyAndersenContentReversePointsToAlgorithm.h"
 
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
+#include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenRelation.h"
 #include "LazyAndersenRelationsAnalysisStep.h"
+#include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
 namespace {
-  class ContentReversePointsToAnalysisStep : public MetaAnalysisStep {
-  public:
-    explicit ContentReversePointsToAnalysisStep(AnalysisResult *Input)
-      : MetaAnalysisStep(Input) {}
-
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET_STEP2>();
-    }
-
-    virtual std::string getNodeLabel() const { return "ContentReverseStep"; }
-  };
-
-  class ContentReversePointsToAnalysisStep2 : public MetaAnalysisStep {
-  public:
-    explicit ContentReversePointsToAnalysisStep2(AnalysisResult *Input)
-      : MetaAnalysisStep(Input) {}
-
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET_STEP3>();
-    }
-
-    virtual std::string getNodeLabel() const { return "ContentReverseStep2"; }
-  };
-
   class ContentReversePointsToAnalysisStep3
     : public RelationsAnalysisStep<DESTINATION> {
   public:
-    explicit ContentReversePointsToAnalysisStep3(ValueInfo *Input)
-      : RelationsAnalysisStep<DESTINATION>(Input) {}
+    explicit ContentReversePointsToAnalysisStep3(ValueInfo *VI)
+      : RelationsAnalysisStep<DESTINATION>(VI) {}
 
     virtual AnalysisResult *analyzeRelation(Relation *R) {
       return R->analyzeLoadedValuesReversePointsToSet();
@@ -58,37 +37,66 @@ namespace {
 
     virtual std::string getNodeLabel() const { return "ContentReverseStep3"; }
   };
+
+  struct ContentReversePointsToAlgorithmStep3 {
+    static const char ID[];
+    static AnalysisResult *run(ValueInfo *VI);
+  };
+
+  const char ContentReversePointsToAlgorithmStep3::ID[] =
+      "content reverse points-to 3";
+
+  AnalysisResult *ContentReversePointsToAlgorithmStep3::run(ValueInfo *VI) {
+    AnalysisResult *AR = new AnalysisResult();
+    AR->addWork(new ContentReversePointsToAnalysisStep3(VI));
+    return AR;
+  }
+
+  class ContentReversePointsToAnalysisStep2 : public MetaAnalysisStep {
+  public:
+    explicit ContentReversePointsToAnalysisStep2(AnalysisResult *VI)
+      : MetaAnalysisStep(VI) {}
+
+    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
+      return VI->getAlgorithmResult<ContentReversePointsToAlgorithmStep3>();
+    }
+
+    virtual std::string getNodeLabel() const { return "ContentReverseStep2"; }
+  };
+
+  struct ContentReversePointsToAlgorithmStep2 {
+    static const char ID[];
+    static AnalysisResult *run(ValueInfo *VI);
+  };
+
+  const char ContentReversePointsToAlgorithmStep2::ID[] =
+      "content reverse points-to 2";
+
+  AnalysisResult *ContentReversePointsToAlgorithmStep2::run(ValueInfo *VI) {
+    AnalysisResult *AR = new AnalysisResult();
+    AR->addWork(new ContentReversePointsToAnalysisStep2(
+        VI->getAlgorithmResult<ReversePointsToAlgorithm>()));
+    return AR;
+  }
+
+  class ContentReversePointsToAnalysisStep : public MetaAnalysisStep {
+  public:
+    explicit ContentReversePointsToAnalysisStep(AnalysisResult *VI)
+      : MetaAnalysisStep(VI) {}
+
+    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
+      return VI->getAlgorithmResult<ContentReversePointsToAlgorithmStep2>();
+    }
+
+    virtual std::string getNodeLabel() const { return "ContentReverseStep"; }
+  };
 }
 
-namespace llvm {
-namespace lazyandersen {
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
-                               CONTENT_REVERSE_POINTS_TO_SET>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new ContentReversePointsToAnalysisStep(
-        Input->getAlgorithmResult<POINTS_TO_SET>()));
-    return Output;
-  }
+const char ContentReversePointsToAlgorithm::ID[] = "content reverse points-to";
 
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
-                               CONTENT_REVERSE_POINTS_TO_SET_STEP2>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new ContentReversePointsToAnalysisStep2(
-        Input->getAlgorithmResult<REVERSE_POINTS_TO_SET>()));
-    return Output;
-  }
-
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
-                               CONTENT_REVERSE_POINTS_TO_SET_STEP3>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new ContentReversePointsToAnalysisStep3(Input));
-    return Output;
-  }
-}
+AnalysisResult *ContentReversePointsToAlgorithm::run(ValueInfo *VI) {
+  AnalysisResult *AR = new AnalysisResult();
+  AR->addWork(new ContentReversePointsToAnalysisStep(
+      VI->getAlgorithmResult<PointsToAlgorithm>()));
+  return AR;
 }

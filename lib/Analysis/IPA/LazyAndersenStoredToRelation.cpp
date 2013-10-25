@@ -13,6 +13,9 @@
 
 #include "LazyAndersenStoredToRelation.h"
 
+#include "LazyAndersenContentReversePointsToAlgorithm.h"
+#include "LazyAndersenPointsToAlgorithm.h"
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -27,7 +30,7 @@ AnalysisResult *StoredToRelation::analyzePointsToSet() const {
 
 AnalysisResult *StoredToRelation::analyzeOutgoingReversePointsToSet() const {
   return getValueInfo<DESTINATION>()
-      ->getAlgorithmResult<CONTENT_REVERSE_POINTS_TO_SET>();
+      ->getAlgorithmResult<ContentReversePointsToAlgorithm>();
 }
 
 AnalysisResult *StoredToRelation::analyzeIncomingReversePointsToSet() const {
@@ -37,7 +40,7 @@ AnalysisResult *StoredToRelation::analyzeIncomingReversePointsToSet() const {
 
 AnalysisResult *StoredToRelation::analyzeStoredValuesPointsToSet()
     const {
-  return getValueInfo<SOURCE>()->getAlgorithmResult<POINTS_TO_SET>();
+  return getValueInfo<SOURCE>()->getAlgorithmResult<PointsToAlgorithm>();
 }
 
 AnalysisResult *

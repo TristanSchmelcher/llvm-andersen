@@ -11,36 +11,24 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenValueInfoAlgorithmId.h"
+#include "LazyAndersenReturnValueReversePointsToAlgorithm.h"
 
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenRelation.h"
 #include "LazyAndersenRelationsAnalysisStep.h"
+#include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
 namespace {
-  class ReturnValueReversePointsToAnalysisStep : public MetaAnalysisStep {
-  public:
-    explicit ReturnValueReversePointsToAnalysisStep(AnalysisResult *Input)
-      : MetaAnalysisStep(Input) {}
-
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<RETURN_VALUE_REVERSE_POINTS_TO_SET_STEP2>();
-    }
-
-    virtual std::string getNodeLabel() const {
-      return "ReturnValueReverseStep";
-    }
-  };
-
   class ReturnValueReversePointsToAnalysisStep2
     : public RelationsAnalysisStep<DESTINATION> {
   public:
-    explicit ReturnValueReversePointsToAnalysisStep2(ValueInfo *Input)
-      : RelationsAnalysisStep<DESTINATION>(Input) {}
+    explicit ReturnValueReversePointsToAnalysisStep2(ValueInfo *VI)
+      : RelationsAnalysisStep<DESTINATION>(VI) {}
 
     virtual AnalysisResult *analyzeRelation(Relation *R) {
       return R->analyzeReturnValueReversePointsToSet();
@@ -50,27 +38,42 @@ namespace {
       return "ReturnValueReverseStep2";
     }
   };
-}
 
-namespace llvm {
-namespace lazyandersen {
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
-                               RETURN_VALUE_REVERSE_POINTS_TO_SET>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new ReturnValueReversePointsToAnalysisStep(
-        Input->getAlgorithmResult<REVERSE_POINTS_TO_SET>()));
-    return Output;
+  struct ReturnValueReversePointsToAlgorithmStep2 {
+    static const char ID[];
+    static AnalysisResult *run(ValueInfo *VI);
+  };
+
+  const char ReturnValueReversePointsToAlgorithmStep2::ID[] =
+      "return value reverse points-to 2";
+
+  AnalysisResult *ReturnValueReversePointsToAlgorithmStep2::run(ValueInfo *VI) {
+    AnalysisResult *AR = new AnalysisResult();
+    AR->addWork(new ReturnValueReversePointsToAnalysisStep2(VI));
+    return AR;
   }
 
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
-                               RETURN_VALUE_REVERSE_POINTS_TO_SET_STEP2>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new ReturnValueReversePointsToAnalysisStep2(Input));
-    return Output;
-  }
+  class ReturnValueReversePointsToAnalysisStep : public MetaAnalysisStep {
+  public:
+    explicit ReturnValueReversePointsToAnalysisStep(AnalysisResult *VI)
+      : MetaAnalysisStep(VI) {}
+
+    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
+      return VI->getAlgorithmResult<ReturnValueReversePointsToAlgorithmStep2>();
+    }
+
+    virtual std::string getNodeLabel() const {
+      return "ReturnValueReverseStep";
+    }
+  };
 }
+
+const char ReturnValueReversePointsToAlgorithm::ID[] =
+    "return value reverse points-to";
+
+AnalysisResult *ReturnValueReversePointsToAlgorithm::run(ValueInfo *VI) {
+  AnalysisResult *AR = new AnalysisResult();
+  AR->addWork(new ReturnValueReversePointsToAnalysisStep(
+      VI->getAlgorithmResult<ReversePointsToAlgorithm>()));
+  return AR;
 }

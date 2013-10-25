@@ -13,6 +13,9 @@
 
 #include "LazyAndersenArgumentFromCallerRelation.h"
 
+#include "LazyAndersenArgumentPointsToAlgorithm.h"
+#include "LazyAndersenReversePointsToAlgorithm.h"
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -22,7 +25,7 @@ const char *ArgumentFromCallerRelation::getRelationName() const {
 
 AnalysisResult *ArgumentFromCallerRelation::analyzePointsToSet() const {
   return getValueInfo<DESTINATION>()
-      ->getAlgorithmResult<ARGUMENT_POINTS_TO_SET>();
+      ->getAlgorithmResult<ArgumentPointsToAlgorithm>();
 }
 
 AnalysisResult *ArgumentFromCallerRelation::analyzeOutgoingReversePointsToSet()
@@ -57,7 +60,7 @@ ArgumentFromCallerRelation::analyzeArgumentsPointsToSet() const {
 
 AnalysisResult *
 ArgumentFromCallerRelation::analyzeArgumentsReversePointsToSet() const {
-  return getValueInfo<SOURCE>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
+  return getValueInfo<SOURCE>()->getAlgorithmResult<ReversePointsToAlgorithm>();
 }
 
 AnalysisResult *

@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenValueInfoAlgorithmId.h"
+#include "LazyAndersenPointsToAlgorithm.h"
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenRelation.h"
@@ -35,14 +35,10 @@ namespace {
   };
 }
 
-namespace llvm {
-namespace lazyandersen {
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId, POINTS_TO_SET>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new PointsToRelationsAnalysisStep(Input));
-    return Output;
-  }
-}
+const char PointsToAlgorithm::ID[] = "points-to";
+
+AnalysisResult *PointsToAlgorithm::run(ValueInfo *VI) {
+  AnalysisResult *AR = new AnalysisResult();
+  AR->addWork(new PointsToRelationsAnalysisStep(VI));
+  return AR;
 }

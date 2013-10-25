@@ -29,11 +29,6 @@ ValueInfo::ValueInfo(const Value *V, Map *ContainingMap)
 
 ValueInfo::~ValueInfo() {}
 
-void ValueInfo::setAlgorithmResultSpecialCase(ValueInfoAlgorithmId Id,
-    AnalysisResult *AR) {
-  ResultCache.setAlgorithmResultSpecialCase(Id, AR);
-}
-
 GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   for (HalfRelationList<SOURCE>::const_iterator
@@ -47,11 +42,12 @@ GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
         Relation::getOppositeEndpoint(HR)->getValueInfo(),
         OSS.str()));
   }
-  for (int i = 0; i < NUM_VALUE_INFO_ALGORITHMS; ++i) {
-    AnalysisResult *AR = ResultCache.getAlgorithmResultNoCreate(
-        static_cast<ValueInfoAlgorithmId>(i));
-    if (!AR) continue;
-    Result.push_back(GraphEdge(AR, ValueInfoAlgorithmNames[i]));
+  for (AnalysisResultCacheTy::ResultsMapTy::const_iterator i =
+           AnalysisResultCacheTy::getResults().begin();
+       i != AnalysisResultCacheTy::getResults().end(); ++i) {
+    const char *Id = i->first;
+    AnalysisResult *AR = i->second;
+    Result.push_back(GraphEdge(AR, Id));
   }
   return Result;
 }

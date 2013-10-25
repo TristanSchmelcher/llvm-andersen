@@ -15,11 +15,9 @@
 #define LAZYANDERSENVALUEINFO_H
 
 #include "LazyAndersenAlgorithmResultCache.h"
-#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenEdgeEndpointType.h"
 #include "LazyAndersenGraphNode.h"
 #include "LazyAndersenHalfRelationList.h"
-#include "LazyAndersenValueInfoAlgorithmId.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 
@@ -29,12 +27,19 @@ namespace llvm {
 
 namespace llvm {
 namespace lazyandersen {
+  class AnalysisResult;
+  class ValueInfo;
+  typedef AlgorithmResultCache<ValueInfo, AnalysisResult, const char *>
+      AnalysisResultCacheTy;
+
   class ValueInfo : private RefCountedBase<ValueInfo>,
       private HalfRelationList<SOURCE>,
       private HalfRelationList<DESTINATION>,
-      public GraphNode {
+      public GraphNode,
+      private AnalysisResultCacheTy {
     friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
     friend class RefCountedBase<ValueInfo>;
+    friend class AlgorithmResultCache<ValueInfo, AnalysisResult, const char *>;
     // The Value that maps to this object. (If this analysis applies to
     // multiple Values, this is the first one that was analyzed.)
     const Value *V;
@@ -45,11 +50,13 @@ namespace lazyandersen {
     typedef DenseMap<const Value *, Ref> Map;
 
   private:
-    AlgorithmResultCache<ValueInfoAlgorithmId> ResultCache;
     // The map that this analysis is in.
     Map *ContainingMap;
 
   public:
+    using AnalysisResultCacheTy::getAlgorithmResult;
+    using AnalysisResultCacheTy::preCreateSpecialCaseResult;
+
     static ValueInfo *const Nil;
 
     ValueInfo(const Value *V, Map *Map);
@@ -82,17 +89,9 @@ namespace lazyandersen {
       return static_cast<const HalfRelationList<Endpoint> *>(this);
     }
 
-    template<ValueInfoAlgorithmId Id>
-    AnalysisResult *getAlgorithmResult() {
-      return ResultCache.getAlgorithmResult<Id>(this);
-    }
-
     virtual GraphEdgeDeque getOutgoingEdges() const;
     virtual std::string getNodeLabel() const;
     virtual bool isNodeHidden() const;
-
-    void setAlgorithmResultSpecialCase(ValueInfoAlgorithmId Id,
-        AnalysisResult *AR);
 
   private:
     ~ValueInfo();

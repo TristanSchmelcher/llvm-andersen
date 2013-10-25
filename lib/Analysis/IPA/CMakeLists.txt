@@ -42,7 +42,6 @@ add_llvm_library(LLVMipa
   LazyAndersenStoredToRelation.cpp
   LazyAndersenTopEnumerator.cpp
   LazyAndersenValueInfo.cpp
-  LazyAndersenValueInfoAlgorithmId.cpp
   LazyAndersenValuePrinter.cpp
   )
 

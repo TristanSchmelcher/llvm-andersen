@@ -13,6 +13,9 @@
 
 #include "LazyAndersenReturnedFromCalleeRelation.h"
 
+#include "LazyAndersenReturnValuePointsToAlgorithm.h"
+#include "LazyAndersenReversePointsToAlgorithm.h"
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
@@ -22,7 +25,7 @@ const char *ReturnedFromCalleeRelation::getRelationName() const {
 
 AnalysisResult *ReturnedFromCalleeRelation::analyzePointsToSet() const {
   return getValueInfo<DESTINATION>()
-      ->getAlgorithmResult<RETURN_VALUE_POINTS_TO_SET>();
+      ->getAlgorithmResult<ReturnValuePointsToAlgorithm>();
 }
 
 AnalysisResult *ReturnedFromCalleeRelation::analyzeOutgoingReversePointsToSet()
@@ -69,5 +72,5 @@ ReturnedFromCalleeRelation::analyzeReturnValuePointsToSet() const {
 
 AnalysisResult *
 ReturnedFromCalleeRelation::analyzeReturnValueReversePointsToSet() const {
-  return getValueInfo<SOURCE>()->getAlgorithmResult<REVERSE_POINTS_TO_SET>();
+  return getValueInfo<SOURCE>()->getAlgorithmResult<ReversePointsToAlgorithm>();
 }

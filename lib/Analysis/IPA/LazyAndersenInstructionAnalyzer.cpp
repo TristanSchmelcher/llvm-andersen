@@ -19,6 +19,7 @@
 #include "LazyAndersenData.h"
 #include "LazyAndersenDependsOnRelation.h"
 #include "LazyAndersenLoadedFromRelation.h"
+#include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenReturnedFromCalleeRelation.h"
 #include "LazyAndersenReturnedToCallerRelation.h"
 #include "LazyAndersenStoredToRelation.h"
@@ -234,7 +235,7 @@ ValueInfo *InstructionAnalyzer::createFinalizedValueInfo(const Value *V) {
   ValueInfo *VI = createValueInfo(V);
   AnalysisResult *AR = new AnalysisResult();
   AR->addValueInfo(VI);
-  VI->setAlgorithmResultSpecialCase(POINTS_TO_SET, AR);
+  VI->preCreateSpecialCaseResult<PointsToAlgorithm>(AR);
   return VI;
 }
 
@@ -263,8 +264,7 @@ ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
 ValueInfo *InstructionAnalyzer::analyzeGlobalValue(const GlobalValue *G) {
   // TODO: Need to be aware of linkage here. Also, GlobalAlias may be
   // special. Also, a global might be initialized with a value that points
-  // to something else, in which case we need to pre-create the
-  // CONTENT_POINTS_TO_SET result.
+  // to something else, in which case we need to add a StoredToRelation.
   return createFinalizedValueInfo(G);
 }
 

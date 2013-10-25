@@ -11,34 +11,24 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenValueInfoAlgorithmId.h"
+#include "LazyAndersenArgumentPointsToAlgorithm.h"
 
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenRelation.h"
 #include "LazyAndersenRelationsAnalysisStep.h"
+#include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
 namespace {
-  class ArgumentPointsToAnalysisStep : public MetaAnalysisStep {
-  public:
-    explicit ArgumentPointsToAnalysisStep(AnalysisResult *Input)
-      : MetaAnalysisStep(Input) {}
-
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<ARGUMENT_POINTS_TO_SET_STEP2>();
-    }
-
-    virtual std::string getNodeLabel() const { return "ArgumentStep"; }
-  };
-
   class ArgumentPointsToAnalysisStep2
     : public RelationsAnalysisStep<DESTINATION> {
   public:
-    explicit ArgumentPointsToAnalysisStep2(ValueInfo *Input)
-      : RelationsAnalysisStep<DESTINATION>(Input) {}
+    explicit ArgumentPointsToAnalysisStep2(ValueInfo *VI)
+      : RelationsAnalysisStep<DESTINATION>(VI) {}
 
     virtual AnalysisResult *analyzeRelation(Relation *R) {
       return R->analyzeArgumentsPointsToSet();
@@ -46,27 +36,38 @@ namespace {
 
     virtual std::string getNodeLabel() const { return "ArgumentStep2"; }
   };
-}
 
-namespace llvm {
-namespace lazyandersen {
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
-                               ARGUMENT_POINTS_TO_SET>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new ArgumentPointsToAnalysisStep(
-        Input->getAlgorithmResult<REVERSE_POINTS_TO_SET>()));
-    return Output;
+  struct ArgumentPointsToAlgorithmStep2 {
+    static const char ID[];
+    static AnalysisResult *run(ValueInfo *VI);
+  };
+
+  const char ArgumentPointsToAlgorithmStep2::ID[] = "argument points-to 2";
+
+  AnalysisResult *ArgumentPointsToAlgorithmStep2::run(ValueInfo *VI) {
+    AnalysisResult *AR = new AnalysisResult();
+    AR->addWork(new ArgumentPointsToAnalysisStep2(VI));
+    return AR;
   }
 
-  template<>
-  AnalysisResult *runAlgorithm<ValueInfoAlgorithmId,
-                               ARGUMENT_POINTS_TO_SET_STEP2>(
-      ValueInfo *Input) {
-    AnalysisResult *Output = new AnalysisResult();
-    Output->addWork(new ArgumentPointsToAnalysisStep2(Input));
-    return Output;
-  }
+  class ArgumentPointsToAnalysisStep : public MetaAnalysisStep {
+  public:
+    explicit ArgumentPointsToAnalysisStep(AnalysisResult *VI)
+      : MetaAnalysisStep(VI) {}
+
+    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
+      return VI->getAlgorithmResult<ArgumentPointsToAlgorithmStep2>();
+    }
+
+    virtual std::string getNodeLabel() const { return "ArgumentStep"; }
+  };
 }
+
+const char ArgumentPointsToAlgorithm::ID[] = "argument points-to";
+
+AnalysisResult *ArgumentPointsToAlgorithm::run(ValueInfo *VI) {
+  AnalysisResult *AR = new AnalysisResult();
+  AR->addWork(new ArgumentPointsToAnalysisStep(
+      VI->getAlgorithmResult<ReversePointsToAlgorithm>()));
+  return AR;
 }
