@@ -20,9 +20,12 @@
 namespace llvm {
 namespace lazyandersen {
 
+// TODO: Should this be a ValueMap?
+typedef DenseMap<const Value *, ValueInfo::Ref> ValueInfoMap;
+
 class LazyAndersenData : public GraphNode {
 public:
-  ValueInfo::Map ValueInfos;
+  ValueInfoMap ValueInfos;
 
   virtual GraphEdgeDeque getOutgoingEdges() const;
   virtual std::string getNodeLabel() const;

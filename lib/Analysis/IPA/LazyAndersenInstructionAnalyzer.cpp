@@ -228,7 +228,7 @@ ValueInfo *InstructionAnalyzer::cache(const Value *V, ValueInfo *VI) {
 }
 
 ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
-  return new ValueInfo(V, &Data->ValueInfos);
+  return new ValueInfo(V);
 }
 
 ValueInfo *InstructionAnalyzer::createFinalizedValueInfo(const Value *V) {
@@ -240,7 +240,7 @@ ValueInfo *InstructionAnalyzer::createFinalizedValueInfo(const Value *V) {
 }
 
 ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
-  ValueInfo::Map::const_iterator i = Data->ValueInfos.find(V);
+  ValueInfoMap::const_iterator i = Data->ValueInfos.find(V);
   if (i != Data->ValueInfos.end()) {
     // Previously analyzed.
     return i->second.getPtr();

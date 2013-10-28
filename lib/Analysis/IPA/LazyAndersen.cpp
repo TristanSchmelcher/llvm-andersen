@@ -64,7 +64,7 @@ bool LazyAndersen::runOnModule(Module &M) {
   assert(!Data);
   Data = InstructionAnalyzer::run(this, M);
   if (NonLazy) {
-    for (ValueInfo::Map::const_iterator i = Data->ValueInfos.begin();
+    for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin();
          i != Data->ValueInfos.end(); ++i) {
       getPointsToSet(i->first);
     }
@@ -89,7 +89,7 @@ void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
           " analysis results.\n";
     return;
   }
-  for (ValueInfo::Map::const_iterator i = Data->ValueInfos.begin();
+  for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin();
        i != Data->ValueInfos.end(); ++i) {
     DenseSet<const Value *> PointsTo(getPointsToSet(i->first));
     OS << "Points-to set for " << prettyPrintValue(i->first) << ":\n";

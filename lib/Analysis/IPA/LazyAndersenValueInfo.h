@@ -46,27 +46,16 @@ namespace lazyandersen {
 
   public:
     typedef IntrusiveRefCntPtr<ValueInfo> Ref;
-    // TODO: Should this be a ValueMap?
-    typedef DenseMap<const Value *, Ref> Map;
 
-  private:
-    // The map that this analysis is in.
-    Map *ContainingMap;
-
-  public:
     using AnalysisResultCacheTy::getAlgorithmResult;
     using AnalysisResultCacheTy::preCreateSpecialCaseResult;
 
     static ValueInfo *const Nil;
 
-    ValueInfo(const Value *V, Map *Map);
+    ValueInfo(const Value *V);
 
     const Value *getValue() const {
       return V;
-    }
-
-    Map *getMap() const {
-      return ContainingMap;
     }
 
     template<EdgeEndpointType Endpoint>

@@ -24,8 +24,7 @@ using namespace llvm::lazyandersen;
 
 ValueInfo *const ValueInfo::Nil = 0;
 
-ValueInfo::ValueInfo(const Value *V, Map *ContainingMap)
-  : V(V), ContainingMap(ContainingMap) {}
+ValueInfo::ValueInfo(const Value *V) : V(V) {}
 
 ValueInfo::~ValueInfo() {}
 

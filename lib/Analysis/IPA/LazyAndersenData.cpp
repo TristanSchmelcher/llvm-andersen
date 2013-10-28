@@ -20,8 +20,9 @@ using namespace llvm::lazyandersen;
 
 GraphEdgeDeque LazyAndersenData::getOutgoingEdges() const {
   GraphEdgeDeque Result;
-  for (ValueInfo::Map::const_iterator
-           i = ValueInfos.begin(), End = ValueInfos.end(); i != End; ++i) {
+  for (ValueInfoMap::const_iterator i = ValueInfos.begin(),
+                                    End = ValueInfos.end();
+       i != End; ++i) {
     if (!i->second.getPtr() || i->first != i->second->getValue()) continue;
     // No edge label needed because this edge will not be printed.
     Result.push_back(GraphEdge(i->second.getPtr(), std::string()));
