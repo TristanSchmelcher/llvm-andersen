@@ -43,6 +43,12 @@ namespace lazyandersen {
     }
 
     template<typename AlgorithmTy>
+    OutputTy *getOrCreateEagerAlgorithmResult() {
+      // Dispatch to a non-template method for less code size.
+      return getAlgorithmResultInternal(AlgorithmTy::ID, &newOutputTy);
+    }
+
+    template<typename AlgorithmTy>
     void preCreateSpecialCaseResult(OutputTy *Output) {
       OutputTy *&Result = Results[AlgorithmTy::ID];
       assert(!Result);
@@ -51,6 +57,8 @@ namespace lazyandersen {
     }
 
   private:
+    static OutputTy *newOutputTy(InputTy *Unused) { return new OutputTy(); }
+
     OutputTy *getAlgorithmResultInternal(AlgorithmIdTy Id, AlgorithmFn Fn);
   };
 

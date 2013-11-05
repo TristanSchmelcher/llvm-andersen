@@ -14,7 +14,6 @@
 #include "LazyAndersenValueInfo.h"
 
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenRelation.h"
 #include "LazyAndersenValuePrinter.h"
 
 #include <sstream>
@@ -30,17 +29,6 @@ ValueInfo::~ValueInfo() {}
 
 GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
   GraphEdgeDeque Result;
-  for (HalfRelationList<SOURCE>::const_iterator
-           i = getRelations<SOURCE>()->begin(),
-           End = getRelations<SOURCE>()->end(); i != End; ++i) {
-    const HalfRelation<SOURCE> *HR = HalfRelation<SOURCE>::from(&*i);
-    const Relation *R = Relation::get(HR);
-    std::ostringstream OSS;
-    OSS << R << " " << R->getRelationName();
-    Result.push_back(GraphEdge(
-        Relation::getOppositeEndpoint(HR)->getValueInfo(),
-        OSS.str()));
-  }
   for (AnalysisResultCacheTy::ResultsMapTy::const_iterator i =
            AnalysisResultCacheTy::getResults().begin();
        i != AnalysisResultCacheTy::getResults().end(); ++i) {

@@ -16,48 +16,34 @@
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenRelation.h"
-#include "LazyAndersenRelationsAnalysisStep.h"
+#include "LazyAndersenRecursiveEnumerate.h"
 #include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
+const char StoredValuesPointsToAlgorithm::ID[] =
+    "stored values points-to";
+
+void StoredValuesPointsToAlgorithm::RelationHandler<STORED_TO>::onRelation(
+    ValueInfo *Src, ValueInfo *Dst) {
+  Dst->getOrCreateEagerAlgorithmResult<
+      StoredValuesPointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Src->getOrCreateEagerAlgorithmResult<
+                  PointsToAlgorithm>()));
+}
+
 namespace {
-  class ContentPointsToAnalysisStep3
-    : public RelationsAnalysisStep<DESTINATION> {
-  public:
-    explicit ContentPointsToAnalysisStep3(ValueInfo *VI)
-      : RelationsAnalysisStep<DESTINATION>(VI) {}
-
-    virtual AnalysisResult *analyzeRelation(Relation *R) {
-      return R->analyzeStoredValuesPointsToSet();
-    }
-
-    virtual std::string getNodeLabel() const { return "ContentStep3"; }
-  };
-
-  struct ContentPointsToAlgorithmStep3 {
-    static const char ID[];
-    static AnalysisResult *run(ValueInfo *VI);
-  };
-
-  const char ContentPointsToAlgorithmStep3::ID[] = "content points-to 3";
-
-  AnalysisResult *ContentPointsToAlgorithmStep3::run(ValueInfo *VI) {
-    AnalysisResult *AR = new AnalysisResult();
-    AR->addWork(new ContentPointsToAnalysisStep3(VI));
-    return AR;
-  }
-
   class ContentPointsToAnalysisStep2 : public MetaAnalysisStep {
   public:
     explicit ContentPointsToAnalysisStep2(AnalysisResult *VI)
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<ContentPointsToAlgorithmStep3>();
+      return VI->getOrCreateEagerAlgorithmResult<
+          StoredValuesPointsToAlgorithm>();
     }
 
     virtual std::string getNodeLabel() const { return "ContentStep2"; }
@@ -73,7 +59,7 @@ namespace {
   AnalysisResult *ContentPointsToAlgorithmStep2::run(ValueInfo *VI) {
     AnalysisResult *AR = new AnalysisResult();
     AR->addWork(new ContentPointsToAnalysisStep2(
-        VI->getAlgorithmResult<ReversePointsToAlgorithm>()));
+        VI->getOrCreateEagerAlgorithmResult<ReversePointsToAlgorithm>()));
     return AR;
   }
 
@@ -95,6 +81,6 @@ const char ContentPointsToAlgorithm::ID[] = "content points-to";
 AnalysisResult *ContentPointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
   AR->addWork(new ContentPointsToAnalysisStep(
-      VI->getAlgorithmResult<PointsToAlgorithm>()));
+      VI->getOrCreateEagerAlgorithmResult<PointsToAlgorithm>()));
   return AR;
 }

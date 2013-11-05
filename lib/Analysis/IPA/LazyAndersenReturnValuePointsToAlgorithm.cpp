@@ -16,48 +16,33 @@
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenRelation.h"
-#include "LazyAndersenRelationsAnalysisStep.h"
+#include "LazyAndersenRecursiveEnumerate.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
+const char ActualReturnValuePointsToAlgorithm::ID[] =
+    "actual return value points-to";
+
+void ActualReturnValuePointsToAlgorithm::RelationHandler<RETURNED_TO_CALLER>
+    ::onRelation(ValueInfo *Src, ValueInfo *Dst) {
+  Dst->getOrCreateEagerAlgorithmResult<
+      ActualReturnValuePointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Src->getOrCreateEagerAlgorithmResult<
+                  PointsToAlgorithm>()));
+}
+
 namespace {
-  class ReturnValuePointsToAnalysisStep2
-    : public RelationsAnalysisStep<DESTINATION> {
-  public:
-    explicit ReturnValuePointsToAnalysisStep2(ValueInfo *VI)
-      : RelationsAnalysisStep<DESTINATION>(VI) {}
-
-    virtual AnalysisResult *analyzeRelation(Relation *R) {
-      return R->analyzeReturnValuePointsToSet();
-    }
-
-    virtual std::string getNodeLabel() const { return "ReturnValueStep2"; }
-  };
-
-  struct ReturnValuePointsToAlgorithmStep2 {
-    static const char ID[];
-    static AnalysisResult *run(ValueInfo *VI);
-  };
-
-  const char ReturnValuePointsToAlgorithmStep2::ID[] =
-      "return value points-to 2";
-
-  AnalysisResult *ReturnValuePointsToAlgorithmStep2::run(ValueInfo *VI) {
-    AnalysisResult *AR = new AnalysisResult();
-    AR->addWork(new ReturnValuePointsToAnalysisStep2(VI));
-    return AR;
-  }
-
   class ReturnValuePointsToAnalysisStep : public MetaAnalysisStep {
   public:
     explicit ReturnValuePointsToAnalysisStep(AnalysisResult *VI)
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<ReturnValuePointsToAlgorithmStep2>();
+      return VI->getOrCreateEagerAlgorithmResult<
+          ActualReturnValuePointsToAlgorithm>();
     }
 
     virtual std::string getNodeLabel() const { return "ReturnValueStep"; }
@@ -69,6 +54,6 @@ const char ReturnValuePointsToAlgorithm::ID[] = "return value points-to";
 AnalysisResult *ReturnValuePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
   AR->addWork(new ReturnValuePointsToAnalysisStep(
-      VI->getAlgorithmResult<PointsToAlgorithm>()));
+      VI->getOrCreateEagerAlgorithmResult<PointsToAlgorithm>()));
   return AR;
 }

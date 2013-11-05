@@ -1,4 +1,4 @@
-//===- LazyAndersenEdgeEndpointType.cpp - graph edge constants ------------===//
+//===- LazyAndersenRelationType.h - relation classes ----------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,21 +7,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines edge endpoint constants and traits for the LazyAndersen
-// algorithm.
+// This file declares an enum for relation types.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenEdgeEndpointType.h"
+#ifndef LAZYANDERSENRELATIONTYPE_H
+#define LAZYANDERSENRELATIONTYPE_H
 
 namespace llvm {
 namespace lazyandersen {
-
-const char EdgeEndpointTraitsBase<SOURCE>::EdgeEndpointTypeShortName[] =
-    "SRC";
-
-const char EdgeEndpointTraitsBase<DESTINATION>::EdgeEndpointTypeShortName[] =
-    "DST";
-
+  enum RelationType {
+    ARGUMENT_FROM_CALLER,
+    ARGUMENT_TO_CALLEE,
+    DEPENDS_ON,
+    LOADED_FROM,
+    RETURNED_FROM_CALLEE,
+    RETURNED_TO_CALLER,
+    STORED_TO
+  };
 }
 }
+
+#endif

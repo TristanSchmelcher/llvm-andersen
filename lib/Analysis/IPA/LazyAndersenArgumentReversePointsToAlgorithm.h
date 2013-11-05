@@ -14,11 +14,29 @@
 #ifndef LAZYANDERSENARGUMENTREVERSEPOINTSTOALGORITHM_H
 #define LAZYANDERSENARGUMENTREVERSEPOINTSTOALGORITHM_H
 
+#include "LazyAndersenRelationType.h"
+
 namespace llvm {
 namespace lazyandersen {
   class AnalysisResult;
   class ValueInfo;
 
+  struct FormalParametersReversePointsToAlgorithm {
+    static const char ID[];
+
+    template<RelationType RT>
+    struct RelationHandler {
+      static void onRelation(ValueInfo *Src, ValueInfo *Dst) {}
+    };
+  };
+
+  template<>
+  struct FormalParametersReversePointsToAlgorithm::RelationHandler<
+      ARGUMENT_FROM_CALLER> {
+    static void onRelation(ValueInfo *Src, ValueInfo *Dst);
+  };
+
+  // TODO: Rename to actual params.
   struct ArgumentReversePointsToAlgorithm {
     static const char ID[];
     static AnalysisResult *run(ValueInfo *VI);

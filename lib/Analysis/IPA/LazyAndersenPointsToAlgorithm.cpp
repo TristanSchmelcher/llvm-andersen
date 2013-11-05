@@ -14,31 +14,49 @@
 #include "LazyAndersenPointsToAlgorithm.h"
 
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenRelation.h"
-#include "LazyAndersenRelationsAnalysisStep.h"
+#include "LazyAndersenArgumentPointsToAlgorithm.h"
+#include "LazyAndersenContentPointsToAlgorithm.h"
+#include "LazyAndersenRecursiveEnumerate.h"
+#include "LazyAndersenReturnValuePointsToAlgorithm.h"
+#include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-namespace {
-  class PointsToRelationsAnalysisStep : public RelationsAnalysisStep<SOURCE> {
-  public:
-    explicit PointsToRelationsAnalysisStep(ValueInfo *VI)
-      : RelationsAnalysisStep<SOURCE>(VI) {}
-
-    virtual std::string getNodeLabel() const { return "PointsStep"; }
-
-  protected:
-    virtual AnalysisResult *analyzeRelation(Relation *R) {
-      return R->analyzePointsToSet();
-    }
-  };
-}
-
 const char PointsToAlgorithm::ID[] = "points-to";
 
-AnalysisResult *PointsToAlgorithm::run(ValueInfo *VI) {
-  AnalysisResult *AR = new AnalysisResult();
-  AR->addWork(new PointsToRelationsAnalysisStep(VI));
-  return AR;
+void PointsToAlgorithm::RelationHandler<ARGUMENT_FROM_CALLER>::onRelation(
+    ValueInfo *Src, ValueInfo *Dst) {
+  Src->getOrCreateEagerAlgorithmResult<
+      PointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Dst->getAlgorithmResult<
+                  ArgumentPointsToAlgorithm>()));
+}
+
+void PointsToAlgorithm::RelationHandler<DEPENDS_ON>::onRelation(
+    ValueInfo *Src, ValueInfo *Dst) {
+  Src->getOrCreateEagerAlgorithmResult<
+      PointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Dst->getOrCreateEagerAlgorithmResult<
+                  PointsToAlgorithm>()));
+}
+
+void PointsToAlgorithm::RelationHandler<LOADED_FROM>::onRelation(
+    ValueInfo *Src, ValueInfo *Dst) {
+  Src->getOrCreateEagerAlgorithmResult<
+      PointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Dst->getAlgorithmResult<
+                  ContentPointsToAlgorithm>()));
+}
+
+void PointsToAlgorithm::RelationHandler<RETURNED_FROM_CALLEE>::onRelation(
+    ValueInfo *Src, ValueInfo *Dst) {
+  Src->getOrCreateEagerAlgorithmResult<
+      PointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Dst->getAlgorithmResult<
+                  ReturnValuePointsToAlgorithm>()));
 }

@@ -14,10 +14,26 @@
 #ifndef LAZYANDERSENCONTENTREVERSEPOINTSTOALGORITHM_H
 #define LAZYANDERSENCONTENTREVERSEPOINTSTOALGORITHM_H
 
+#include "LazyAndersenRelationType.h"
+
 namespace llvm {
 namespace lazyandersen {
   class AnalysisResult;
   class ValueInfo;
+
+  struct LoadedValuesReversePointsToAlgorithm {
+    static const char ID[];
+
+    template<RelationType RT>
+    struct RelationHandler {
+      static void onRelation(ValueInfo *Src, ValueInfo *Dst) {}
+    };
+  };
+
+  template<>
+  struct LoadedValuesReversePointsToAlgorithm::RelationHandler<LOADED_FROM> {
+    static void onRelation(ValueInfo *Src, ValueInfo *Dst);
+  };
 
   struct ContentReversePointsToAlgorithm {
     static const char ID[];

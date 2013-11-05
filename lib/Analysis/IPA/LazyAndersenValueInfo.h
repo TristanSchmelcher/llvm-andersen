@@ -15,9 +15,7 @@
 #define LAZYANDERSENVALUEINFO_H
 
 #include "LazyAndersenAlgorithmResultCache.h"
-#include "LazyAndersenEdgeEndpointType.h"
 #include "LazyAndersenGraphNode.h"
-#include "LazyAndersenHalfRelationList.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 
@@ -32,9 +30,8 @@ namespace lazyandersen {
   typedef AlgorithmResultCache<ValueInfo, AnalysisResult, const char *>
       AnalysisResultCacheTy;
 
-  class ValueInfo : private RefCountedBase<ValueInfo>,
-      private HalfRelationList<SOURCE>,
-      private HalfRelationList<DESTINATION>,
+  class ValueInfo :
+      private RefCountedBase<ValueInfo>,
       public GraphNode,
       private AnalysisResultCacheTy {
     friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
@@ -48,6 +45,7 @@ namespace lazyandersen {
     typedef IntrusiveRefCntPtr<ValueInfo> Ref;
 
     using AnalysisResultCacheTy::getAlgorithmResult;
+    using AnalysisResultCacheTy::getOrCreateEagerAlgorithmResult;
     using AnalysisResultCacheTy::preCreateSpecialCaseResult;
 
     static ValueInfo *const Nil;
@@ -58,32 +56,12 @@ namespace lazyandersen {
       return V;
     }
 
-    template<EdgeEndpointType Endpoint>
-    static ValueInfo *get(HalfRelationList<Endpoint> *List) {
-      return static_cast<ValueInfo *>(List);
-    }
-
-    template<EdgeEndpointType Endpoint>
-    static const ValueInfo *get(const HalfRelationList<Endpoint> *List) {
-      return static_cast<const ValueInfo *>(List);
-    }
-
-    template<EdgeEndpointType Endpoint>
-    HalfRelationList<Endpoint> *getRelations() {
-      return static_cast<HalfRelationList<Endpoint> *>(this);
-    }
-
-    template<EdgeEndpointType Endpoint>
-    const HalfRelationList<Endpoint> *getRelations() const {
-      return static_cast<const HalfRelationList<Endpoint> *>(this);
-    }
-
     virtual GraphEdgeDeque getOutgoingEdges() const;
     virtual std::string getNodeLabel() const;
     virtual bool isNodeHidden() const;
 
   private:
-    ~ValueInfo();
+    virtual ~ValueInfo();
   };
 }
 }

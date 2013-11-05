@@ -9,37 +9,22 @@ add_llvm_library(LLVMipa
   LazyAndersen.cpp
   LazyAndersenAliasAnalysis.cpp
   LazyAndersenAnalysisResult.cpp
-  LazyAndersenAnalysisResultAlgorithmId.cpp
   LazyAndersenAnalysisResultWork.cpp
-  LazyAndersenArgumentFromCallerRelation.cpp
   LazyAndersenArgumentPointsToAlgorithm.cpp
   LazyAndersenArgumentReversePointsToAlgorithm.cpp
-  LazyAndersenArgumentToCalleeRelation.cpp
   LazyAndersenContentPointsToAlgorithm.cpp
   LazyAndersenContentReversePointsToAlgorithm.cpp
   LazyAndersenData.cpp
-  LazyAndersenDependsOnRelation.cpp
-  LazyAndersenEdgeEndpointType.cpp
   LazyAndersenEnumerationContext.cpp
   LazyAndersenEnumerator.cpp
-  LazyAndersenHalfRelation.cpp
-  LazyAndersenHalfRelationBase.cpp
-  LazyAndersenHalfRelationBaseList.cpp
-  LazyAndersenHalfRelationList.cpp
+  LazyAndersenGraphViewer.cpp
   LazyAndersenInstructionAnalyzer.cpp
-  LazyAndersenLoadedFromRelation.cpp
   LazyAndersenMetaAnalysisStep.cpp
   LazyAndersenPointsToAlgorithm.cpp
-  LazyAndersenRelation.cpp
-  LazyAndersenRelationsAnalysisStep.cpp
-  LazyAndersenRelationsAnalysisStepBase.cpp
-  LazyAndersenRelationsGraphViewer.cpp
-  LazyAndersenReturnedFromCalleeRelation.cpp
-  LazyAndersenReturnedToCallerRelation.cpp
+  LazyAndersenRecursiveEnumerate.cpp
   LazyAndersenReturnValuePointsToAlgorithm.cpp
   LazyAndersenReturnValueReversePointsToAlgorithm.cpp
   LazyAndersenReversePointsToAlgorithm.cpp
-  LazyAndersenStoredToRelation.cpp
   LazyAndersenTopEnumerator.cpp
   LazyAndersenValueInfo.cpp
   LazyAndersenValuePrinter.cpp

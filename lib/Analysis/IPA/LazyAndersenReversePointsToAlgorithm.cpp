@@ -14,56 +14,49 @@
 #include "LazyAndersenReversePointsToAlgorithm.h"
 
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenRelation.h"
-#include "LazyAndersenRelationsAnalysisStep.h"
+#include "LazyAndersenArgumentReversePointsToAlgorithm.h"
+#include "LazyAndersenContentReversePointsToAlgorithm.h"
+#include "LazyAndersenRecursiveEnumerate.h"
+#include "LazyAndersenReturnValueReversePointsToAlgorithm.h"
+#include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-namespace {
-  class ReversePointsToOutgoingRelationsAnalysisStep :
-      public RelationsAnalysisStep<SOURCE> {
-  public:
-    explicit ReversePointsToOutgoingRelationsAnalysisStep(ValueInfo *VI)
-      : RelationsAnalysisStep<SOURCE>(VI) {}
-
-    virtual std::string getNodeLabel() const { return "ReverseOutgoingStep"; }
-
-  protected:
-    virtual AnalysisResult *analyzeRelation(Relation *R);
-  };
-
-  AnalysisResult *
-  ReversePointsToOutgoingRelationsAnalysisStep::analyzeRelation(Relation *R) {
-    return R->analyzeOutgoingReversePointsToSet();
-  }
-
-  class ReversePointsToIncomingRelationsAnalysisStep :
-      public RelationsAnalysisStep<DESTINATION> {
-  public:
-    explicit ReversePointsToIncomingRelationsAnalysisStep(ValueInfo *VI)
-      : RelationsAnalysisStep<DESTINATION>(VI) {}
-
-    virtual std::string getNodeLabel() const { return "ReverseIncomingStep"; }
-
-  protected:
-    virtual AnalysisResult *analyzeRelation(Relation *R);
-  };
-
-  AnalysisResult *
-  ReversePointsToIncomingRelationsAnalysisStep::analyzeRelation(Relation *R) {
-    return R->analyzeIncomingReversePointsToSet();
-  }
-}
-
 const char ReversePointsToAlgorithm::ID[] = "reverse points-to";
 
-AnalysisResult *ReversePointsToAlgorithm::run(ValueInfo *VI) {
-  AnalysisResult *AR = new AnalysisResult();
-  AR->addValueInfo(VI);
-  AR->addWork(new ReversePointsToOutgoingRelationsAnalysisStep(
-      VI));
-  AR->addWork(new ReversePointsToIncomingRelationsAnalysisStep(
-      VI));
-  return AR;
+void ReversePointsToAlgorithm::RelationHandler<ARGUMENT_TO_CALLEE>::onRelation(
+    ValueInfo *Src, ValueInfo *Dst) {
+  Src->getOrCreateEagerAlgorithmResult<
+      ReversePointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Dst->getAlgorithmResult<
+                  ArgumentReversePointsToAlgorithm>()));
+}
+
+void ReversePointsToAlgorithm::RelationHandler<DEPENDS_ON>::onRelation(
+    ValueInfo *Src, ValueInfo *Dst) {
+  Dst->getOrCreateEagerAlgorithmResult<
+      ReversePointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Src->getOrCreateEagerAlgorithmResult<
+                  ReversePointsToAlgorithm>()));
+}
+
+void ReversePointsToAlgorithm::RelationHandler<RETURNED_TO_CALLER>::onRelation(
+    ValueInfo *Src, ValueInfo *Dst) {
+  Src->getOrCreateEagerAlgorithmResult<
+      ReversePointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Dst->getAlgorithmResult<
+                  ReturnValueReversePointsToAlgorithm>()));
+}
+
+void ReversePointsToAlgorithm::RelationHandler<STORED_TO>::onRelation(
+    ValueInfo *Src, ValueInfo *Dst) {
+  Src->getOrCreateEagerAlgorithmResult<
+      ReversePointsToAlgorithm>()
+          ->addWork(new RecursiveEnumerate(
+              Dst->getAlgorithmResult<
+                  ContentReversePointsToAlgorithm>()));
 }
