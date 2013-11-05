@@ -46,7 +46,6 @@ namespace lazyandersen {
 
     using AnalysisResultCacheTy::getAlgorithmResult;
     using AnalysisResultCacheTy::getOrCreateEagerAlgorithmResult;
-    using AnalysisResultCacheTy::preCreateSpecialCaseResult;
 
     static ValueInfo *const Nil;
 

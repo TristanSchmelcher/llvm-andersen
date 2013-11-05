@@ -48,14 +48,6 @@ namespace lazyandersen {
       return getAlgorithmResultInternal(AlgorithmTy::ID, &newOutputTy);
     }
 
-    template<typename AlgorithmTy>
-    void preCreateSpecialCaseResult(OutputTy *Output) {
-      OutputTy *&Result = Results[AlgorithmTy::ID];
-      assert(!Result);
-      Result = Output;
-      assert(Result);
-    }
-
   private:
     static OutputTy *newOutputTy(InputTy *Unused) { return new OutputTy(); }
 
