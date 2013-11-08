@@ -14,8 +14,8 @@
 #ifndef LAZYANDERSENVALUEINFO_H
 #define LAZYANDERSENVALUEINFO_H
 
-#include "LazyAndersenAlgorithmResultCache.h"
 #include "LazyAndersenGraphNode.h"
+#include "LazyAndersenPhase.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 
@@ -26,26 +26,20 @@ namespace llvm {
 namespace llvm {
 namespace lazyandersen {
   class AnalysisResult;
-  class ValueInfo;
-  typedef AlgorithmResultCache<ValueInfo, AnalysisResult, const char *>
-      AnalysisResultCacheTy;
 
-  class ValueInfo :
-      private RefCountedBase<ValueInfo>,
-      public GraphNode,
-      private AnalysisResultCacheTy {
+  class ValueInfo : private RefCountedBase<ValueInfo>, public GraphNode {
     friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
     friend class RefCountedBase<ValueInfo>;
-    friend class AlgorithmResultCache<ValueInfo, AnalysisResult, const char *>;
+    typedef AnalysisResult *(*AlgorithmFn)(ValueInfo *);
+    typedef const char *AlgorithmIdTy;
+    typedef DenseMap<AlgorithmIdTy, AnalysisResult *> ResultsMapTy;
+    ResultsMapTy Results;
     // The Value that maps to this object. (If this analysis applies to
     // multiple Values, this is the first one that was analyzed.)
     const Value *V;
 
   public:
     typedef IntrusiveRefCntPtr<ValueInfo> Ref;
-
-    using AnalysisResultCacheTy::getAlgorithmResult;
-    using AnalysisResultCacheTy::getOrCreateEagerAlgorithmResult;
 
     static ValueInfo *const Nil;
 
@@ -59,8 +53,54 @@ namespace lazyandersen {
     virtual std::string getNodeLabel() const;
     virtual bool isNodeHidden() const;
 
+    template<typename AlgorithmTy, Phase CurrentPhase>
+    AnalysisResult *getAlgorithmResult() {
+      return GetAlgorithmResultHelper<
+          AlgorithmTy::template IsEmptyIfMissing<CurrentPhase>::value>
+              ::template getAlgorithmResult<AlgorithmTy>(this);
+    }
+
+    template<typename AlgorithmTy1, typename AlgorithmTy2>
+    void addInstructionAnalysisWork(ValueInfo *that) {
+      assert(!AlgorithmTy1::template IsEmptyIfMissing<
+          INSTRUCTION_ANALYSIS_PHASE>::value);
+      assert(!AlgorithmTy2::template IsEmptyIfMissing<
+          INSTRUCTION_ANALYSIS_PHASE>::value);
+      addInstructionAnalysisWorkInternal(AlgorithmTy1::ID,
+          &AlgorithmTy1::run, that, AlgorithmTy2::ID,
+          &AlgorithmTy2::run);
+    }
+
   private:
     virtual ~ValueInfo();
+
+    template<bool IsEmptyIfMissing>
+    struct GetAlgorithmResultHelper;
+
+    AnalysisResult *getOrCreateAlgorithmResult(AlgorithmIdTy Id,
+        AlgorithmFn Fn);
+    AnalysisResult *getAlgorithmResultOrNull(AlgorithmIdTy Id) const;
+
+    void addInstructionAnalysisWorkInternal(AlgorithmIdTy Id1,
+        AlgorithmFn Fn1, ValueInfo *that, AlgorithmIdTy Id2,
+        AlgorithmFn Fn2);
+  };
+
+  template<>
+  struct ValueInfo::GetAlgorithmResultHelper<false> {
+    template<typename AlgorithmTy>
+    static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
+      return VI->getOrCreateAlgorithmResult(AlgorithmTy::ID,
+          &AlgorithmTy::run);
+    }
+  };
+
+  template<>
+  struct ValueInfo::GetAlgorithmResultHelper<true> {
+    template<typename AlgorithmTy>
+    static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
+      return VI->getAlgorithmResultOrNull(AlgorithmTy::ID);
+    }
   };
 }
 }

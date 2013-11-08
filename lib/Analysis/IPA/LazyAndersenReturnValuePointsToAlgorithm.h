@@ -14,6 +14,8 @@
 #ifndef LAZYANDERSENRETURNVALUEPOINTSTOALGORITHM_H
 #define LAZYANDERSENRETURNVALUEPOINTSTOALGORITHM_H
 
+#include "LazyAndersenInstructionAnalysisAlgorithm.h"
+#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LazyAndersenRelationType.h"
 
 namespace llvm {
@@ -21,7 +23,8 @@ namespace lazyandersen {
   class AnalysisResult;
   class ValueInfo;
 
-  struct ActualReturnValuePointsToAlgorithm {
+  struct ActualReturnValuePointsToAlgorithm :
+      public InstructionAnalysisAlgorithm {
     static const char ID[];
 
     template<RelationType RT>
@@ -37,7 +40,8 @@ namespace lazyandersen {
   };
 
   // TODO: Rename to formal return value.
-  struct ReturnValuePointsToAlgorithm {
+  struct ReturnValuePointsToAlgorithm :
+      public IsNotNecessarilyEmptyIfMissingProperty {
     static const char ID[];
     static AnalysisResult *run(ValueInfo *VI);
   };

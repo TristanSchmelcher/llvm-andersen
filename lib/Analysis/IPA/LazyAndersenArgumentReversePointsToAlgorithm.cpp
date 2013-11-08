@@ -16,7 +16,6 @@
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenRecursiveEnumerate.h"
 #include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
@@ -28,11 +27,8 @@ const char FormalParametersReversePointsToAlgorithm::ID[] =
 
 void FormalParametersReversePointsToAlgorithm::RelationHandler<
     ARGUMENT_FROM_CALLER>::onRelation(ValueInfo *Src, ValueInfo *Dst) {
-  Dst->getOrCreateEagerAlgorithmResult<
-      FormalParametersReversePointsToAlgorithm>()
-          ->addWork(new RecursiveEnumerate(
-              Src->getOrCreateEagerAlgorithmResult<
-                  ReversePointsToAlgorithm>()));
+  Dst->addInstructionAnalysisWork<FormalParametersReversePointsToAlgorithm,
+      ReversePointsToAlgorithm>(Src);
 }
 
 namespace {
@@ -42,8 +38,8 @@ namespace {
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getOrCreateEagerAlgorithmResult<
-          FormalParametersReversePointsToAlgorithm>();
+      return VI->getAlgorithmResult<
+          FormalParametersReversePointsToAlgorithm, ENUMERATION_PHASE>();
     }
 
     virtual std::string getNodeLabel() const { return "ArgumentReverseStep"; }
@@ -56,6 +52,6 @@ const char ArgumentReversePointsToAlgorithm::ID[] =
 AnalysisResult *ArgumentReversePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
   AR->addWork(new ArgumentReversePointsToAnalysisStep(
-      VI->getOrCreateEagerAlgorithmResult<PointsToAlgorithm>()));
+      VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

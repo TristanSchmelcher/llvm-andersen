@@ -14,6 +14,8 @@
 #ifndef LAZYANDERSENCONTENTPOINTSTOALGORITHM_H
 #define LAZYANDERSENCONTENTPOINTSTOALGORITHM_H
 
+#include "LazyAndersenInstructionAnalysisAlgorithm.h"
+#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LazyAndersenRelationType.h"
 
 namespace llvm {
@@ -21,7 +23,8 @@ namespace lazyandersen {
   class AnalysisResult;
   class ValueInfo;
 
-  struct StoredValuesPointsToAlgorithm {
+  struct StoredValuesPointsToAlgorithm :
+      public InstructionAnalysisAlgorithm {
     static const char ID[];
 
     template<RelationType RT>
@@ -35,7 +38,8 @@ namespace lazyandersen {
     static void onRelation(ValueInfo *Src, ValueInfo *Dst);
   };
 
-  struct ContentPointsToAlgorithm {
+  struct ContentPointsToAlgorithm :
+      public IsNotNecessarilyEmptyIfMissingProperty {
     static const char ID[];
     static AnalysisResult *run(ValueInfo *VI);
   };

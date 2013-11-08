@@ -14,9 +14,9 @@
 #include "LazyAndersenContentReversePointsToAlgorithm.h"
 
 #include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenRecursiveEnumerate.h"
 #include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
@@ -28,11 +28,8 @@ const char LoadedValuesReversePointsToAlgorithm::ID[] =
 
 void LoadedValuesReversePointsToAlgorithm::RelationHandler<LOADED_FROM>
     ::onRelation(ValueInfo *Src, ValueInfo *Dst) {
-  Dst->getOrCreateEagerAlgorithmResult<
-      LoadedValuesReversePointsToAlgorithm>()
-          ->addWork(new RecursiveEnumerate(
-              Src->getOrCreateEagerAlgorithmResult<
-                  ReversePointsToAlgorithm>()));
+  Dst->addInstructionAnalysisWork<LoadedValuesReversePointsToAlgorithm,
+      ReversePointsToAlgorithm>(Src);
 }
 
 namespace {
@@ -42,14 +39,15 @@ namespace {
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getOrCreateEagerAlgorithmResult<
-          LoadedValuesReversePointsToAlgorithm>();
+      return VI->getAlgorithmResult<
+          LoadedValuesReversePointsToAlgorithm, ENUMERATION_PHASE>();
     }
 
     virtual std::string getNodeLabel() const { return "ContentReverseStep2"; }
   };
 
-  struct ContentReversePointsToAlgorithmStep2 {
+  struct ContentReversePointsToAlgorithmStep2 :
+      public IsNotNecessarilyEmptyIfMissingProperty {
     static const char ID[];
     static AnalysisResult *run(ValueInfo *VI);
   };
@@ -60,7 +58,8 @@ namespace {
   AnalysisResult *ContentReversePointsToAlgorithmStep2::run(ValueInfo *VI) {
     AnalysisResult *AR = new AnalysisResult();
     AR->addWork(new ContentReversePointsToAnalysisStep2(
-        VI->getOrCreateEagerAlgorithmResult<ReversePointsToAlgorithm>()));
+        VI->getAlgorithmResult<ReversePointsToAlgorithm,
+            ENUMERATION_PHASE>()));
     return AR;
   }
 
@@ -70,7 +69,8 @@ namespace {
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<ContentReversePointsToAlgorithmStep2>();
+      return VI->getAlgorithmResult<ContentReversePointsToAlgorithmStep2,
+          ENUMERATION_PHASE>();
     }
 
     virtual std::string getNodeLabel() const { return "ContentReverseStep"; }
@@ -82,6 +82,6 @@ const char ContentReversePointsToAlgorithm::ID[] = "content reverse points-to";
 AnalysisResult *ContentReversePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
   AR->addWork(new ContentReversePointsToAnalysisStep(
-      VI->getOrCreateEagerAlgorithmResult<PointsToAlgorithm>()));
+      VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

@@ -14,9 +14,9 @@
 #include "LazyAndersenContentPointsToAlgorithm.h"
 
 #include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenRecursiveEnumerate.h"
 #include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
@@ -28,11 +28,8 @@ const char StoredValuesPointsToAlgorithm::ID[] =
 
 void StoredValuesPointsToAlgorithm::RelationHandler<STORED_TO>::onRelation(
     ValueInfo *Src, ValueInfo *Dst) {
-  Dst->getOrCreateEagerAlgorithmResult<
-      StoredValuesPointsToAlgorithm>()
-          ->addWork(new RecursiveEnumerate(
-              Src->getOrCreateEagerAlgorithmResult<
-                  PointsToAlgorithm>()));
+  Dst->addInstructionAnalysisWork<StoredValuesPointsToAlgorithm,
+      PointsToAlgorithm>(Src);
 }
 
 namespace {
@@ -42,14 +39,15 @@ namespace {
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getOrCreateEagerAlgorithmResult<
-          StoredValuesPointsToAlgorithm>();
+      return VI->getAlgorithmResult<
+          StoredValuesPointsToAlgorithm, ENUMERATION_PHASE>();
     }
 
     virtual std::string getNodeLabel() const { return "ContentStep2"; }
   };
 
-  struct ContentPointsToAlgorithmStep2 {
+  struct ContentPointsToAlgorithmStep2 :
+      public IsNotNecessarilyEmptyIfMissingProperty {
     static const char ID[];
     static AnalysisResult *run(ValueInfo *VI);
   };
@@ -59,7 +57,7 @@ namespace {
   AnalysisResult *ContentPointsToAlgorithmStep2::run(ValueInfo *VI) {
     AnalysisResult *AR = new AnalysisResult();
     AR->addWork(new ContentPointsToAnalysisStep2(
-        VI->getOrCreateEagerAlgorithmResult<ReversePointsToAlgorithm>()));
+        VI->getAlgorithmResult<ReversePointsToAlgorithm, ENUMERATION_PHASE>()));
     return AR;
   }
 
@@ -69,7 +67,7 @@ namespace {
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<ContentPointsToAlgorithmStep2>();
+      return VI->getAlgorithmResult<ContentPointsToAlgorithmStep2, ENUMERATION_PHASE>();
     }
 
     virtual std::string getNodeLabel() const { return "ContentStep"; }
@@ -81,6 +79,6 @@ const char ContentPointsToAlgorithm::ID[] = "content points-to";
 AnalysisResult *ContentPointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
   AR->addWork(new ContentPointsToAnalysisStep(
-      VI->getOrCreateEagerAlgorithmResult<PointsToAlgorithm>()));
+      VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

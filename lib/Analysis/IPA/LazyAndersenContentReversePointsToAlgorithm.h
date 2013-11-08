@@ -14,6 +14,8 @@
 #ifndef LAZYANDERSENCONTENTREVERSEPOINTSTOALGORITHM_H
 #define LAZYANDERSENCONTENTREVERSEPOINTSTOALGORITHM_H
 
+#include "LazyAndersenInstructionAnalysisAlgorithm.h"
+#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LazyAndersenRelationType.h"
 
 namespace llvm {
@@ -21,7 +23,8 @@ namespace lazyandersen {
   class AnalysisResult;
   class ValueInfo;
 
-  struct LoadedValuesReversePointsToAlgorithm {
+  struct LoadedValuesReversePointsToAlgorithm :
+      public InstructionAnalysisAlgorithm {
     static const char ID[];
 
     template<RelationType RT>
@@ -35,7 +38,8 @@ namespace lazyandersen {
     static void onRelation(ValueInfo *Src, ValueInfo *Dst);
   };
 
-  struct ContentReversePointsToAlgorithm {
+  struct ContentReversePointsToAlgorithm :
+      public IsNotNecessarilyEmptyIfMissingProperty {
     static const char ID[];
     static AnalysisResult *run(ValueInfo *VI);
   };

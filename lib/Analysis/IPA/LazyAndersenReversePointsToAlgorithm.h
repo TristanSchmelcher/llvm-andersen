@@ -14,14 +14,22 @@
 #ifndef LAZYANDERSENREVERSEPOINTSTOALGORITHM_H
 #define LAZYANDERSENREVERSEPOINTSTOALGORITHM_H
 
+#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LazyAndersenRelationType.h"
 
 namespace llvm {
 namespace lazyandersen {
+  class AnalysisResult;
   class ValueInfo;
 
-  struct ReversePointsToAlgorithm {
+  // Reverse points-to is like an InstructionAnalysisAlgorithm, except it is
+  // irregular in that all ValueInfo's are implicitly in their own reverse
+  // points-to set.
+  struct ReversePointsToAlgorithm :
+      public IsNotNecessarilyEmptyIfMissingProperty {
     static const char ID[];
+
+    static AnalysisResult *run(ValueInfo *VI);
 
     template<RelationType RT>
     struct RelationHandler {

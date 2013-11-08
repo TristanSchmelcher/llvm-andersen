@@ -25,21 +25,26 @@ MetaAnalysisStep::MetaAnalysisStep(AnalysisResult *AR) : E(AR) {}
 MetaAnalysisStep::~MetaAnalysisStep() {}
 
 EnumerationResult MetaAnalysisStep::enumerate(EnumerationContext *Ctx) {
-  EnumerationResult ER(E.enumerate(Ctx->getNextDepth()));
-  switch (ER.getResultType()) {
-  case EnumerationResult::NEXT_VALUE:
-    return Ctx->pushWork(analyzeValueInfo(ER.getNextValue()));
+  for (;;) {
+    EnumerationResult ER(E.enumerate(Ctx->getNextDepth()));
+    switch (ER.getResultType()) {
+    case EnumerationResult::NEXT_VALUE: {
+      AnalysisResult *AR = analyzeValueInfo(ER.getNextValue());
+      if (!AR) continue;
+      return Ctx->pushWork(AR);
+    }
 
-  case EnumerationResult::RETRY:
-  case EnumerationResult::COMPLETE:
+    case EnumerationResult::RETRY:
+    case EnumerationResult::COMPLETE:
+      return ER;
+
+    default:
+      llvm_unreachable("Not a recognized EnumerationResult");
+      break;
+    }
+    // Not reached.
     return ER;
-
-  default:
-    llvm_unreachable("Not a recognized EnumerationResult");
-    break;
   }
-  // Not reached.
-  return ER;
 }
 
 GraphEdgeDeque MetaAnalysisStep::getOutgoingEdges() const {

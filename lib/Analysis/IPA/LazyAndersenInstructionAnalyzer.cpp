@@ -247,16 +247,12 @@ ValueInfo *InstructionAnalyzer::cache(const Value *V, ValueInfo *VI) {
 }
 
 ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
-  ValueInfo *VI = new ValueInfo(V);
-  // TODO: Do this lazily when the result is requested.
-  VI->getOrCreateEagerAlgorithmResult<ReversePointsToAlgorithm>()
-      ->addValueInfo(VI);
-  return VI;
+  return new ValueInfo(V);
 }
 
 ValueInfo *InstructionAnalyzer::createFinalizedValueInfo(const Value *V) {
   ValueInfo *VI = createValueInfo(V);
-  VI->getOrCreateEagerAlgorithmResult<PointsToAlgorithm>()->addValueInfo(VI);
+  VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()->addValueInfo(VI);
   return VI;
 }
 

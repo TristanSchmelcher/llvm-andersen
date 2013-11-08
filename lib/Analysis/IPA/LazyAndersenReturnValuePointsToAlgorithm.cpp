@@ -16,7 +16,6 @@
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenRecursiveEnumerate.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
@@ -27,11 +26,8 @@ const char ActualReturnValuePointsToAlgorithm::ID[] =
 
 void ActualReturnValuePointsToAlgorithm::RelationHandler<RETURNED_TO_CALLER>
     ::onRelation(ValueInfo *Src, ValueInfo *Dst) {
-  Dst->getOrCreateEagerAlgorithmResult<
-      ActualReturnValuePointsToAlgorithm>()
-          ->addWork(new RecursiveEnumerate(
-              Src->getOrCreateEagerAlgorithmResult<
-                  PointsToAlgorithm>()));
+  Dst->addInstructionAnalysisWork<ActualReturnValuePointsToAlgorithm,
+      PointsToAlgorithm>(Src);
 }
 
 namespace {
@@ -41,8 +37,8 @@ namespace {
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getOrCreateEagerAlgorithmResult<
-          ActualReturnValuePointsToAlgorithm>();
+      return VI->getAlgorithmResult<
+          ActualReturnValuePointsToAlgorithm, ENUMERATION_PHASE>();
     }
 
     virtual std::string getNodeLabel() const { return "ReturnValueStep"; }
@@ -54,6 +50,6 @@ const char ReturnValuePointsToAlgorithm::ID[] = "return value points-to";
 AnalysisResult *ReturnValuePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
   AR->addWork(new ReturnValuePointsToAnalysisStep(
-      VI->getOrCreateEagerAlgorithmResult<PointsToAlgorithm>()));
+      VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

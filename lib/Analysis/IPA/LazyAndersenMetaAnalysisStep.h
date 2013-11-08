@@ -23,6 +23,7 @@ namespace lazyandersen {
   class AnalysisResult;
   class ValueInfo;
 
+  // TODO: Rename to transform.
   class MetaAnalysisStep : public AnalysisResultWork {
     Enumerator E;
 

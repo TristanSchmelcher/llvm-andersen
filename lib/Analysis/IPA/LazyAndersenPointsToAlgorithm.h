@@ -14,13 +14,14 @@
 #ifndef LAZYANDERSENPOINTSTOALGORITHM_H
 #define LAZYANDERSENPOINTSTOALGORITHM_H
 
+#include "LazyAndersenInstructionAnalysisAlgorithm.h"
 #include "LazyAndersenRelationType.h"
 
 namespace llvm {
 namespace lazyandersen {
   class ValueInfo;
 
-  struct PointsToAlgorithm {
+  struct PointsToAlgorithm : public InstructionAnalysisAlgorithm {
     static const char ID[];
 
     template<RelationType RT>
