@@ -1,4 +1,4 @@
-//===- LazyAndersenReturnValueReversePointsToAlgorithm.cpp ----------------===//
+//===- LazyAndersenActualReturnValueReversePointsToAlgorithm.cpp ----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,13 +7,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the type for the return value reverse points-to algorithm.
+// This file defines the type for the actual return value reverse points-to
+// algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenReturnValueReversePointsToAlgorithm.h"
+#include "LazyAndersenActualReturnValueReversePointsToAlgorithm.h"
 
 #include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenFormalReturnValueReversePointsToAlgorithm.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
@@ -21,19 +23,10 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char FormalReturnValueReversePointsToAlgorithm::ID[] =
-    "formal return value reverse points-to";
-
-void FormalReturnValueReversePointsToAlgorithm::RelationHandler<
-    RETURNED_FROM_CALLEE>::onRelation(ValueInfo *Src, ValueInfo *Dst) {
-  Dst->addInstructionAnalysisWork<FormalReturnValueReversePointsToAlgorithm,
-      ReversePointsToAlgorithm>(Src);
-}
-
 namespace {
-  class ReturnValueReversePointsToAnalysisStep : public MetaAnalysisStep {
+  class ActualReturnValueReversePointsToAnalysisStep : public MetaAnalysisStep {
   public:
-    explicit ReturnValueReversePointsToAnalysisStep(AnalysisResult *VI)
+    explicit ActualReturnValueReversePointsToAnalysisStep(AnalysisResult *VI)
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
@@ -47,12 +40,12 @@ namespace {
   };
 }
 
-const char ReturnValueReversePointsToAlgorithm::ID[] =
-    "return value reverse points-to";
+const char ActualReturnValueReversePointsToAlgorithm::ID[] =
+    "actual return value reverse points-to";
 
-AnalysisResult *ReturnValueReversePointsToAlgorithm::run(ValueInfo *VI) {
+AnalysisResult *ActualReturnValueReversePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
-  AR->addWork(new ReturnValueReversePointsToAnalysisStep(
+  AR->addWork(new ActualReturnValueReversePointsToAnalysisStep(
       VI->getAlgorithmResult<ReversePointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

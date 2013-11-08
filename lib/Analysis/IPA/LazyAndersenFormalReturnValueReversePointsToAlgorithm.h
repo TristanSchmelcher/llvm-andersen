@@ -1,4 +1,4 @@
-//===- LazyAndersenReturnValueReversePointsToAlgorithm.h ------------------===//
+//===- LazyAndersenFormalReturnValueReversePointsToAlgorithm.h ------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,22 +7,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the type for the return value reverse points-to algorithm.
+// This file declares the type for the formal return value reverse points-to
+// algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENRETURNVALUEREVERSEPOINTSTOALGORITHM_H
-#define LAZYANDERSENRETURNVALUEREVERSEPOINTSTOALGORITHM_H
+#ifndef LAZYANDERSENFORMALRETURNVALUEREVERSEPOINTSTOALGORITHM_H
+#define LAZYANDERSENFORMALRETURNVALUEREVERSEPOINTSTOALGORITHM_H
 
 #include "LazyAndersenInstructionAnalysisAlgorithm.h"
-#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LazyAndersenRelationType.h"
+#include "LazyAndersenReversePointsToAlgorithm.h"
+#include "LazyAndersenValueInfo.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult;
-  class ValueInfo;
-
   struct FormalReturnValueReversePointsToAlgorithm :
       public InstructionAnalysisAlgorithm {
     static const char ID[];
@@ -36,14 +35,10 @@ namespace lazyandersen {
   template<>
   struct FormalReturnValueReversePointsToAlgorithm::RelationHandler<
       RETURNED_FROM_CALLEE> {
-    static void onRelation(ValueInfo *Src, ValueInfo *Dst);
-  };
-
-  // TODO: Rename to actual return value.
-  struct ReturnValueReversePointsToAlgorithm :
-      public IsNotNecessarilyEmptyIfMissingProperty {
-    static const char ID[];
-    static AnalysisResult *run(ValueInfo *VI);
+    static void onRelation(ValueInfo *Src, ValueInfo *Dst) {
+      Dst->addInstructionAnalysisWork<FormalReturnValueReversePointsToAlgorithm,
+          ReversePointsToAlgorithm>(Src);
+    }
   };
 }
 }

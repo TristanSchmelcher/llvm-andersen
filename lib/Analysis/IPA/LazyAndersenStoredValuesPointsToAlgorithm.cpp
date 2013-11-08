@@ -1,4 +1,4 @@
-//===- LazyAndersenPointsToAlgorithm.cpp - points-to algorithm ------------===//
+//===- LazyAndersenStoredValuesPointsToAlgorithm.cpp ----------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,13 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the type for the main points-to algorithm.
+// This file defines the type for the stored values points-to algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenPointsToAlgorithm.h"
+#include "LazyAndersenStoredValuesPointsToAlgorithm.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char PointsToAlgorithm::ID[] = "points-to";
+const char StoredValuesPointsToAlgorithm::ID[] =
+    "stored values points-to";

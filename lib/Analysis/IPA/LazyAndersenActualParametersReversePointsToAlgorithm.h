@@ -1,4 +1,4 @@
-//===- LazyAndersenContentReversePointsToAlgorithm.h ----------------------===//
+//===- LazyAndersenActualParametersReversePointsToAlgorithm.h -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the type for the content reverse points-to algorithm.
+// This file declares the type for the actual parameters reverse points-to
+// algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENCONTENTREVERSEPOINTSTOALGORITHM_H
-#define LAZYANDERSENCONTENTREVERSEPOINTSTOALGORITHM_H
+#ifndef LAZYANDERSENACTUALPARAMETERSREVERSEPOINTSTOALGORITHM_H
+#define LAZYANDERSENACTUALPARAMETERSREVERSEPOINTSTOALGORITHM_H
 
 #include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 
@@ -21,7 +22,7 @@ namespace lazyandersen {
   class AnalysisResult;
   class ValueInfo;
 
-  struct ContentReversePointsToAlgorithm :
+  struct ActualParametersReversePointsToAlgorithm :
       public IsNotNecessarilyEmptyIfMissingProperty {
     static const char ID[];
     static AnalysisResult *run(ValueInfo *VI);

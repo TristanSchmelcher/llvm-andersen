@@ -1,4 +1,4 @@
-//===- LazyAndersenArgumentPointsToAlgorithm.cpp - argument points-to -----===//
+//===- LazyAndersenFormalParametersPointsToAlgorithm.cpp ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,33 +7,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the type for the argument points-to algorithm.
+// This file defines the type for the formal parameters points-to algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenArgumentPointsToAlgorithm.h"
+#include "LazyAndersenFormalParametersPointsToAlgorithm.h"
 
+#include "LazyAndersenActualParametersPointsToAlgorithm.h"
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
-#include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char ActualParametersPointsToAlgorithm::ID[] = "actual params points-to";
-
-void ActualParametersPointsToAlgorithm::RelationHandler<ARGUMENT_TO_CALLEE>
-    ::onRelation(ValueInfo *Src, ValueInfo *Dst) {
-  Dst->addInstructionAnalysisWork<ActualParametersPointsToAlgorithm,
-      PointsToAlgorithm>(Src);
-}
-
 namespace {
-  class ArgumentPointsToAnalysisStep : public MetaAnalysisStep {
+  class FormalParametersPointsToAnalysisStep : public MetaAnalysisStep {
   public:
-    explicit ArgumentPointsToAnalysisStep(AnalysisResult *VI)
+    explicit FormalParametersPointsToAnalysisStep(AnalysisResult *VI)
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
@@ -45,11 +37,12 @@ namespace {
   };
 }
 
-const char ArgumentPointsToAlgorithm::ID[] = "argument points-to";
+const char FormalParametersPointsToAlgorithm::ID[] =
+    "formal params points-to";
 
-AnalysisResult *ArgumentPointsToAlgorithm::run(ValueInfo *VI) {
+AnalysisResult *FormalParametersPointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
-  AR->addWork(new ArgumentPointsToAnalysisStep(
+  AR->addWork(new FormalParametersPointsToAnalysisStep(
       VI->getAlgorithmResult<ReversePointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

@@ -18,19 +18,11 @@
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenReversePointsToAlgorithm.h"
+#include "LazyAndersenStoredValuesPointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
-
-const char StoredValuesPointsToAlgorithm::ID[] =
-    "stored values points-to";
-
-void StoredValuesPointsToAlgorithm::RelationHandler<STORED_TO>::onRelation(
-    ValueInfo *Src, ValueInfo *Dst) {
-  Dst->addInstructionAnalysisWork<StoredValuesPointsToAlgorithm,
-      PointsToAlgorithm>(Src);
-}
 
 namespace {
   class ContentPointsToAnalysisStep2 : public MetaAnalysisStep {

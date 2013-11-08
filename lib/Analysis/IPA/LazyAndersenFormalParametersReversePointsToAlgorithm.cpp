@@ -1,4 +1,4 @@
-//===- LazyAndersenPointsToAlgorithm.cpp - points-to algorithm ------------===//
+//===- LazyAndersenFormalParametersReversePointsToAlgorithm.cpp -----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,13 +7,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the type for the main points-to algorithm.
+// This file defines the type for the formal parameters reverse points-to
+// algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenPointsToAlgorithm.h"
+#include "LazyAndersenFormalParametersReversePointsToAlgorithm.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char PointsToAlgorithm::ID[] = "points-to";
+const char FormalParametersReversePointsToAlgorithm::ID[] =
+    "formal params reverse points-to";

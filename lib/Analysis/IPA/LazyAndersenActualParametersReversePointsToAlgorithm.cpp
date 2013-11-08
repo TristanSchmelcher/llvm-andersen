@@ -1,4 +1,4 @@
-//===- LazyAndersenArgumentReversePointsToAlgorithm.cpp -------------------===//
+//===- LazyAndersenActualParametersReversePointsToAlgorithm.cpp -----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,34 +7,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the type for the argument reverse points-to algorithm.
+// This file defines the type for the actual parameters reverse points-to
+// algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenArgumentReversePointsToAlgorithm.h"
+#include "LazyAndersenActualParametersReversePointsToAlgorithm.h"
 
 #include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenFormalParametersReversePointsToAlgorithm.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenReversePointsToAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char FormalParametersReversePointsToAlgorithm::ID[] =
-    "formal params reverse points-to";
-
-void FormalParametersReversePointsToAlgorithm::RelationHandler<
-    ARGUMENT_FROM_CALLER>::onRelation(ValueInfo *Src, ValueInfo *Dst) {
-  Dst->addInstructionAnalysisWork<FormalParametersReversePointsToAlgorithm,
-      ReversePointsToAlgorithm>(Src);
-}
-
 namespace {
-  class ArgumentReversePointsToAnalysisStep : public MetaAnalysisStep {
+  class ActualParametersReversePointsToAnalysisStep : public MetaAnalysisStep {
   public:
-    explicit ArgumentReversePointsToAnalysisStep(AnalysisResult *VI)
+    explicit ActualParametersReversePointsToAnalysisStep(AnalysisResult *VI)
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
@@ -46,12 +38,12 @@ namespace {
   };
 }
 
-const char ArgumentReversePointsToAlgorithm::ID[] =
-    "argument reverse points-to";
+const char ActualParametersReversePointsToAlgorithm::ID[] =
+    "actual params reverse points-to";
 
-AnalysisResult *ArgumentReversePointsToAlgorithm::run(ValueInfo *VI) {
+AnalysisResult *ActualParametersReversePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
-  AR->addWork(new ArgumentReversePointsToAnalysisStep(
+  AR->addWork(new ActualParametersReversePointsToAnalysisStep(
       VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

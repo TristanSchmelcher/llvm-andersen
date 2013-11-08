@@ -1,4 +1,4 @@
-//===- LazyAndersenArgumentPointsToAlgorithm.h - argument points-to -------===//
+//===- LazyAndersenActualParametersPointsToAlgorithm.h --------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,22 +7,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the type for the argument points-to algorithm.
+// This file declares the type for the actual parameters points-to algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENARGUMENTPOINTSTOALGORITHM_H
-#define LAZYANDERSENARGUMENTPOINTSTOALGORITHM_H
+#ifndef LAZYANDERSENACTUALPARAMETERSPOINTSTOALGORITHM_H
+#define LAZYANDERSENACTUALPARAMETERSPOINTSTOALGORITHM_H
 
 #include "LazyAndersenInstructionAnalysisAlgorithm.h"
-#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
+#include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenRelationType.h"
+#include "LazyAndersenValueInfo.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult;
-  class ValueInfo;
-
   struct ActualParametersPointsToAlgorithm :
       public InstructionAnalysisAlgorithm {
     static const char ID[];
@@ -36,14 +34,10 @@ namespace lazyandersen {
   template<>
   struct ActualParametersPointsToAlgorithm::RelationHandler<
       ARGUMENT_TO_CALLEE> {
-    static void onRelation(ValueInfo *Src, ValueInfo *Dst);
-  };
-
-  // TODO: Rename to formal params
-  struct ArgumentPointsToAlgorithm :
-      public IsNotNecessarilyEmptyIfMissingProperty {
-    static const char ID[];
-    static AnalysisResult *run(ValueInfo *VI);
+    static void onRelation(ValueInfo *Src, ValueInfo *Dst) {
+      Dst->addInstructionAnalysisWork<ActualParametersPointsToAlgorithm,
+          PointsToAlgorithm>(Src);
+    }
   };
 }
 }

@@ -1,4 +1,4 @@
-//===- LazyAndersenReturnValuePointsToAlgorithm.h - return val points-to --===//
+//===- LazyAndersenActualReturnValuePointsToAlgorithm.h -------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,22 +7,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the type for the return value points-to algorithm.
+// This file declares the type for the actual return value points-to algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENRETURNVALUEPOINTSTOALGORITHM_H
-#define LAZYANDERSENRETURNVALUEPOINTSTOALGORITHM_H
+#ifndef LAZYANDERSENACTUALRETURNVALUEPOINTSTOALGORITHM_H
+#define LAZYANDERSENACTUALRETURNVALUEPOINTSTOALGORITHM_H
 
 #include "LazyAndersenInstructionAnalysisAlgorithm.h"
-#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
+#include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenRelationType.h"
+#include "LazyAndersenValueInfo.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult;
-  class ValueInfo;
-
   struct ActualReturnValuePointsToAlgorithm :
       public InstructionAnalysisAlgorithm {
     static const char ID[];
@@ -36,14 +34,10 @@ namespace lazyandersen {
   template<>
   struct ActualReturnValuePointsToAlgorithm::RelationHandler<
       RETURNED_TO_CALLER> {
-    static void onRelation(ValueInfo *Src, ValueInfo *Dst);
-  };
-
-  // TODO: Rename to formal return value.
-  struct ReturnValuePointsToAlgorithm :
-      public IsNotNecessarilyEmptyIfMissingProperty {
-    static const char ID[];
-    static AnalysisResult *run(ValueInfo *VI);
+    static void onRelation(ValueInfo *Src, ValueInfo *Dst) {
+      Dst->addInstructionAnalysisWork<ActualReturnValuePointsToAlgorithm,
+          PointsToAlgorithm>(Src);
+    }
   };
 }
 }

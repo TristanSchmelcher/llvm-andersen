@@ -15,6 +15,7 @@
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
+#include "LazyAndersenLoadedValuesReversePointsToAlgorithm.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenReversePointsToAlgorithm.h"
@@ -22,15 +23,6 @@
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
-
-const char LoadedValuesReversePointsToAlgorithm::ID[] =
-    "loaded values reverse points-to";
-
-void LoadedValuesReversePointsToAlgorithm::RelationHandler<LOADED_FROM>
-    ::onRelation(ValueInfo *Src, ValueInfo *Dst) {
-  Dst->addInstructionAnalysisWork<LoadedValuesReversePointsToAlgorithm,
-      ReversePointsToAlgorithm>(Src);
-}
 
 namespace {
   class ContentReversePointsToAnalysisStep2 : public MetaAnalysisStep {

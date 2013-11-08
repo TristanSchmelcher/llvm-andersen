@@ -1,4 +1,4 @@
-//===- LazyAndersenReturnValuePointsToAlgorithm.cpp - return val points-to ===//
+//===- LazyAndersenFormalReturnValuePointsToAlgorithm.cpp -----------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the type for the return value points-to algorithm.
+// This file defines the type for the formal return value points-to algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenReturnValuePointsToAlgorithm.h"
+#include "LazyAndersenFormalReturnValuePointsToAlgorithm.h"
 
+#include "LazyAndersenActualReturnValuePointsToAlgorithm.h"
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
@@ -21,19 +22,10 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char ActualReturnValuePointsToAlgorithm::ID[] =
-    "actual return value points-to";
-
-void ActualReturnValuePointsToAlgorithm::RelationHandler<RETURNED_TO_CALLER>
-    ::onRelation(ValueInfo *Src, ValueInfo *Dst) {
-  Dst->addInstructionAnalysisWork<ActualReturnValuePointsToAlgorithm,
-      PointsToAlgorithm>(Src);
-}
-
 namespace {
-  class ReturnValuePointsToAnalysisStep : public MetaAnalysisStep {
+  class FormalReturnValuePointsToAnalysisStep : public MetaAnalysisStep {
   public:
-    explicit ReturnValuePointsToAnalysisStep(AnalysisResult *VI)
+    explicit FormalReturnValuePointsToAnalysisStep(AnalysisResult *VI)
       : MetaAnalysisStep(VI) {}
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
@@ -45,11 +37,12 @@ namespace {
   };
 }
 
-const char ReturnValuePointsToAlgorithm::ID[] = "return value points-to";
+const char FormalReturnValuePointsToAlgorithm::ID[] =
+    "formal return value points-to";
 
-AnalysisResult *ReturnValuePointsToAlgorithm::run(ValueInfo *VI) {
+AnalysisResult *FormalReturnValuePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
-  AR->addWork(new ReturnValuePointsToAnalysisStep(
+  AR->addWork(new FormalReturnValuePointsToAnalysisStep(
       VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

@@ -1,4 +1,4 @@
-//===- LazyAndersenArgumentReversePointsToAlgorithm.h ---------------------===//
+//===- LazyAndersenFormalParametersReversePointsToAlgorithm.h -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,22 +7,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the type for the argument reverse points-to algorithm.
+// This file declares the type for the formal parameters reverse points-to
+// algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENARGUMENTREVERSEPOINTSTOALGORITHM_H
-#define LAZYANDERSENARGUMENTREVERSEPOINTSTOALGORITHM_H
+#ifndef LAZYANDERSENFORMALPARAMETERSREVERSEPOINTSTOALGORITHM_H
+#define LAZYANDERSENFORMALPARAMETERSREVERSEPOINTSTOALGORITHM_H
 
 #include "LazyAndersenInstructionAnalysisAlgorithm.h"
-#include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LazyAndersenRelationType.h"
+#include "LazyAndersenReversePointsToAlgorithm.h"
+#include "LazyAndersenValueInfo.h"
 
 namespace llvm {
 namespace lazyandersen {
-  class AnalysisResult;
-  class ValueInfo;
-
   struct FormalParametersReversePointsToAlgorithm :
       public InstructionAnalysisAlgorithm {
     static const char ID[];
@@ -36,14 +35,10 @@ namespace lazyandersen {
   template<>
   struct FormalParametersReversePointsToAlgorithm::RelationHandler<
       ARGUMENT_FROM_CALLER> {
-    static void onRelation(ValueInfo *Src, ValueInfo *Dst);
-  };
-
-  // TODO: Rename to actual params.
-  struct ArgumentReversePointsToAlgorithm :
-      public IsNotNecessarilyEmptyIfMissingProperty {
-    static const char ID[];
-    static AnalysisResult *run(ValueInfo *VI);
+    static void onRelation(ValueInfo *Src, ValueInfo *Dst) {
+      Dst->addInstructionAnalysisWork<FormalParametersReversePointsToAlgorithm,
+          ReversePointsToAlgorithm>(Src);
+    }
   };
 }
 }

@@ -6,25 +6,32 @@ add_llvm_library(LLVMipa
   GlobalsModRef.cpp
   IPA.cpp
   InlineCost.cpp
-  LazyAndersen.cpp
+  LazyAndersenActualParametersPointsToAlgorithm.cpp
+  LazyAndersenActualParametersReversePointsToAlgorithm.cpp
+  LazyAndersenActualReturnValuePointsToAlgorithm.cpp
+  LazyAndersenActualReturnValueReversePointsToAlgorithm.cpp
   LazyAndersenAliasAnalysis.cpp
   LazyAndersenAnalysisResult.cpp
   LazyAndersenAnalysisResultWork.cpp
-  LazyAndersenArgumentPointsToAlgorithm.cpp
-  LazyAndersenArgumentReversePointsToAlgorithm.cpp
   LazyAndersenContentPointsToAlgorithm.cpp
   LazyAndersenContentReversePointsToAlgorithm.cpp
+  LazyAndersen.cpp
   LazyAndersenData.cpp
   LazyAndersenEnumerationContext.cpp
   LazyAndersenEnumerator.cpp
+  LazyAndersenFormalParametersPointsToAlgorithm.cpp
+  LazyAndersenFormalParametersReversePointsToAlgorithm.cpp
+  LazyAndersenFormalReturnValuePointsToAlgorithm.cpp
+  LazyAndersenFormalReturnValueReversePointsToAlgorithm.cpp
   LazyAndersenGraphViewer.cpp
+  LazyAndersenInstructionAnalysisAlgorithm.cpp
   LazyAndersenInstructionAnalyzer.cpp
+  LazyAndersenLoadedValuesReversePointsToAlgorithm.cpp
   LazyAndersenMetaAnalysisStep.cpp
   LazyAndersenPointsToAlgorithm.cpp
   LazyAndersenRecursiveEnumerate.cpp
-  LazyAndersenReturnValuePointsToAlgorithm.cpp
-  LazyAndersenReturnValueReversePointsToAlgorithm.cpp
   LazyAndersenReversePointsToAlgorithm.cpp
+  LazyAndersenStoredValuesPointsToAlgorithm.cpp
   LazyAndersenTopEnumerator.cpp
   LazyAndersenValueInfo.cpp
   LazyAndersenValuePrinter.cpp
