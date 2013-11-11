@@ -18,4 +18,4 @@ using namespace llvm;
 using namespace llvm::lazyandersen;
 
 const char FormalReturnValueReversePointsToAlgorithm::ID[] =
-    "formal return value reverse points-to";
+    "formal return value";

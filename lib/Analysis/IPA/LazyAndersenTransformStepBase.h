@@ -1,4 +1,4 @@
-//===- LazyAndersenMetaAnalysisStep.h - analysis classes ------------------===//
+//===- LazyAndersenTransformStepBase.h - analysis classes ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,13 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares a type for meta analysis--i.e., analysis of other analysis
-// results.
+// This file declares a base type for transforms that compute the list
+// comprehension of a ValueInfo-to-AnalysisResult function run on the elements
+// of an input AnalysisResult.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAZYANDERSENMETAANALYSISSTEP_H
-#define LAZYANDERSENMETAANALYSISSTEP_H
+#ifndef LAZYANDERSENTRANSFORMSTEPBASE_H
+#define LAZYANDERSENTRANSFORMSTEPBASE_H
 
 #include "LazyAndersenAnalysisResultWork.h"
 #include "LazyAndersenEnumerator.h"
@@ -23,13 +24,12 @@ namespace lazyandersen {
   class AnalysisResult;
   class ValueInfo;
 
-  // TODO: Rename to transform.
-  class MetaAnalysisStep : public AnalysisResultWork {
+  class TransformStepBase : public AnalysisResultWork {
     Enumerator E;
 
   public:
-    explicit MetaAnalysisStep(AnalysisResult *AR);
-    virtual ~MetaAnalysisStep();
+    explicit TransformStepBase(AnalysisResult *AR);
+    virtual ~TransformStepBase();
     virtual GraphEdgeDeque getOutgoingEdges() const;
     virtual EnumerationResult enumerate(EnumerationContext *Ctx);
 

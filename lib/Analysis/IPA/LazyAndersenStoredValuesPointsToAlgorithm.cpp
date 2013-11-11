@@ -16,5 +16,4 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char StoredValuesPointsToAlgorithm::ID[] =
-    "stored values points-to";
+const char StoredValuesPointsToAlgorithm::ID[] = "stored values";

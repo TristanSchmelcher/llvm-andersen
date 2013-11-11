@@ -37,7 +37,9 @@ GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
        ++i) {
     const char *Id = i->first;
     AnalysisResult *AR = i->second;
-    Result.push_back(GraphEdge(AR, Id));
+    std::ostringstream OSS;
+    OSS << "PointsTo(" << Id << ')';
+    Result.push_back(GraphEdge(AR, OSS.str()));
   }
   return Result;
 }

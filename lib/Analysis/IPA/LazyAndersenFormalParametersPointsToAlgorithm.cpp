@@ -15,34 +15,18 @@
 
 #include "LazyAndersenActualParametersPointsToAlgorithm.h"
 #include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenReversePointsToAlgorithm.h"
+#include "LazyAndersenTransformStep.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-namespace {
-  class FormalParametersPointsToAnalysisStep : public MetaAnalysisStep {
-  public:
-    explicit FormalParametersPointsToAnalysisStep(AnalysisResult *VI)
-      : MetaAnalysisStep(VI) {}
-
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<
-          ActualParametersPointsToAlgorithm, ENUMERATION_PHASE>();
-    }
-
-    virtual std::string getNodeLabel() const { return "ArgumentStep"; }
-  };
-}
-
-const char FormalParametersPointsToAlgorithm::ID[] =
-    "formal params points-to";
+const char FormalParametersPointsToAlgorithm::ID[] = "formal params";
 
 AnalysisResult *FormalParametersPointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
-  AR->addWork(new FormalParametersPointsToAnalysisStep(
+  AR->addWork(new TransformStep<ActualParametersPointsToAlgorithm>(
       VI->getAlgorithmResult<ReversePointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

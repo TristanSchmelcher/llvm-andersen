@@ -16,5 +16,4 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char LoadedValuesReversePointsToAlgorithm::ID[] =
-    "loaded values reverse points-to";
+const char LoadedValuesReversePointsToAlgorithm::ID[] = "loaded values reverse";

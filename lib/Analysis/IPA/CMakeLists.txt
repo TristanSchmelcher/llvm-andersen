@@ -27,12 +27,12 @@ add_llvm_library(LLVMipa
   LazyAndersenInstructionAnalysisAlgorithm.cpp
   LazyAndersenInstructionAnalyzer.cpp
   LazyAndersenLoadedValuesReversePointsToAlgorithm.cpp
-  LazyAndersenMetaAnalysisStep.cpp
   LazyAndersenPointsToAlgorithm.cpp
   LazyAndersenRecursiveEnumerate.cpp
   LazyAndersenReversePointsToAlgorithm.cpp
   LazyAndersenStoredValuesPointsToAlgorithm.cpp
   LazyAndersenTopEnumerator.cpp
+  LazyAndersenTransformStepBase.cpp
   LazyAndersenValueInfo.cpp
   LazyAndersenValuePrinter.cpp
   )

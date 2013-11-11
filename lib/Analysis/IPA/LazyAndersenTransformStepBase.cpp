@@ -1,4 +1,4 @@
-//===- LazyAndersenMetaAnalysisStep.cpp - analysis classes ----------------===//
+//===- LazyAndersenTransformStepBase.cpp - analysis classes ---------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a type for meta analysis--i.e., analysis of other analysis
-// results.
+// This file defines a base type for transforms that compute the list
+// comprehension of a ValueInfo-to-AnalysisResult function run on the elements
+// of an input AnalysisResult.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenMetaAnalysisStep.h"
+#include "LazyAndersenTransformStepBase.h"
 
 #include "LazyAndersenEnumerationContext.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -20,11 +21,11 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-MetaAnalysisStep::MetaAnalysisStep(AnalysisResult *AR) : E(AR) {}
+TransformStepBase::TransformStepBase(AnalysisResult *AR) : E(AR) {}
 
-MetaAnalysisStep::~MetaAnalysisStep() {}
+TransformStepBase::~TransformStepBase() {}
 
-EnumerationResult MetaAnalysisStep::enumerate(EnumerationContext *Ctx) {
+EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
   for (;;) {
     EnumerationResult ER(E.enumerate(Ctx->getNextDepth()));
     switch (ER.getResultType()) {
@@ -47,7 +48,7 @@ EnumerationResult MetaAnalysisStep::enumerate(EnumerationContext *Ctx) {
   }
 }
 
-GraphEdgeDeque MetaAnalysisStep::getOutgoingEdges() const {
+GraphEdgeDeque TransformStepBase::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   Result.push_back(E.toGraphEdge());
   return Result;

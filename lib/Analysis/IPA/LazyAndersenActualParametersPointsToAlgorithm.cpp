@@ -16,4 +16,4 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char ActualParametersPointsToAlgorithm::ID[] = "actual params points-to";
+const char ActualParametersPointsToAlgorithm::ID[] = "actual params";

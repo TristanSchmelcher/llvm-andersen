@@ -18,7 +18,7 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char ReversePointsToAlgorithm::ID[] = "reverse points-to";
+const char ReversePointsToAlgorithm::ID[] = "self reverse";
 
 AnalysisResult *ReversePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();

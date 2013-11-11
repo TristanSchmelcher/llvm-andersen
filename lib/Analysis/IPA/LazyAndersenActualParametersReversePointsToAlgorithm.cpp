@@ -16,34 +16,19 @@
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenFormalParametersReversePointsToAlgorithm.h"
-#include "LazyAndersenMetaAnalysisStep.h"
 #include "LazyAndersenPointsToAlgorithm.h"
+#include "LazyAndersenTransformStep.h"
 #include "LazyAndersenValueInfo.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-namespace {
-  class ActualParametersReversePointsToAnalysisStep : public MetaAnalysisStep {
-  public:
-    explicit ActualParametersReversePointsToAnalysisStep(AnalysisResult *VI)
-      : MetaAnalysisStep(VI) {}
-
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<
-          FormalParametersReversePointsToAlgorithm, ENUMERATION_PHASE>();
-    }
-
-    virtual std::string getNodeLabel() const { return "ArgumentReverseStep"; }
-  };
-}
-
 const char ActualParametersReversePointsToAlgorithm::ID[] =
-    "actual params reverse points-to";
+    "actual params reverse";
 
 AnalysisResult *ActualParametersReversePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
-  AR->addWork(new ActualParametersReversePointsToAnalysisStep(
+  AR->addWork(new TransformStep<FormalParametersReversePointsToAlgorithm>(
       VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }
