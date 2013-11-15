@@ -29,6 +29,7 @@ const char ActualReturnValueReversePointsToAlgorithm::ID[] =
 AnalysisResult *ActualReturnValueReversePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
   AR->addWork(new TransformStep<FormalReturnValueReversePointsToAlgorithm>(
-      VI->getAlgorithmResult<ReversePointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
+      VI->getAlgorithmResult<ReversePointsToAlgorithm,
+          INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }

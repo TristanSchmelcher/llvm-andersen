@@ -27,6 +27,7 @@ const char FormalParametersPointsToAlgorithm::ID[] = "formal params";
 AnalysisResult *FormalParametersPointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
   AR->addWork(new TransformStep<ActualParametersPointsToAlgorithm>(
-      VI->getAlgorithmResult<ReversePointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()));
+      VI->getAlgorithmResult<ReversePointsToAlgorithm,
+          INSTRUCTION_ANALYSIS_PHASE>()));
   return AR;
 }
