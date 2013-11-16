@@ -13,6 +13,7 @@
 
 #include "LazyAndersenValueInfo.h"
 
+#include "LazyAndersenAlgorithmId.h"
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenRecursiveEnumerate.h"
 #include "LazyAndersenValuePrinter.h"
@@ -35,10 +36,10 @@ GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
        ++i) {
-    const char *Id = i->first;
+    const AlgorithmId *Id = i->first;
     AnalysisResult *AR = i->second;
     std::ostringstream OSS;
-    OSS << "PointsTo(" << Id << ')';
+    OSS << "PointsTo(" << Id->getAlgorithmName() << ')';
     Result.push_back(GraphEdge(AR, OSS.str()));
   }
   return Result;
@@ -53,7 +54,7 @@ bool ValueInfo::isNodeHidden() const {
   return false;
 }
 
-AnalysisResult *ValueInfo::getOrCreateAlgorithmResult(AlgorithmIdTy Id,
+AnalysisResult *ValueInfo::getOrCreateAlgorithmResult(const AlgorithmId *Id,
     AlgorithmFn Fn) {
   AnalysisResult *&AR = Results[Id];
   if (!AR) {
@@ -63,7 +64,8 @@ AnalysisResult *ValueInfo::getOrCreateAlgorithmResult(AlgorithmIdTy Id,
   return AR;
 }
 
-AnalysisResult *ValueInfo::getAlgorithmResultOrNull(AlgorithmIdTy Id) const {
+AnalysisResult *ValueInfo::getAlgorithmResultOrNull(const AlgorithmId *Id)
+    const {
   ResultsMapTy::const_iterator i = Results.find(Id);
   if (i == Results.end()) {
     return 0;
@@ -71,8 +73,8 @@ AnalysisResult *ValueInfo::getAlgorithmResultOrNull(AlgorithmIdTy Id) const {
   return i->second;
 }
 
-void ValueInfo::addInstructionAnalysisWorkInternal(AlgorithmIdTy Id1,
-    AlgorithmFn Fn1, ValueInfo *that, AlgorithmIdTy Id2,
+void ValueInfo::addInstructionAnalysisWorkInternal(const AlgorithmId *Id1,
+    AlgorithmFn Fn1, ValueInfo *that, const AlgorithmId *Id2,
     AlgorithmFn Fn2) {
   getOrCreateAlgorithmResult(Id1, Fn1)->addWork(
       new RecursiveEnumerate(that->getOrCreateAlgorithmResult(Id2, Fn2)));

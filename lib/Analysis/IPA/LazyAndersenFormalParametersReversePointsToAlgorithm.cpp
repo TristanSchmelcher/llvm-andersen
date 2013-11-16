@@ -17,5 +17,5 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char FormalParametersReversePointsToAlgorithm::ID[] =
-    "formal params reverse";
+const LiteralAlgorithmId FormalParametersReversePointsToAlgorithm::ID(
+    "formal params reverse");

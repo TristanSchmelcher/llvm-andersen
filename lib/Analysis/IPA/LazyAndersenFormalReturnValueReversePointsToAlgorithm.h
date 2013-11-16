@@ -16,29 +16,17 @@
 #define LAZYANDERSENFORMALRETURNVALUEREVERSEPOINTSTOALGORITHM_H
 
 #include "LazyAndersenInstructionAnalysisAlgorithm.h"
+#include "LazyAndersenLiteralAlgorithmId.h"
 #include "LazyAndersenRelationType.h"
-#include "LazyAndersenReversePointsToAlgorithm.h"
-#include "LazyAndersenValueInfo.h"
 
 namespace llvm {
 namespace lazyandersen {
   struct FormalReturnValueReversePointsToAlgorithm :
       public InstructionAnalysisAlgorithm {
-    static const char ID[];
+    static const LiteralAlgorithmId ID;
 
     template<RelationType RT>
-    struct RelationHandler {
-      static void onRelation(ValueInfo *Src, ValueInfo *Dst) {}
-    };
-  };
-
-  template<>
-  struct FormalReturnValueReversePointsToAlgorithm::RelationHandler<
-      RETURNED_FROM_CALLEE> {
-    static void onRelation(ValueInfo *Src, ValueInfo *Dst) {
-      Dst->addInstructionAnalysisWork<FormalReturnValueReversePointsToAlgorithm,
-          ReversePointsToAlgorithm>(Src);
-    }
+    struct RelationHandler;
   };
 }
 }

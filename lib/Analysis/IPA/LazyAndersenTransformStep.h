@@ -20,7 +20,7 @@
 #include "LazyAndersenTransformStepBase.h"
 #include "LazyAndersenValueInfo.h"
 
-#include <sstream>
+#include <string>
 
 namespace llvm {
 namespace lazyandersen {
@@ -31,14 +31,13 @@ namespace lazyandersen {
   public:
     explicit TransformStep(AnalysisResult *AR) : TransformStepBase(AR) {}
 
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<AlgorithmTy, ENUMERATION_PHASE>();
+    virtual std::string getNodeLabel() const {
+      return buildTransformStepName(AlgorithmTy::ID);
     }
 
-    virtual std::string getNodeLabel() const {
-      std::ostringstream OSS;
-      OSS << "Transform(" << AlgorithmTy::ID << ')';
-      return OSS.str();
+  protected:
+    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
+      return VI->getAlgorithmResult<AlgorithmTy, ENUMERATION_PHASE>();
     }
   };
 }

@@ -16,4 +16,4 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char PointsToAlgorithm::ID[] = "self";
+const LiteralAlgorithmId PointsToAlgorithm::ID("self");

@@ -15,8 +15,11 @@
 
 #include "LazyAndersenTransformStepBase.h"
 
+#include "LazyAndersenAlgorithmId.h"
 #include "LazyAndersenEnumerationContext.h"
 #include "llvm/Support/ErrorHandling.h"
+
+#include <sstream>
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
@@ -52,4 +55,10 @@ GraphEdgeDeque TransformStepBase::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   Result.push_back(E.toGraphEdge());
   return Result;
+}
+
+std::string TransformStepBase::buildTransformStepName(const AlgorithmId& Id) {
+  std::ostringstream OSS;
+  OSS << "Transform(" << Id.getAlgorithmName() << ')';
+  return OSS.str();
 }

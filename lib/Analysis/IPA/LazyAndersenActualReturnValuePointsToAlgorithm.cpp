@@ -16,4 +16,5 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-const char ActualReturnValuePointsToAlgorithm::ID[] = "actual return value";
+const LiteralAlgorithmId ActualReturnValuePointsToAlgorithm::ID(
+    "actual return value");

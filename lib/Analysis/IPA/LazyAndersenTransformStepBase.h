@@ -19,8 +19,11 @@
 #include "LazyAndersenAnalysisResultWork.h"
 #include "LazyAndersenEnumerator.h"
 
+#include <string>
+
 namespace llvm {
 namespace lazyandersen {
+  class AlgorithmId;
   class AnalysisResult;
   class ValueInfo;
 
@@ -32,6 +35,9 @@ namespace lazyandersen {
     virtual ~TransformStepBase();
     virtual GraphEdgeDeque getOutgoingEdges() const;
     virtual EnumerationResult enumerate(EnumerationContext *Ctx);
+
+  protected:
+    static std::string buildTransformStepName(const AlgorithmId& Id);
 
     virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) = 0;
   };

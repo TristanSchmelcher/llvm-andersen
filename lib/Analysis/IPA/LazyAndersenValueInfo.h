@@ -25,14 +25,14 @@ namespace llvm {
 
 namespace llvm {
 namespace lazyandersen {
+  class AlgorithmId;
   class AnalysisResult;
 
   class ValueInfo : private RefCountedBase<ValueInfo>, public GraphNode {
     friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
     friend class RefCountedBase<ValueInfo>;
     typedef AnalysisResult *(*AlgorithmFn)(ValueInfo *);
-    typedef const char *AlgorithmIdTy;
-    typedef DenseMap<AlgorithmIdTy, AnalysisResult *> ResultsMapTy;
+    typedef DenseMap<const AlgorithmId *, AnalysisResult *> ResultsMapTy;
     ResultsMapTy Results;
     // The Value that maps to this object. (If this analysis applies to
     // multiple Values, this is the first one that was analyzed.)
@@ -66,8 +66,8 @@ namespace lazyandersen {
           INSTRUCTION_ANALYSIS_PHASE>::value);
       assert(!AlgorithmTy2::template IsEmptyIfMissing<
           INSTRUCTION_ANALYSIS_PHASE>::value);
-      addInstructionAnalysisWorkInternal(AlgorithmTy1::ID,
-          &AlgorithmTy1::run, that, AlgorithmTy2::ID,
+      addInstructionAnalysisWorkInternal(&AlgorithmTy1::ID,
+          &AlgorithmTy1::run, that, &AlgorithmTy2::ID,
           &AlgorithmTy2::run);
     }
 
@@ -77,12 +77,12 @@ namespace lazyandersen {
     template<bool IsEmptyIfMissing>
     struct GetAlgorithmResultHelper;
 
-    AnalysisResult *getOrCreateAlgorithmResult(AlgorithmIdTy Id,
+    AnalysisResult *getOrCreateAlgorithmResult(const AlgorithmId *Id,
         AlgorithmFn Fn);
-    AnalysisResult *getAlgorithmResultOrNull(AlgorithmIdTy Id) const;
+    AnalysisResult *getAlgorithmResultOrNull(const AlgorithmId *Id) const;
 
-    void addInstructionAnalysisWorkInternal(AlgorithmIdTy Id1,
-        AlgorithmFn Fn1, ValueInfo *that, AlgorithmIdTy Id2,
+    void addInstructionAnalysisWorkInternal(const AlgorithmId *Id1,
+        AlgorithmFn Fn1, ValueInfo *that, const AlgorithmId *Id2,
         AlgorithmFn Fn2);
   };
 
@@ -90,7 +90,7 @@ namespace lazyandersen {
   struct ValueInfo::GetAlgorithmResultHelper<false> {
     template<typename AlgorithmTy>
     static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
-      return VI->getOrCreateAlgorithmResult(AlgorithmTy::ID,
+      return VI->getOrCreateAlgorithmResult(&AlgorithmTy::ID,
           &AlgorithmTy::run);
     }
   };
@@ -99,7 +99,7 @@ namespace lazyandersen {
   struct ValueInfo::GetAlgorithmResultHelper<true> {
     template<typename AlgorithmTy>
     static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
-      return VI->getAlgorithmResultOrNull(AlgorithmTy::ID);
+      return VI->getAlgorithmResultOrNull(&AlgorithmTy::ID);
     }
   };
 }
