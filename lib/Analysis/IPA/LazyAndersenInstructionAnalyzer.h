@@ -48,6 +48,7 @@ namespace lazyandersen {
     void visitCallInst(CallInst &I);
     void visitVAArgInst(VAArgInst &I);
     void visitInstruction(Instruction &I);
+    void visitFenceInst(FenceInst &I);
 
   private:
     InstructionAnalyzer(ModulePass *MP, Module &M);

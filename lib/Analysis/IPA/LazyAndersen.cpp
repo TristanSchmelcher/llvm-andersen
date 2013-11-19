@@ -52,11 +52,13 @@ DenseSet<const Value *> LazyAndersen::getPointsToSet(const Value *V) const {
   assert(Data->ValueInfos.count(V));
   DenseSet<const Value *> Out;
   if (Data->ValueInfos[V]) {
-    TopEnumerator TE(
-        Data->ValueInfos[V]->getAlgorithmResult<
-            PointsToAlgorithm, ENUMERATION_PHASE>());
-    for (ValueInfo *VI; (VI = TE.enumerate()); ) {
-      Out.insert(VI->getValue());
+    AnalysisResult *AR = Data->ValueInfos[V]->getAlgorithmResult<
+        PointsToAlgorithm, ENUMERATION_PHASE>();
+    if (AR) {
+      TopEnumerator TE(AR);
+      for (ValueInfo *VI; (VI = TE.enumerate()); ) {
+        Out.insert(VI->getValue());
+      }
     }
   }
   return Out;

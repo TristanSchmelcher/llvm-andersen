@@ -219,7 +219,9 @@ namespace lazyandersen {
 
   // Now put it all together.
   template<RelationType RT>
-  inline void RelationHandler::handleRelation(ValueInfo *Src, ValueInfo *Dst) {
+  void RelationHandler::handleRelation(ValueInfo *Src, ValueInfo *Dst) {
+    assert(Src);
+    assert(Dst);
     ForAlgorithm<ActualParametersPointsToAlgorithm>
         ::handleRelation<RT>(Src, Dst);
     ForAlgorithm<ActualReturnValuePointsToAlgorithm>

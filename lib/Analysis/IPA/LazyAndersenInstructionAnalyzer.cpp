@@ -123,11 +123,56 @@ void InstructionAnalyzer::visitStoreInst(StoreInst &I) {
 }
 
 void InstructionAnalyzer::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
-  // TODO
+  // Since Andersen's algorithm is flow-insensitive, atomicity doesn't matter.
+  // The effect of AtomicCmpXchgInst is the same as the equivalent non-atomic
+  // pseudo-code:
+  //
+  // old = *PointerOperand
+  // if (old == CompareOperand) {
+  //   *PointerOperand = NewValOperand;
+  // }
+  // return old;  
+  //
+  // which is just a load relation and a store relation.
+  ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
+  if (AddressAnalysis) {
+    ValueInfo *LoadedValueInfo = cache(&I, createValueInfo(&I));
+    RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
+        AddressAnalysis);
+    ValueInfo *StoredValueInfo = analyzeValue(I.getNewValOperand());
+    if (StoredValueInfo) {
+      RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
+          AddressAnalysis);
+    }
+  } else {
+    cache(&I, ValueInfo::Nil);
+  }
+  // TODO: Record that the current function may load and store this address.
 }
 
 void InstructionAnalyzer::visitAtomicRMWInst(AtomicRMWInst &I) {
-  // TODO
+  // Similarly, the effect is the same as the equivalent non-atomic pseudo-code:
+  //
+  // old = *PointerOperand
+  // new = mix_bits(old, ValOperand)
+  // *PointerOperand = new
+  // return old
+  //
+  // From an Andersen perspective, this is the same as simply clobbering the
+  // value with ValOperand, so the effect is the same as in AtomicCmpXchgInst.
+  ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
+  if (AddressAnalysis) {
+    ValueInfo *LoadedValueInfo = cache(&I, createValueInfo(&I));
+    RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
+        AddressAnalysis);
+    ValueInfo *StoredValueInfo = analyzeValue(I.getValOperand());
+    if (StoredValueInfo) {
+      RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
+          AddressAnalysis);
+    }
+  } else {
+    cache(&I, ValueInfo::Nil);
+  }
 }
 
 void InstructionAnalyzer::visitPHINode(PHINode &I) {
@@ -140,12 +185,17 @@ void InstructionAnalyzer::visitCallInst(CallInst &I) {
 }
 
 void InstructionAnalyzer::visitVAArgInst(VAArgInst &I) {
-  // TODO
+  // TODO: Not right. Needs special handling for va_start intrinsic.
+  cache(&I, ValueInfo::Nil);
 }
 
 void InstructionAnalyzer::visitInstruction(Instruction &I) {
   assert(!I.mayReadOrWriteMemory() && "Unhandled memory instruction");
   cache(&I, analyzeUser(&I));
+}
+
+void InstructionAnalyzer::visitFenceInst(FenceInst &I) {
+  // No-op (can't use default visitInstruction because it fails the assert).
 }
 
 InstructionAnalyzer::InstructionAnalyzer(ModulePass *MP, Module &M)
@@ -163,8 +213,7 @@ void InstructionAnalyzer::processFunction(Function &F) {
   // Visit the basic blocks in a depth-first traversal of the dominator tree.
   // This ensures that we visit each instruction before each non-PHI use of it.
   // TODO: This skips (seemingly) unreachable code, so a future alias lookup on
-  // such code may break. We should depend on a transform pass that removes
-  // unreachable code.
+  // such code may break.
   DomTreeNode *Root = MP->getAnalysis<DominatorTree>(F).getRootNode();
   for (df_iterator<DomTreeNode *> i = df_begin(Root), End = df_end(Root);
        i != End; ++i) {
@@ -176,7 +225,7 @@ void InstructionAnalyzer::processFunction(Function &F) {
     const PHINode *PHI = i->first;
     ValueInfo *PHIAnalysis = i->second;
     for (PHINode::const_op_iterator i = PHI->op_begin(); i != PHI->op_end();
-        ++i) {
+         ++i) {
       ValueInfo *OperandAnalysis = analyzeValue(*i);
       if (OperandAnalysis) {
         RelationHandler::handleRelation<DEPENDS_ON>(PHIAnalysis,
@@ -243,7 +292,6 @@ ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
     return i->second.getPtr();
   }
   // Else analyze now.
-  assert(!isa<Instruction>(V) && "Instruction used before executed");
   ValueInfo *VI;
   if (const GlobalValue *G = dyn_cast<GlobalValue>(V)) {
     VI = analyzeGlobalValue(G);
@@ -251,6 +299,17 @@ ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
     VI = analyzeArgument(A);
   } else if (const User *U = dyn_cast<User>(V)) {
     VI = analyzeUser(U);
+#ifndef NDEBUG
+  } else if (const Instruction *I = dyn_cast<Instruction>(V)) {
+    // Since we visit BBs in control-flow order, this can only happen if a
+    // reachable BB has a PHI node with an incoming value from an unreachable
+    // BB. Since the instruction cannot possibly execute, we can pretend that
+    // its result points to nothing.
+    assert(!MP->getAnalysis<DominatorTree>(*CurrentFunction)
+               .isReachableFromEntry(I->getParent()) &&
+           "Instruction used before executed");
+    VI = ValueInfo::Nil;
+#endif
   } else {
     // TODO: Are there other types of Values that can point to things?
     VI = ValueInfo::Nil;
@@ -260,9 +319,20 @@ ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
 
 ValueInfo *InstructionAnalyzer::analyzeGlobalValue(const GlobalValue *G) {
   // TODO: Need to be aware of linkage here. Also, GlobalAlias may be
-  // special. Also, a global might be initialized with a value that points
-  // to something else, in which case we need to add a StoredToRelation.
-  return createFinalizedValueInfo(G);
+  // special.
+  ValueInfo *GlobalValueInfo = createFinalizedValueInfo(G);
+  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(G)) {
+    if (GV->hasInitializer()) {
+      ValueInfo *InitializerValueInfo = analyzeValue(GV->getInitializer());
+      if (InitializerValueInfo) {
+        // Since Andersen's algorithm is flow-insensitive, the effect of an
+        // initializer is the same as that of a store instruction.
+        RelationHandler::handleRelation<STORED_TO>(InitializerValueInfo,
+            GlobalValueInfo);
+      }
+    }
+  }
+  return GlobalValueInfo;
 }
 
 ValueInfo *InstructionAnalyzer::analyzeArgument(const Argument *A) {
@@ -292,8 +362,7 @@ ValueInfo *InstructionAnalyzer::analyzeUser(const User *U) {
     break;
   default:
     Result = createValueInfo(U);
-    for (ValueInfoVector::const_iterator i = Set.begin();
-         i != Set.end(); ++i) {
+    for (ValueInfoVector::const_iterator i = Set.begin(); i != Set.end(); ++i) {
       RelationHandler::handleRelation<DEPENDS_ON>(Result, *i);
     }
     break;

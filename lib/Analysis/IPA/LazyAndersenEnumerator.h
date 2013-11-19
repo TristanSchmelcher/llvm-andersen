@@ -17,6 +17,8 @@
 #include "LazyAndersenEnumerationResult.h"
 #include "LazyAndersenGraphNode.h"
 
+#include <cassert>
+
 namespace llvm {
 namespace lazyandersen {
   class AnalysisResult;
@@ -26,7 +28,9 @@ namespace lazyandersen {
     size_t i;
 
   public:
-    explicit Enumerator(AnalysisResult *AR) : AR(AR), i(0) {}
+    explicit Enumerator(AnalysisResult *AR) : AR(AR), i(0) {
+      assert(AR);
+    }
 
     EnumerationResult enumerate(int Depth);
 
