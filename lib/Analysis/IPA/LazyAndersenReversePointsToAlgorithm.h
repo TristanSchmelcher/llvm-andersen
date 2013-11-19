@@ -16,7 +16,6 @@
 
 #include "LazyAndersenIsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LazyAndersenLiteralAlgorithmId.h"
-#include "LazyAndersenRelationType.h"
 
 namespace llvm {
 namespace lazyandersen {
@@ -31,9 +30,6 @@ namespace lazyandersen {
     static const LiteralAlgorithmId ID;
 
     static AnalysisResult *run(ValueInfo *VI);
-
-    template<RelationType RT>
-    struct RelationHandler;
   };
 }
 }

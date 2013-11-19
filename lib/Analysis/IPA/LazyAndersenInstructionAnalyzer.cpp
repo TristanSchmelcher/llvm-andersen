@@ -15,7 +15,7 @@
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenData.h"
-#include "LazyAndersenRelationHandlers.h"
+#include "LazyAndersenRelationHandler.h"
 #include "LazyAndersenPointsToAlgorithm.h"
 #include "LazyAndersenRelationType.h"
 #include "LazyAndersenValueInfo.h"
@@ -71,24 +71,6 @@ namespace {
   const Value *CallOrInvokeInstWrapper<T>::getArgOperand(unsigned i) const {
     return I.getArgOperand(i);
   }
-
-  // Helper methods for dispatching to relation handlers.
-  template<typename AlgorithmTy, RelationType RT>
-  void runHandler(ValueInfo *Src, ValueInfo *Dst) {
-    AlgorithmTy::template RelationHandler<RT>::onRelation(Src, Dst);
-  }
-
-  template<RelationType RT>
-  void handleRelation(ValueInfo *Src, ValueInfo *Dst) {
-    runHandler<ActualParametersPointsToAlgorithm, RT>(Src, Dst);
-    runHandler<FormalParametersReversePointsToAlgorithm, RT>(Src, Dst);
-    runHandler<StoredValuesPointsToAlgorithm, RT>(Src, Dst);
-    runHandler<LoadedValuesReversePointsToAlgorithm, RT>(Src, Dst);
-    runHandler<PointsToAlgorithm, RT>(Src, Dst);
-    runHandler<ActualReturnValuePointsToAlgorithm, RT>(Src, Dst);
-    runHandler<FormalReturnValueReversePointsToAlgorithm, RT>(Src, Dst);
-    runHandler<ReversePointsToAlgorithm, RT>(Src, Dst);
-  }
 }
 
 LazyAndersenData *InstructionAnalyzer::run(ModulePass *MP, Module &M) {
@@ -103,7 +85,7 @@ void InstructionAnalyzer::visitReturnInst(ReturnInst &I) {
   ValueInfo *ReturnedValueInfo = analyzeValue(ReturnValue);
   if (ReturnedValueInfo) {
     ValueInfo *FunctionValueInfo = analyzeValue(CurrentFunction);
-    handleRelation<RETURNED_TO_CALLER>(ReturnedValueInfo,
+    RelationHandler::handleRelation<RETURNED_TO_CALLER>(ReturnedValueInfo,
         FunctionValueInfo);
   }
 }
@@ -120,7 +102,8 @@ void InstructionAnalyzer::visitLoadInst(LoadInst &I) {
   ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
   if (AddressAnalysis) {
     ValueInfo *LoadedValueInfo = cache(&I, createValueInfo(&I));
-    handleRelation<LOADED_FROM>(LoadedValueInfo, AddressAnalysis);
+    RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
+        AddressAnalysis);
   } else {
     cache(&I, ValueInfo::Nil);
   }
@@ -132,7 +115,8 @@ void InstructionAnalyzer::visitStoreInst(StoreInst &I) {
   if (AddressAnalysis) {
     ValueInfo *StoredValueInfo = analyzeValue(I.getValueOperand());
     if (StoredValueInfo) {
-      handleRelation<STORED_TO>(StoredValueInfo, AddressAnalysis);
+      RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
+          AddressAnalysis);
       // TODO: Record that the current function may store this address.
     }
   }
@@ -195,7 +179,8 @@ void InstructionAnalyzer::processFunction(Function &F) {
         ++i) {
       ValueInfo *OperandAnalysis = analyzeValue(*i);
       if (OperandAnalysis) {
-        handleRelation<DEPENDS_ON>(PHIAnalysis, OperandAnalysis);
+        RelationHandler::handleRelation<DEPENDS_ON>(PHIAnalysis,
+            OperandAnalysis);
       }
     }
   }
@@ -211,7 +196,7 @@ void InstructionAnalyzer::visitCallOrInvokeInst(Instruction &I,
       const Value *ArgumentValue = W.getArgOperand(i);
       ValueInfo *ArgumentValueInfo = analyzeValue(ArgumentValue);
       if (ArgumentValueInfo) {
-        handleRelation<ARGUMENT_TO_CALLEE>(ArgumentValueInfo,
+        RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(ArgumentValueInfo,
             CalledValueInfo);
       }
     }
@@ -220,7 +205,7 @@ void InstructionAnalyzer::visitCallOrInvokeInst(Instruction &I,
     ValueInfo *ReturnedValueInfo;
     if (CalledValueInfo) {
       ReturnedValueInfo = createValueInfo(&I);
-      handleRelation<RETURNED_FROM_CALLEE>(ReturnedValueInfo,
+      RelationHandler::handleRelation<RETURNED_FROM_CALLEE>(ReturnedValueInfo,
           CalledValueInfo);
     } else {
       ReturnedValueInfo = ValueInfo::Nil;
@@ -246,7 +231,8 @@ ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
 
 ValueInfo *InstructionAnalyzer::createFinalizedValueInfo(const Value *V) {
   ValueInfo *VI = createValueInfo(V);
-  VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()->addValueInfo(VI);
+  VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()
+      ->addValueInfo(VI);
   return VI;
 }
 
@@ -282,7 +268,7 @@ ValueInfo *InstructionAnalyzer::analyzeGlobalValue(const GlobalValue *G) {
 ValueInfo *InstructionAnalyzer::analyzeArgument(const Argument *A) {
   ValueInfo *ArgumentValueInfo = createValueInfo(A);
   ValueInfo *FunctionValueInfo = analyzeValue(CurrentFunction);
-  handleRelation<ARGUMENT_FROM_CALLER>(ArgumentValueInfo,
+  RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentValueInfo,
       FunctionValueInfo);
   return ArgumentValueInfo;
 }
@@ -308,7 +294,7 @@ ValueInfo *InstructionAnalyzer::analyzeUser(const User *U) {
     Result = createValueInfo(U);
     for (ValueInfoVector::const_iterator i = Set.begin();
          i != Set.end(); ++i) {
-      handleRelation<DEPENDS_ON>(Result, *i);
+      RelationHandler::handleRelation<DEPENDS_ON>(Result, *i);
     }
     break;
   }

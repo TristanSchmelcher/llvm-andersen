@@ -16,17 +16,12 @@
 
 #include "LazyAndersenInstructionAnalysisAlgorithm.h"
 #include "LazyAndersenLiteralAlgorithmId.h"
-#include "LazyAndersenRelationType.h"
-#include "LazyAndersenValueInfo.h"
 
 namespace llvm {
 namespace lazyandersen {
   struct ActualParametersPointsToAlgorithm :
       public InstructionAnalysisAlgorithm {
     static const LiteralAlgorithmId ID;
-
-    template<RelationType RT>
-    struct RelationHandler;
   };
 }
 }
