@@ -21,6 +21,7 @@
 namespace llvm {
 namespace lazyandersen {
   class GraphNode;
+  class LazyAndersenData;
 
   struct GraphEdge {
     GraphEdge() : Dst(0) {}
@@ -36,7 +37,7 @@ namespace lazyandersen {
   class GraphNode {
   public:
     virtual GraphEdgeDeque getOutgoingEdges() const = 0;
-    virtual std::string getNodeLabel() const = 0;
+    virtual std::string getNodeLabel(const LazyAndersenData &Data) const = 0;
     virtual bool isNodeHidden() const = 0;
 
   protected:

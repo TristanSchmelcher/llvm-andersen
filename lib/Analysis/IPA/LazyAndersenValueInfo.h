@@ -34,8 +34,9 @@ namespace lazyandersen {
     typedef AnalysisResult *(*AlgorithmFn)(ValueInfo *);
     typedef DenseMap<const AlgorithmId *, AnalysisResult *> ResultsMapTy;
     ResultsMapTy Results;
-    // The Value that maps to this object. (If this analysis applies to
-    // multiple Values, this is the first one that was analyzed.)
+    // The Value that maps to this object, or null for the special ValueInfos
+    // owned by LazyAndersenData. (If this analysis applies to multiple Values,
+    // this is the first one that was analyzed.)
     const Value *V;
 
   public:
@@ -50,7 +51,7 @@ namespace lazyandersen {
     }
 
     virtual GraphEdgeDeque getOutgoingEdges() const;
-    virtual std::string getNodeLabel() const;
+    virtual std::string getNodeLabel(const LazyAndersenData &Data) const;
     virtual bool isNodeHidden() const;
 
     template<typename AlgorithmTy, Phase CurrentPhase>

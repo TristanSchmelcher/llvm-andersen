@@ -43,6 +43,18 @@ INITIALIZE_PASS_END(LazyAndersen, "lazy-andersen",
                     "Lazy Andersen's Algorithm for Points-To Analysis", false,
                     true)
 
+namespace {
+
+std::string prettyPrintValueOrExternal(const Value *V) {
+  if (V) {
+    return prettyPrintValue(V);
+  } else {
+    return "ExternallyDefinedRegions";
+  }
+}
+
+}
+
 LazyAndersen::LazyAndersen()
   : ModulePass(ID), Data(0) {
   initializeLazyAndersenPass(*PassRegistry::getPassRegistry());
@@ -99,7 +111,7 @@ void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
     OS << "Points-to set for " << prettyPrintValue(i->first) << ":\n";
     for (DenseSet<const Value *>::iterator i = PointsTo.begin();
          i != PointsTo.end(); ++i) {
-      OS << "  " << prettyPrintValue(*i) << "\n";
+      OS << "  " << prettyPrintValueOrExternal(*i) << "\n";
     }
   }
 }

@@ -29,7 +29,7 @@ namespace lazyandersen {
     ~RecursiveEnumerate();
     virtual EnumerationResult enumerate(EnumerationContext *Ctx);
     virtual GraphEdgeDeque getOutgoingEdges() const;
-    virtual std::string getNodeLabel() const;
+    virtual std::string getNodeLabel(const LazyAndersenData &Data) const;
   };
 }
 }

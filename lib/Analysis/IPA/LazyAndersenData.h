@@ -24,14 +24,24 @@ namespace lazyandersen {
 typedef DenseMap<const Value *, ValueInfo::Ref> ValueInfoMap;
 
 class LazyAndersenData : public GraphNode {
+  friend class InstructionAnalyzer;
+
 public:
   ValueInfoMap ValueInfos;
+  const ValueInfo::Ref ExternallyDefinedRegions;
+  const ValueInfo::Ref ExternallyLinkableRegions;
+  const ValueInfo::Ref ExternallyAccessibleRegions;
+
+  virtual ~LazyAndersenData();
 
   virtual GraphEdgeDeque getOutgoingEdges() const;
-  virtual std::string getNodeLabel() const;
+  virtual std::string getNodeLabel(const LazyAndersenData &Data) const;
   virtual bool isNodeHidden() const;
 
-  virtual ~LazyAndersenData() {}
+private:
+  LazyAndersenData(ValueInfo *ExternallyDefinedRegions,
+                   ValueInfo *ExternallyLinkableRegions,
+                   ValueInfo *ExternallyAccessibleRegions);
 };
 
 }

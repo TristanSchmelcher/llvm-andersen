@@ -53,6 +53,7 @@ namespace {
 namespace llvm {
 namespace lazyandersen {
   std::string prettyPrintValue(const Value *V, size_t MaxPrintedSize) {
+    assert(V);
     std::ostringstream OSS;
     {
       std::string PrintedValue(getPrintedValue(V));

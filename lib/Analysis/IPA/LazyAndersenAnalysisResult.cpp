@@ -46,7 +46,7 @@ GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
   return Result;
 }
 
-std::string AnalysisResult::getNodeLabel() const {
+std::string AnalysisResult::getNodeLabel(const LazyAndersenData &Data) const {
   return std::string();
 }
 

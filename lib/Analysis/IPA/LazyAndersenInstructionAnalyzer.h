@@ -52,13 +52,17 @@ namespace lazyandersen {
 
   private:
     InstructionAnalyzer(ModulePass *MP, Module &M);
+    static LazyAndersenData *createLazyAndersenData();
     void visitCallOrInvokeInst(Instruction &I,
         const CallOrInvokeInstWrapperInterface &W);
     void processFunction(Function &F);
     bool analyzed(const Value *V);
+    static ValueInfo *createValueInfo(const Value *V);
+    static ValueInfo *createRegion(const Value *V);
     ValueInfo *cache(const Value *V, ValueInfo *VI);
-    ValueInfo *createValueInfo(const Value *V);
-    ValueInfo *createFinalizedValueInfo(const Value *V);
+    ValueInfo *cacheNewValueInfo(const Value *V);
+    ValueInfo *cacheNewRegion(const Value *V);
+    ValueInfo *cacheNil(const Value *V);
     ValueInfo *analyzeValue(const Value *V);
     ValueInfo *analyzeGlobalValue(const GlobalValue *G);
     ValueInfo *analyzeArgument(const Argument *A);

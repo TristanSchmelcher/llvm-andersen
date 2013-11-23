@@ -15,9 +15,11 @@
 
 #include "LazyAndersenAlgorithmId.h"
 #include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenData.h"
 #include "LazyAndersenRecursiveEnumerate.h"
 #include "LazyAndersenValuePrinter.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/ErrorHandling.h"
 
 #include <sstream>
 
@@ -45,9 +47,20 @@ GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
   return Result;
 }
 
-std::string ValueInfo::getNodeLabel() const {
-  static const size_t MaxPrintedSize = 16;
-  return prettyPrintValue(getValue(), MaxPrintedSize);
+std::string ValueInfo::getNodeLabel(const LazyAndersenData &Data) const {
+  if (getValue()) {
+    static const size_t MaxPrintedSize = 16;
+    return prettyPrintValue(getValue(), MaxPrintedSize);
+  } else if (this == Data.ExternallyDefinedRegions.getPtr()) {
+    return "ExternallyDefinedRegions";
+  } else if (this == Data.ExternallyLinkableRegions.getPtr()) {
+    return "ExternallyLinkableRegions";
+  } else if (this == Data.ExternallyAccessibleRegions.getPtr()) {
+    return "ExternallyAccessibleRegions";
+  } else {
+    llvm_unreachable("Unknown special-case ValueInfo");
+    return std::string();
+  }
 }
 
 bool ValueInfo::isNodeHidden() const {

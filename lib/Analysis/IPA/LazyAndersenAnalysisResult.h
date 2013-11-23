@@ -40,7 +40,7 @@ namespace lazyandersen {
     void addWork(AnalysisResultWork *Entry) { Work.push_back(Entry); }
 
     virtual GraphEdgeDeque getOutgoingEdges() const;
-    virtual std::string getNodeLabel() const;
+    virtual std::string getNodeLabel(const LazyAndersenData &Data) const;
     virtual bool isNodeHidden() const;
 
   private:

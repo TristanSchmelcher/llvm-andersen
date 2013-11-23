@@ -32,6 +32,7 @@ GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {
   return Result;
 }
 
-std::string RecursiveEnumerate::getNodeLabel() const {
+std::string RecursiveEnumerate::getNodeLabel(const LazyAndersenData &Data)
+    const {
   return "Recurse";
 }

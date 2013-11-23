@@ -31,7 +31,7 @@ namespace lazyandersen {
   public:
     explicit TransformStep(AnalysisResult *AR) : TransformStepBase(AR) {}
 
-    virtual std::string getNodeLabel() const {
+    virtual std::string getNodeLabel(const LazyAndersenData &Data) const {
       return buildTransformStepName(AlgorithmTy::ID);
     }
 

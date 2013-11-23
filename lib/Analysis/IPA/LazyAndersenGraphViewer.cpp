@@ -106,7 +106,7 @@ public:
 
   std::string getNodeLabel(const GraphNode *Node,
                            const LazyAndersenData &Data) {
-    return Node->getNodeLabel();
+    return Node->getNodeLabel(Data);
   }
 
   static std::string getEdgeSourceLabel(const GraphNode *Node,

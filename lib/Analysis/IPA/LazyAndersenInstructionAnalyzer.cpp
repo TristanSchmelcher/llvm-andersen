@@ -95,17 +95,17 @@ void InstructionAnalyzer::visitInvokeInst(InvokeInst &I) {
 }
 
 void InstructionAnalyzer::visitAllocaInst(AllocaInst &I) {
-  cache(&I, createFinalizedValueInfo(&I));
+  cacheNewRegion(&I);
 }
 
 void InstructionAnalyzer::visitLoadInst(LoadInst &I) {
   ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
   if (AddressAnalysis) {
-    ValueInfo *LoadedValueInfo = cache(&I, createValueInfo(&I));
+    ValueInfo *LoadedValueInfo = cacheNewValueInfo(&I);
     RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
         AddressAnalysis);
   } else {
-    cache(&I, ValueInfo::Nil);
+    cacheNil(&I);
   }
   // TODO: Record that the current function may load this address.
 }
@@ -136,7 +136,7 @@ void InstructionAnalyzer::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
   // which is just a load relation and a store relation.
   ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
   if (AddressAnalysis) {
-    ValueInfo *LoadedValueInfo = cache(&I, createValueInfo(&I));
+    ValueInfo *LoadedValueInfo = cacheNewValueInfo(&I);
     RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
         AddressAnalysis);
     ValueInfo *StoredValueInfo = analyzeValue(I.getNewValOperand());
@@ -145,7 +145,7 @@ void InstructionAnalyzer::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
           AddressAnalysis);
     }
   } else {
-    cache(&I, ValueInfo::Nil);
+    cacheNil(&I);
   }
   // TODO: Record that the current function may load and store this address.
 }
@@ -162,7 +162,7 @@ void InstructionAnalyzer::visitAtomicRMWInst(AtomicRMWInst &I) {
   // value with ValOperand, so the effect is the same as in AtomicCmpXchgInst.
   ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
   if (AddressAnalysis) {
-    ValueInfo *LoadedValueInfo = cache(&I, createValueInfo(&I));
+    ValueInfo *LoadedValueInfo = cacheNewValueInfo(&I);
     RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
         AddressAnalysis);
     ValueInfo *StoredValueInfo = analyzeValue(I.getValOperand());
@@ -171,12 +171,12 @@ void InstructionAnalyzer::visitAtomicRMWInst(AtomicRMWInst &I) {
           AddressAnalysis);
     }
   } else {
-    cache(&I, ValueInfo::Nil);
+    cacheNil(&I);
   }
 }
 
 void InstructionAnalyzer::visitPHINode(PHINode &I) {
-  ValueInfo *PHIAnalysis = cache(&I, createValueInfo(&I));
+  ValueInfo *PHIAnalysis = cacheNewValueInfo(&I);
   PHINodeWork.push_back(PHINodeWorkVector::value_type(&I, PHIAnalysis));
 }
 
@@ -186,12 +186,12 @@ void InstructionAnalyzer::visitCallInst(CallInst &I) {
 
 void InstructionAnalyzer::visitVAArgInst(VAArgInst &I) {
   // TODO: Not right. Needs special handling for va_start intrinsic.
-  cache(&I, ValueInfo::Nil);
+  cacheNil(&I);
 }
 
 void InstructionAnalyzer::visitInstruction(Instruction &I) {
   assert(!I.mayReadOrWriteMemory() && "Unhandled memory instruction");
-  cache(&I, analyzeUser(&I));
+  analyzeUser(&I);
 }
 
 void InstructionAnalyzer::visitFenceInst(FenceInst &I) {
@@ -199,13 +199,57 @@ void InstructionAnalyzer::visitFenceInst(FenceInst &I) {
 }
 
 InstructionAnalyzer::InstructionAnalyzer(ModulePass *MP, Module &M)
-  : MP(MP), Data(new LazyAndersenData()) {
+  : MP(MP), Data(createLazyAndersenData()) {
   for (Module::iterator i = M.begin(); i != M.end(); ++i) {
     Function &F(*i);
     if (!F.isDeclaration()) {
       processFunction(F);
     }
   }
+}
+
+LazyAndersenData *InstructionAnalyzer::createLazyAndersenData() {
+  // Placeholder for all externally-defined regions.
+  ValueInfo *ExternallyDefinedRegions = createRegion(0);
+
+  // All global regions that are externally accessible by way of linkage. This
+  // is the set of all internally-defined global regions with external linkage
+  // plus a placeholder for externally-defined (global) regions.
+  ValueInfo *ExternallyLinkableRegions = createValueInfo(0);
+  // Externally-defined non-global regions are indistinguishable from
+  // externally-defined global regions, so we can use ExternallyDefinedRegions
+  // here.
+  RelationHandler::handleRelation<DEPENDS_ON>(ExternallyLinkableRegions,
+      ExternallyDefinedRegions);
+
+  // All regions that are externally accessible in any manner. This is the set
+  // of all externally-defined regions, all link-accessible global regions, and
+  // all internally-defined regions that can be accessed by dereferencing or
+  // calling them.
+  ValueInfo *ExternallyAccessibleRegions = createValueInfo(0);
+  // This includes ExternallyDefinedRegions.
+  RelationHandler::handleRelation<DEPENDS_ON>(ExternallyAccessibleRegions,
+      ExternallyLinkableRegions);
+  // Putting ExternallyAccessibleRegions into every relation with itself makes
+  // it expand to what we want.
+  RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(
+      ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+  RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(
+      ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+  RelationHandler::handleRelation<LOADED_FROM>(
+      ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+  RelationHandler::handleRelation<RETURNED_FROM_CALLEE>(
+      ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+  RelationHandler::handleRelation<RETURNED_TO_CALLER>(
+      ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+  RelationHandler::handleRelation<STORED_TO>(
+      ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+  RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(
+      ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+
+  return new LazyAndersenData(ExternallyDefinedRegions,
+                              ExternallyLinkableRegions,
+                              ExternallyAccessibleRegions);
 }
 
 void InstructionAnalyzer::processFunction(Function &F) {
@@ -251,15 +295,13 @@ void InstructionAnalyzer::visitCallOrInvokeInst(Instruction &I,
     }
   }
   if (!I.getType()->isVoidTy()) {
-    ValueInfo *ReturnedValueInfo;
     if (CalledValueInfo) {
-      ReturnedValueInfo = createValueInfo(&I);
+      ValueInfo *ReturnedValueInfo = cacheNewValueInfo(&I);
       RelationHandler::handleRelation<RETURNED_FROM_CALLEE>(ReturnedValueInfo,
           CalledValueInfo);
     } else {
-      ReturnedValueInfo = ValueInfo::Nil;
+      cacheNil(&I);
     }
-    cache(&I, ReturnedValueInfo);
   }
   // TODO: Record that the current function may call this function.
 }
@@ -268,21 +310,33 @@ bool InstructionAnalyzer::analyzed(const Value *V) {
   return Data->ValueInfos.count(V);
 }
 
+ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
+  return new ValueInfo(V);
+}
+
+ValueInfo *InstructionAnalyzer::createRegion(const Value *V) {
+  ValueInfo *VI = createValueInfo(V);
+  VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()
+      ->addValueInfo(VI);
+  return VI;
+}
+
 ValueInfo *InstructionAnalyzer::cache(const Value *V, ValueInfo *VI) {
   assert(!analyzed(V));
   Data->ValueInfos[V] = VI;
   return VI;
 }
 
-ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
-  return new ValueInfo(V);
+ValueInfo *InstructionAnalyzer::cacheNewValueInfo(const Value *V) {
+  return cache(V, createValueInfo(V));
 }
 
-ValueInfo *InstructionAnalyzer::createFinalizedValueInfo(const Value *V) {
-  ValueInfo *VI = createValueInfo(V);
-  VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()
-      ->addValueInfo(VI);
-  return VI;
+ValueInfo *InstructionAnalyzer::cacheNewRegion(const Value *V) {
+  return cache(V, createRegion(V));
+}
+
+ValueInfo *InstructionAnalyzer::cacheNil(const Value *V) {
+  return cache(V, ValueInfo::Nil);
 }
 
 ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
@@ -299,44 +353,82 @@ ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
     VI = analyzeArgument(A);
   } else if (const User *U = dyn_cast<User>(V)) {
     VI = analyzeUser(U);
-#ifndef NDEBUG
-  } else if (const Instruction *I = dyn_cast<Instruction>(V)) {
-    // Since we visit BBs in control-flow order, this can only happen if a
-    // reachable BB has a PHI node with an incoming value from an unreachable
-    // BB. Since the instruction cannot possibly execute, we can pretend that
-    // its result points to nothing.
-    assert(!MP->getAnalysis<DominatorTree>(*CurrentFunction)
-               .isReachableFromEntry(I->getParent()) &&
-           "Instruction used before executed");
-    VI = ValueInfo::Nil;
-#endif
   } else {
+#ifndef NDEBUG
+    if (const Instruction *I = dyn_cast<Instruction>(V)) {
+      // Since we visit BBs in control-flow order, this can only happen if a
+      // reachable BB has a PHI node with an incoming value from an unreachable
+      // BB. Since the instruction cannot possibly execute, we can pretend that
+      // its result points to nothing.
+      assert(!MP->getAnalysis<DominatorTree>(*CurrentFunction)
+                 .isReachableFromEntry(I->getParent()) &&
+             "Instruction used before executed");
+    }
+#endif
     // TODO: Are there other types of Values that can point to things?
-    VI = ValueInfo::Nil;
+    VI = cacheNil(V);
   }
-  return cache(V, VI);
+  return VI;
+}
+
+namespace {
+
+// Whether or not the linkage of this symbol makes it accessible from other
+// modules. For functions, this means directly callable; for global variables,
+// this means directly read/writable.
+bool hasExternallyAccessibleLinkage(const GlobalValue *G) {
+  // TODO: Figure out the precise set of linkage types.
+  return G->hasExternalLinkage();
+}
+
 }
 
 ValueInfo *InstructionAnalyzer::analyzeGlobalValue(const GlobalValue *G) {
-  // TODO: Need to be aware of linkage here. Also, GlobalAlias may be
-  // special.
-  ValueInfo *GlobalValueInfo = createFinalizedValueInfo(G);
-  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(G)) {
-    if (GV->hasInitializer()) {
-      ValueInfo *InitializerValueInfo = analyzeValue(GV->getInitializer());
-      if (InitializerValueInfo) {
-        // Since Andersen's algorithm is flow-insensitive, the effect of an
-        // initializer is the same as that of a store instruction.
-        RelationHandler::handleRelation<STORED_TO>(InitializerValueInfo,
-            GlobalValueInfo);
+  // TODO: Need to handle weak linkage too.
+  bool external = hasExternallyAccessibleLinkage(G);
+  if (G->isDeclaration()) {
+    if (external) {
+      return cache(G, Data->ExternallyLinkableRegions.getPtr());
+    } else {
+      // Use of undefined static-linkage symbols is not legal. Pretend it
+      // points to nothing.
+      return cacheNil(G);
+    }
+  } else {
+    ValueInfo *GlobalValueInfo;
+    if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(G)) {
+      const GlobalValue *Aliasee = GA->getAliasedGlobal();
+      if (Aliasee) {
+        GlobalValueInfo = cacheNewValueInfo(G);
+        RelationHandler::handleRelation<DEPENDS_ON>(
+            GlobalValueInfo, analyzeGlobalValue(Aliasee));
+      } else {
+        // TODO: What does it mean for an alias to alias nothing?
+        return cacheNil(G);
+      }
+    } else {
+      // Either GlobalVariable or Function.
+      GlobalValueInfo = cacheNewRegion(G);
+      if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(G)) {
+        ValueInfo *InitializerValueInfo = analyzeValue(GV->getInitializer());
+        if (InitializerValueInfo) {
+          // Since Andersen's algorithm is flow-insensitive, the effect of an
+          // initializer is the same as that of a store instruction.
+          RelationHandler::handleRelation<STORED_TO>(InitializerValueInfo,
+              GlobalValueInfo);
+        }
       }
     }
+    if (external) {
+      RelationHandler::handleRelation<DEPENDS_ON>(
+          Data->ExternallyLinkableRegions.getPtr(), GlobalValueInfo);
+    }
+    return GlobalValueInfo;
   }
-  return GlobalValueInfo;
 }
 
 ValueInfo *InstructionAnalyzer::analyzeArgument(const Argument *A) {
-  ValueInfo *ArgumentValueInfo = createValueInfo(A);
+  ValueInfo *ArgumentValueInfo = cacheNewValueInfo(A);
   ValueInfo *FunctionValueInfo = analyzeValue(CurrentFunction);
   RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentValueInfo,
       FunctionValueInfo);
@@ -355,13 +447,13 @@ ValueInfo *InstructionAnalyzer::analyzeUser(const User *U) {
   ValueInfo *Result;
   switch (Set.size()) {
   case 0:
-    Result = ValueInfo::Nil;
+    Result = cacheNil(U);
     break;
   case 1:
-    Result = Set.front();
+    Result = cache(U, Set.front());
     break;
   default:
-    Result = createValueInfo(U);
+    Result = cacheNewValueInfo(U);
     for (ValueInfoVector::const_iterator i = Set.begin(); i != Set.end(); ++i) {
       RelationHandler::handleRelation<DEPENDS_ON>(Result, *i);
     }
