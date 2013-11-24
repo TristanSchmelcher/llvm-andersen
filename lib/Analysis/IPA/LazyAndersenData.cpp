@@ -29,11 +29,17 @@ LazyAndersenData::~LazyAndersenData() {}
 
 GraphEdgeDeque LazyAndersenData::getOutgoingEdges() const {
   GraphEdgeDeque Result;
+  // No edge labels needed anywhere in here because the edge will not be
+  // printed.
   for (ValueInfoMap::const_iterator i = ValueInfos.begin(),
                                     End = ValueInfos.end();
        i != End; ++i) {
     if (!i->second.getPtr() || i->first != i->second->getValue()) continue;
-    // No edge label needed because this edge will not be printed.
+    Result.push_back(GraphEdge(i->second.getPtr(), std::string()));
+  }
+  for (FunctionMap::const_iterator i = FunctionInfos.begin(),
+                                   End = FunctionInfos.end();
+       i != End; ++i) {
     Result.push_back(GraphEdge(i->second.getPtr(), std::string()));
   }
   Result.push_back(GraphEdge(

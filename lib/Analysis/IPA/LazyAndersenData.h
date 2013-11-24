@@ -18,16 +18,24 @@
 #include "LazyAndersenValueInfo.h"
 
 namespace llvm {
+class Function;
+class Value;
+
 namespace lazyandersen {
 
 // TODO: Should this be a ValueMap?
 typedef DenseMap<const Value *, ValueInfo::Ref> ValueInfoMap;
+typedef DenseMap<const Function *, ValueInfo::Ref> FunctionMap;
 
 class LazyAndersenData : public GraphNode {
   friend class InstructionAnalyzer;
 
 public:
+  // ValueInfo for all Values used in the Module.
   ValueInfoMap ValueInfos;
+  // ValueInfo for all Functions defined in the Module. These only differ from
+  // the ValueInfos entry if the function is overridable. 
+  FunctionMap FunctionInfos;
   const ValueInfo::Ref ExternallyDefinedRegions;
   const ValueInfo::Ref ExternallyLinkableRegions;
   const ValueInfo::Ref ExternallyAccessibleRegions;

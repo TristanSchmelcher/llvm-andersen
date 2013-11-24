@@ -84,7 +84,7 @@ void InstructionAnalyzer::visitReturnInst(ReturnInst &I) {
   }
   ValueInfo *ReturnedValueInfo = analyzeValue(ReturnValue);
   if (ReturnedValueInfo) {
-    ValueInfo *FunctionValueInfo = analyzeValue(CurrentFunction);
+    ValueInfo *FunctionValueInfo = getFunctionInfo(CurrentFunction);
     RelationHandler::handleRelation<RETURNED_TO_CALLER>(ReturnedValueInfo,
         FunctionValueInfo);
   }
@@ -339,6 +339,19 @@ ValueInfo *InstructionAnalyzer::cacheNil(const Value *V) {
   return cache(V, ValueInfo::Nil);
 }
 
+ValueInfo *InstructionAnalyzer::getFunctionInfo(const Function *F) {
+  assert(!F->isDeclaration());
+  ValueInfo::Ref &VI = Data->FunctionInfos[F];
+  ValueInfo *Out;
+  if (VI) {
+    Out = VI.getPtr();
+  } else {
+    Out = createRegion(F);
+    VI = Out;
+  }
+  return Out;
+}
+
 ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
   ValueInfoMap::const_iterator i = Data->ValueInfos.find(V);
   if (i != Data->ValueInfos.end()) {
@@ -351,85 +364,110 @@ ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
     VI = analyzeGlobalValue(G);
   } else if (const Argument *A = dyn_cast<Argument>(V)) {
     VI = analyzeArgument(A);
+  } else if (const Instruction *I = dyn_cast<Instruction>(V)) {
+    // Since we visit BBs in control-flow order, this can only happen if a
+    // reachable BB has a PHI node with an incoming value from an unreachable
+    // BB. Since the instruction cannot possibly execute, we can pretend that
+    // its result points to nothing.
+    assert(!MP->getAnalysis<DominatorTree>(*CurrentFunction)
+               .isReachableFromEntry(I->getParent()) &&
+           "Instruction used before executed");
+    VI = cacheNil(V);
   } else if (const User *U = dyn_cast<User>(V)) {
     VI = analyzeUser(U);
   } else {
-#ifndef NDEBUG
-    if (const Instruction *I = dyn_cast<Instruction>(V)) {
-      // Since we visit BBs in control-flow order, this can only happen if a
-      // reachable BB has a PHI node with an incoming value from an unreachable
-      // BB. Since the instruction cannot possibly execute, we can pretend that
-      // its result points to nothing.
-      assert(!MP->getAnalysis<DominatorTree>(*CurrentFunction)
-                 .isReachableFromEntry(I->getParent()) &&
-             "Instruction used before executed");
-    }
-#endif
     // TODO: Are there other types of Values that can point to things?
     VI = cacheNil(V);
   }
   return VI;
 }
 
-namespace {
-
-// Whether or not the linkage of this symbol makes it accessible from other
-// modules. For functions, this means directly callable; for global variables,
-// this means directly read/writable.
-bool hasExternallyAccessibleLinkage(const GlobalValue *G) {
-  // TODO: Figure out the precise set of linkage types.
-  return G->hasExternalLinkage();
-}
-
-}
-
 ValueInfo *InstructionAnalyzer::analyzeGlobalValue(const GlobalValue *G) {
-  // TODO: Need to handle weak linkage too.
-  bool external = hasExternallyAccessibleLinkage(G);
   if (G->isDeclaration()) {
-    if (external) {
-      return cache(G, Data->ExternallyLinkableRegions.getPtr());
-    } else {
-      // Use of undefined static-linkage symbols is not legal. Pretend it
-      // points to nothing.
-      return cacheNil(G);
-    }
+    assert(!G->hasLocalLinkage());  // Verifier ensures this
+    return cache(G, Data->ExternallyLinkableRegions.getPtr());
   } else {
-    ValueInfo *GlobalValueInfo;
+    ValueInfo *VI;
     if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(G)) {
-      const GlobalValue *Aliasee = GA->getAliasedGlobal();
-      if (Aliasee) {
-        GlobalValueInfo = cacheNewValueInfo(G);
-        RelationHandler::handleRelation<DEPENDS_ON>(
-            GlobalValueInfo, analyzeGlobalValue(Aliasee));
-      } else {
-        // TODO: What does it mean for an alias to alias nothing?
-        return cacheNil(G);
-      }
+      VI = analyzeGlobalAlias(GA);
+    } else if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(G)) {
+      VI = analyzeGlobalVariable(GV);
+    } else if (const Function *F = dyn_cast<Function>(G)) {
+      VI = analyzeFunction(F);
     } else {
-      // Either GlobalVariable or Function.
-      GlobalValueInfo = cacheNewRegion(G);
-      if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(G)) {
-        ValueInfo *InitializerValueInfo = analyzeValue(GV->getInitializer());
-        if (InitializerValueInfo) {
-          // Since Andersen's algorithm is flow-insensitive, the effect of an
-          // initializer is the same as that of a store instruction.
-          RelationHandler::handleRelation<STORED_TO>(InitializerValueInfo,
-              GlobalValueInfo);
-        }
-      }
+      llvm_unreachable("Unknown GlobalValue type");
+      VI = cacheNil(G);
     }
-    if (external) {
+    if (VI != ValueInfo::Nil && !G->hasLocalLinkage()) {
       RelationHandler::handleRelation<DEPENDS_ON>(
-          Data->ExternallyLinkableRegions.getPtr(), GlobalValueInfo);
+          Data->ExternallyLinkableRegions.getPtr(), VI);
     }
-    return GlobalValueInfo;
+    return VI;
+  }
+}
+
+ValueInfo *InstructionAnalyzer::analyzeGlobalAlias(const GlobalAlias *GA) {
+  const Constant *Aliasee = GA->getAliasee();
+  if (Aliasee) {
+    ValueInfo *VI = cacheNewValueInfo(GA);
+    RelationHandler::handleRelation<DEPENDS_ON>(VI, analyzeValue(Aliasee));
+    if (GA->mayBeOverridden()) {
+      RelationHandler::handleRelation<DEPENDS_ON>(
+          VI, Data->ExternallyLinkableRegions.getPtr());
+    }
+    return VI;
+  } else if (GA->mayBeOverridden()) {
+    // TODO: What does it mean for an alias to alias nothing?
+    return cache(GA, Data->ExternallyLinkableRegions.getPtr());
+  } else {
+    // TODO: What does it mean for an alias to alias nothing?
+    return cacheNil(GA);
+  }
+}
+
+ValueInfo *InstructionAnalyzer::analyzeGlobalVariable(
+    const GlobalVariable *GV) {
+  ValueInfo *VI;
+  if (GV->mayBeOverridden()) {
+    // It either points to this region or an externally-linkable region.
+    // There's no way to get a pointer within this module that can only
+    // point to this region, so we can just use ExternallyLinkableRegions.
+    VI = cache(GV, Data->ExternallyLinkableRegions.getPtr());
+  } else {
+    VI = cacheNewRegion(GV);
+  }
+  ValueInfo *InitializerValueInfo = analyzeValue(GV->getInitializer());
+  if (InitializerValueInfo) {
+    // Since Andersen's algorithm is flow-insensitive, the effect of an
+    // initializer is the same as that of a store instruction.
+    RelationHandler::handleRelation<STORED_TO>(InitializerValueInfo, VI);
+  }
+  return VI;
+}
+
+ValueInfo *InstructionAnalyzer::analyzeFunction(const Function *F) {
+  if (F->mayBeOverridden()) {
+    // It either points to this region or an externally-linkable region.
+    // Relations between the function and uses of its formal parameters or
+    // actual return value in this definition are guaranteed to refer to
+    // this region and not one from an external definition, so we make a
+    // distinction between the function definition and the symbol. This allows
+    // us to model the fact that linker_private_weak doesn't leak information
+    // into other modules.
+    ValueInfo *VI = cacheNewValueInfo(F);
+    RelationHandler::handleRelation<DEPENDS_ON>(VI, getFunctionInfo(F));
+    RelationHandler::handleRelation<DEPENDS_ON>(
+        VI, Data->ExternallyLinkableRegions.getPtr());
+    return VI;
+  } else {
+    // It can only point to this definition.
+    return cache(F, getFunctionInfo(F));
   }
 }
 
 ValueInfo *InstructionAnalyzer::analyzeArgument(const Argument *A) {
   ValueInfo *ArgumentValueInfo = cacheNewValueInfo(A);
-  ValueInfo *FunctionValueInfo = analyzeValue(CurrentFunction);
+  ValueInfo *FunctionValueInfo = getFunctionInfo(CurrentFunction);
   RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentValueInfo,
       FunctionValueInfo);
   return ArgumentValueInfo;

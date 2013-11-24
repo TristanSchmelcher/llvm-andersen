@@ -63,8 +63,12 @@ namespace lazyandersen {
     ValueInfo *cacheNewValueInfo(const Value *V);
     ValueInfo *cacheNewRegion(const Value *V);
     ValueInfo *cacheNil(const Value *V);
+    ValueInfo *getFunctionInfo(const Function *F);
     ValueInfo *analyzeValue(const Value *V);
     ValueInfo *analyzeGlobalValue(const GlobalValue *G);
+    ValueInfo *analyzeGlobalAlias(const GlobalAlias *GA);
+    ValueInfo *analyzeGlobalVariable(const GlobalVariable *GV);
+    ValueInfo *analyzeFunction(const Function *F);
     ValueInfo *analyzeArgument(const Argument *A);
     ValueInfo *analyzeUser(const User *U);
   };
