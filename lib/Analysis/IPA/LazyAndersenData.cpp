@@ -29,7 +29,7 @@ LazyAndersenData::~LazyAndersenData() {}
 
 GraphEdgeDeque LazyAndersenData::getOutgoingEdges() const {
   GraphEdgeDeque Result;
-  // No edge labels needed anywhere in here because the edge will not be
+  // No edge labels needed anywhere in here because the edges will not be
   // printed.
   for (ValueInfoMap::const_iterator i = ValueInfos.begin(),
                                     End = ValueInfos.end();

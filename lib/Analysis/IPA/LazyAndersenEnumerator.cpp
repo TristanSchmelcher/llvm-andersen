@@ -34,6 +34,8 @@ EnumerationResult Enumerator::enumerate(int Depth) {
   }
   EnumerationContext Ctx(AR, Depth);
   AnalysisResult *RetryCancellationPoint = 0;
+  // TODO: When there's just a single RecursiveEnumerate work item, we can
+  // "inline" it into the caller.
   while (Ctx.Pos != AR->Work.end()) {
     EnumerationResult ER = Ctx.Pos->enumerate(&Ctx);
     switch (ER.getResultType()) {

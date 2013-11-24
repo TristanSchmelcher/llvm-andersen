@@ -27,52 +27,6 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-namespace llvm {
-namespace lazyandersen {
-// Wrapper for the methods of CallInst and InvokeInst that ought to be
-// inherited from a common interface but aren't. :/
-class CallOrInvokeInstWrapperInterface {
-public:
-  virtual const Value *getCalledValue() const = 0;
-  virtual unsigned getNumArgOperands() const = 0;
-  virtual const Value *getArgOperand(unsigned i) const = 0;
-};
-}
-}
-
-namespace {
-  template<typename T>
-  class CallOrInvokeInstWrapper : public CallOrInvokeInstWrapperInterface {
-    const T &I;
-
-  public:
-    explicit CallOrInvokeInstWrapper(const T &I);
-    virtual const Value *getCalledValue() const;
-    virtual unsigned getNumArgOperands() const;
-    virtual const Value *getArgOperand(unsigned i) const;
-  };
-
-  // class CallOrInvokeInstWrapper
-  template<typename T>
-  inline CallOrInvokeInstWrapper<T>::CallOrInvokeInstWrapper(const T &I)
-    : I(I) {}
-
-  template<typename T>
-  const Value *CallOrInvokeInstWrapper<T>::getCalledValue() const {
-    return I.getCalledValue();
-  }
-
-  template<typename T>
-  unsigned CallOrInvokeInstWrapper<T>::getNumArgOperands() const {
-    return I.getNumArgOperands();
-  }
-
-  template<typename T>
-  const Value *CallOrInvokeInstWrapper<T>::getArgOperand(unsigned i) const {
-    return I.getArgOperand(i);
-  }
-}
-
 LazyAndersenData *InstructionAnalyzer::run(ModulePass *MP, Module &M) {
   return InstructionAnalyzer(MP, M).Data;
 }
@@ -88,10 +42,6 @@ void InstructionAnalyzer::visitReturnInst(ReturnInst &I) {
     RelationHandler::handleRelation<RETURNED_TO_CALLER>(ReturnedValueInfo,
         FunctionValueInfo);
   }
-}
-
-void InstructionAnalyzer::visitInvokeInst(InvokeInst &I) {
-  visitCallOrInvokeInst(I, CallOrInvokeInstWrapper<InvokeInst>(I));
 }
 
 void InstructionAnalyzer::visitAllocaInst(AllocaInst &I) {
@@ -178,10 +128,6 @@ void InstructionAnalyzer::visitAtomicRMWInst(AtomicRMWInst &I) {
 void InstructionAnalyzer::visitPHINode(PHINode &I) {
   ValueInfo *PHIAnalysis = cacheNewValueInfo(&I);
   PHINodeWork.push_back(PHINodeWorkVector::value_type(&I, PHIAnalysis));
-}
-
-void InstructionAnalyzer::visitCallInst(CallInst &I) {
-  visitCallOrInvokeInst(I, CallOrInvokeInstWrapper<CallInst>(I));
 }
 
 void InstructionAnalyzer::visitVAArgInst(VAArgInst &I) {
@@ -280,13 +226,13 @@ void InstructionAnalyzer::processFunction(Function &F) {
   PHINodeWork.clear();
 }
 
-void InstructionAnalyzer::visitCallOrInvokeInst(Instruction &I,
-    const CallOrInvokeInstWrapperInterface &W) {
-  const Value *CalledValue = W.getCalledValue();
+void InstructionAnalyzer::visitCallSite(CallSite CS) {
+  const Value *CalledValue = CS.getCalledValue();
   ValueInfo *CalledValueInfo = analyzeValue(CalledValue);
   if (CalledValueInfo) {
-    for (unsigned i = 0; i < W.getNumArgOperands(); i++) {
-      const Value *ArgumentValue = W.getArgOperand(i);
+    for (CallSite::arg_iterator i = CS.arg_begin(), End = CS.arg_end();
+         i != End; ++i) {
+      const Value *ArgumentValue = *i;
       ValueInfo *ArgumentValueInfo = analyzeValue(ArgumentValue);
       if (ArgumentValueInfo) {
         RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(ArgumentValueInfo,
@@ -294,13 +240,13 @@ void InstructionAnalyzer::visitCallOrInvokeInst(Instruction &I,
       }
     }
   }
-  if (!I.getType()->isVoidTy()) {
+  if (!CS.getType()->isVoidTy()) {
     if (CalledValueInfo) {
-      ValueInfo *ReturnedValueInfo = cacheNewValueInfo(&I);
+      ValueInfo *ReturnedValueInfo = cacheNewValueInfo(CS.getInstruction());
       RelationHandler::handleRelation<RETURNED_FROM_CALLEE>(ReturnedValueInfo,
           CalledValueInfo);
     } else {
-      cacheNil(&I);
+      cacheNil(CS.getInstruction());
     }
   }
   // TODO: Record that the current function may call this function.
