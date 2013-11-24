@@ -25,7 +25,6 @@ namespace lazyandersen {
 
 // TODO: Should this be a ValueMap?
 typedef DenseMap<const Value *, ValueInfo::Ref> ValueInfoMap;
-typedef DenseMap<const Function *, ValueInfo::Ref> FunctionMap;
 
 class LazyAndersenData : public GraphNode {
   friend class InstructionAnalyzer;
@@ -33,9 +32,10 @@ class LazyAndersenData : public GraphNode {
 public:
   // ValueInfo for all Values used in the Module.
   ValueInfoMap ValueInfos;
-  // ValueInfo for all Functions defined in the Module. These only differ from
-  // the ValueInfos entry if the function is overridable. 
-  FunctionMap FunctionInfos;
+  // ValueInfo for all global regions (GlobalVariable or Function) defined in
+  // the Module. These only differ from the ValueInfos entry if the symbol is
+  // overridable.
+  ValueInfoMap GlobalRegionInfos;
   const ValueInfo::Ref ExternallyDefinedRegions;
   const ValueInfo::Ref ExternallyLinkableRegions;
   const ValueInfo::Ref ExternallyAccessibleRegions;

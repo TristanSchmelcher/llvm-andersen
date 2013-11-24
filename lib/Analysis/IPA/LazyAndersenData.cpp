@@ -37,8 +37,8 @@ GraphEdgeDeque LazyAndersenData::getOutgoingEdges() const {
     if (!i->second.getPtr() || i->first != i->second->getValue()) continue;
     Result.push_back(GraphEdge(i->second.getPtr(), std::string()));
   }
-  for (FunctionMap::const_iterator i = FunctionInfos.begin(),
-                                   End = FunctionInfos.end();
+  for (ValueInfoMap::const_iterator i = GlobalRegionInfos.begin(),
+                                    End = GlobalRegionInfos.end();
        i != End; ++i) {
     Result.push_back(GraphEdge(i->second.getPtr(), std::string()));
   }

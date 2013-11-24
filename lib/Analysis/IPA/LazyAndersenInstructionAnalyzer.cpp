@@ -84,7 +84,7 @@ void InstructionAnalyzer::visitReturnInst(ReturnInst &I) {
   }
   ValueInfo *ReturnedValueInfo = analyzeValue(ReturnValue);
   if (ReturnedValueInfo) {
-    ValueInfo *FunctionValueInfo = getFunctionInfo(CurrentFunction);
+    ValueInfo *FunctionValueInfo = getGlobalRegionInfo(CurrentFunction);
     RelationHandler::handleRelation<RETURNED_TO_CALLER>(ReturnedValueInfo,
         FunctionValueInfo);
   }
@@ -339,14 +339,15 @@ ValueInfo *InstructionAnalyzer::cacheNil(const Value *V) {
   return cache(V, ValueInfo::Nil);
 }
 
-ValueInfo *InstructionAnalyzer::getFunctionInfo(const Function *F) {
-  assert(!F->isDeclaration());
-  ValueInfo::Ref &VI = Data->FunctionInfos[F];
+ValueInfo *InstructionAnalyzer::getGlobalRegionInfo(const GlobalValue *G) {
+  assert(!G->isDeclaration());
+  assert(!isa<GlobalAlias>(G));
+  ValueInfo::Ref &VI = Data->GlobalRegionInfos[G];
   ValueInfo *Out;
   if (VI) {
     Out = VI.getPtr();
   } else {
-    Out = createRegion(F);
+    Out = createRegion(G);
     VI = Out;
   }
   return Out;
@@ -390,13 +391,9 @@ ValueInfo *InstructionAnalyzer::analyzeGlobalValue(const GlobalValue *G) {
     ValueInfo *VI;
     if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(G)) {
       VI = analyzeGlobalAlias(GA);
-    } else if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(G)) {
-      VI = analyzeGlobalVariable(GV);
-    } else if (const Function *F = dyn_cast<Function>(G)) {
-      VI = analyzeFunction(F);
     } else {
-      llvm_unreachable("Unknown GlobalValue type");
-      VI = cacheNil(G);
+      assert(isa<GlobalVariable>(G) || isa<Function>(G));
+      VI = analyzeGlobalRegion(G);
     }
     if (VI != ValueInfo::Nil && !G->hasLocalLinkage()) {
       RelationHandler::handleRelation<DEPENDS_ON>(
@@ -409,6 +406,8 @@ ValueInfo *InstructionAnalyzer::analyzeGlobalValue(const GlobalValue *G) {
 ValueInfo *InstructionAnalyzer::analyzeGlobalAlias(const GlobalAlias *GA) {
   const Constant *Aliasee = GA->getAliasee();
   if (Aliasee) {
+    // Even when not overridable, we have to make a new ValueInfo because
+    // alias chains can have cycles.
     ValueInfo *VI = cacheNewValueInfo(GA);
     RelationHandler::handleRelation<DEPENDS_ON>(VI, analyzeValue(Aliasee));
     if (GA->mayBeOverridden()) {
@@ -425,49 +424,36 @@ ValueInfo *InstructionAnalyzer::analyzeGlobalAlias(const GlobalAlias *GA) {
   }
 }
 
-ValueInfo *InstructionAnalyzer::analyzeGlobalVariable(
-    const GlobalVariable *GV) {
+ValueInfo *InstructionAnalyzer::analyzeGlobalRegion(const GlobalValue *G) {
+  ValueInfo *RegionVI = getGlobalRegionInfo(G);
   ValueInfo *VI;
-  if (GV->mayBeOverridden()) {
+  if (G->mayBeOverridden()) {
     // It either points to this region or an externally-linkable region.
-    // There's no way to get a pointer within this module that can only
-    // point to this region, so we can just use ExternallyLinkableRegions.
-    VI = cache(GV, Data->ExternallyLinkableRegions.getPtr());
+    VI = cacheNewValueInfo(G);
+    RelationHandler::handleRelation<DEPENDS_ON>(VI, RegionVI);
+    RelationHandler::handleRelation<DEPENDS_ON>(
+        VI, Data->ExternallyLinkableRegions.getPtr());
   } else {
-    VI = cacheNewRegion(GV);
+    // It can only point to this region.
+    VI = cache(G, RegionVI);
   }
-  ValueInfo *InitializerValueInfo = analyzeValue(GV->getInitializer());
-  if (InitializerValueInfo) {
-    // Since Andersen's algorithm is flow-insensitive, the effect of an
-    // initializer is the same as that of a store instruction.
-    RelationHandler::handleRelation<STORED_TO>(InitializerValueInfo, VI);
+  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(G)) {
+    assert(GV->hasInitializer());
+    ValueInfo *InitializerValueInfo = analyzeValue(GV->getInitializer());
+    if (InitializerValueInfo) {
+      // Since Andersen's algorithm is flow-insensitive, the effect of an
+      // initializer is the same as that of a store instruction, except that it
+      // can only store to the region defined in this module.
+      RelationHandler::handleRelation<STORED_TO>(InitializerValueInfo,
+          RegionVI);
+    }
   }
   return VI;
 }
 
-ValueInfo *InstructionAnalyzer::analyzeFunction(const Function *F) {
-  if (F->mayBeOverridden()) {
-    // It either points to this region or an externally-linkable region.
-    // Relations between the function and uses of its formal parameters or
-    // actual return value in this definition are guaranteed to refer to
-    // this region and not one from an external definition, so we make a
-    // distinction between the function definition and the symbol. This allows
-    // us to model the fact that linker_private_weak doesn't leak information
-    // into other modules.
-    ValueInfo *VI = cacheNewValueInfo(F);
-    RelationHandler::handleRelation<DEPENDS_ON>(VI, getFunctionInfo(F));
-    RelationHandler::handleRelation<DEPENDS_ON>(
-        VI, Data->ExternallyLinkableRegions.getPtr());
-    return VI;
-  } else {
-    // It can only point to this definition.
-    return cache(F, getFunctionInfo(F));
-  }
-}
-
 ValueInfo *InstructionAnalyzer::analyzeArgument(const Argument *A) {
   ValueInfo *ArgumentValueInfo = cacheNewValueInfo(A);
-  ValueInfo *FunctionValueInfo = getFunctionInfo(CurrentFunction);
+  ValueInfo *FunctionValueInfo = getGlobalRegionInfo(CurrentFunction);
   RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentValueInfo,
       FunctionValueInfo);
   return ArgumentValueInfo;
