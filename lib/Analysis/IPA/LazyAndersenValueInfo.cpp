@@ -51,8 +51,6 @@ std::string ValueInfo::getNodeLabel(const LazyAndersenData &Data) const {
   if (getValue()) {
     static const size_t MaxPrintedSize = 16;
     return prettyPrintValue(getValue(), MaxPrintedSize);
-  } else if (this == Data.ExternallyDefinedRegions.getPtr()) {
-    return "ExternallyDefinedRegions";
   } else if (this == Data.ExternallyLinkableRegions.getPtr()) {
     return "ExternallyLinkableRegions";
   } else if (this == Data.ExternallyAccessibleRegions.getPtr()) {

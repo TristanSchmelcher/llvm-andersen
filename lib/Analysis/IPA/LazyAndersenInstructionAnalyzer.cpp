@@ -155,25 +155,21 @@ InstructionAnalyzer::InstructionAnalyzer(ModulePass *MP, Module &M)
 }
 
 LazyAndersenData *InstructionAnalyzer::createLazyAndersenData() {
-  // Placeholder for all externally-defined regions.
-  ValueInfo *ExternallyDefinedRegions = createRegion(0);
-
   // All global regions that are externally accessible by way of linkage. This
   // is the set of all internally-defined global regions with external linkage
-  // plus a placeholder for externally-defined (global) regions.
-  ValueInfo *ExternallyLinkableRegions = createValueInfo(0);
-  // Externally-defined non-global regions are indistinguishable from
-  // externally-defined global regions, so we can use ExternallyDefinedRegions
-  // here.
-  RelationHandler::handleRelation<DEPENDS_ON>(ExternallyLinkableRegions,
-      ExternallyDefinedRegions);
+  // plus a placeholder for any externally-defined global regions, which is
+  // needed to ensure the points-to set is non-empty in the unlikely event that
+  // there are no internally-defined global regions with external linkage in
+  // this module. We simply create this as a region so as to use itself as the
+  // placeholder.
+  ValueInfo *ExternallyLinkableRegions = createRegion(0);
 
-  // All regions that are externally accessible in any manner. This is the set
-  // of all externally-defined regions, all link-accessible global regions, and
-  // all internally-defined regions that can be accessed by dereferencing or
-  // calling them.
+  // All regions that are externally accessible in any manner. This is the
+  // members of the above set plus all internally-defined regions that can be
+  // accessed by dereferencing or calling them. (In this context, the
+  // placeholder created above also represents externally-defined non-global
+  // regions, which are indistinguishable.)
   ValueInfo *ExternallyAccessibleRegions = createValueInfo(0);
-  // This includes ExternallyDefinedRegions.
   RelationHandler::handleRelation<DEPENDS_ON>(ExternallyAccessibleRegions,
       ExternallyLinkableRegions);
   // Putting ExternallyAccessibleRegions into every relation with itself makes
@@ -193,8 +189,7 @@ LazyAndersenData *InstructionAnalyzer::createLazyAndersenData() {
   RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(
       ExternallyAccessibleRegions, ExternallyAccessibleRegions);
 
-  return new LazyAndersenData(ExternallyDefinedRegions,
-                              ExternallyLinkableRegions,
+  return new LazyAndersenData(ExternallyLinkableRegions,
                               ExternallyAccessibleRegions);
 }
 

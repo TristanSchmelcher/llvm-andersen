@@ -49,7 +49,8 @@ std::string prettyPrintValueOrExternal(const Value *V) {
   if (V) {
     return prettyPrintValue(V);
   } else {
-    return "ExternallyDefinedRegions";
+    // Placeholder for externally-defined regions.
+    return "EXTERNAL";
   }
 }
 

@@ -18,11 +18,9 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-LazyAndersenData::LazyAndersenData(ValueInfo *ExternallyDefinedRegions,
-                                   ValueInfo *ExternallyLinkableRegions,
+LazyAndersenData::LazyAndersenData(ValueInfo *ExternallyLinkableRegions,
                                    ValueInfo *ExternallyAccessibleRegions)
-  : ExternallyDefinedRegions(ExternallyDefinedRegions),
-    ExternallyLinkableRegions(ExternallyLinkableRegions),
+  : ExternallyLinkableRegions(ExternallyLinkableRegions),
     ExternallyAccessibleRegions(ExternallyAccessibleRegions) {}
 
 LazyAndersenData::~LazyAndersenData() {}
@@ -42,8 +40,6 @@ GraphEdgeDeque LazyAndersenData::getOutgoingEdges() const {
        i != End; ++i) {
     Result.push_back(GraphEdge(i->second.getPtr(), std::string()));
   }
-  Result.push_back(GraphEdge(
-      ExternallyDefinedRegions.getPtr(), std::string()));
   Result.push_back(GraphEdge(
       ExternallyLinkableRegions.getPtr(), std::string()));
   Result.push_back(GraphEdge(

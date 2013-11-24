@@ -36,7 +36,6 @@ public:
   // the Module. These only differ from the ValueInfos entry if the symbol is
   // overridable.
   ValueInfoMap GlobalRegionInfos;
-  const ValueInfo::Ref ExternallyDefinedRegions;
   const ValueInfo::Ref ExternallyLinkableRegions;
   const ValueInfo::Ref ExternallyAccessibleRegions;
 
@@ -47,8 +46,7 @@ public:
   virtual bool isNodeHidden() const;
 
 private:
-  LazyAndersenData(ValueInfo *ExternallyDefinedRegions,
-                   ValueInfo *ExternallyLinkableRegions,
+  LazyAndersenData(ValueInfo *ExternallyLinkableRegions,
                    ValueInfo *ExternallyAccessibleRegions);
 };
 
