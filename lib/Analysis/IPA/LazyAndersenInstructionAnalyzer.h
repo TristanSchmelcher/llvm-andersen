@@ -44,6 +44,8 @@ namespace lazyandersen {
     void visitAtomicRMWInst(AtomicRMWInst &I);
     void visitPHINode(PHINode &I);
     void visitCallSite(CallSite CS);
+    void visitVAStartInst(VAStartInst &I);
+    void visitVACopyInst(VACopyInst &I);
     void visitVAArgInst(VAArgInst &I);
     void visitInstruction(Instruction &I);
     void visitFenceInst(FenceInst &I);
@@ -53,6 +55,7 @@ namespace lazyandersen {
     static LazyAndersenData *createLazyAndersenData();
     void processFunction(Function &F);
     bool analyzed(const Value *V);
+    static ValueInfo *makeRegion(ValueInfo *VI);
     static ValueInfo *createValueInfo(const Value *V);
     static ValueInfo *createRegion(const Value *V);
     ValueInfo *cache(const Value *V, ValueInfo *VI);
@@ -60,6 +63,7 @@ namespace lazyandersen {
     ValueInfo *cacheNewRegion(const Value *V);
     ValueInfo *cacheNil(const Value *V);
     ValueInfo *getGlobalRegionInfo(const GlobalValue *G);
+    ValueInfo *createAnonymousValueInfo();
     ValueInfo *analyzeValue(const Value *V);
     ValueInfo *analyzeGlobalValue(const GlobalValue *G);
     ValueInfo *analyzeGlobalAlias(const GlobalAlias *GA);

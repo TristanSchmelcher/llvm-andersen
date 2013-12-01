@@ -56,8 +56,9 @@ std::string ValueInfo::getNodeLabel(const LazyAndersenData &Data) const {
   } else if (this == Data.ExternallyAccessibleRegions.getPtr()) {
     return "ExternallyAccessibleRegions";
   } else {
-    llvm_unreachable("Unknown special-case ValueInfo");
-    return std::string();
+    std::ostringstream OSS;
+    OSS << "Anonymous" << this;
+    return OSS.str();
   }
 }
 

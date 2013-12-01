@@ -130,9 +130,43 @@ void InstructionAnalyzer::visitPHINode(PHINode &I) {
   PHINodeWork.push_back(PHINodeWorkVector::value_type(&I, PHIAnalysis));
 }
 
+void InstructionAnalyzer::visitVAStartInst(VAStartInst &I) {
+  // Since the va_list layout is target-dependent and not everything accesses it
+  // with va_arg instructions, we play it safe by assuming that a value loaded
+  // from the va_list may potentially alias the arguments or the va_list itself.
+  // Thus multiply-indirect loads are treated as potentially aliasing them too.
+  ValueInfo *ArgumentsVI = createAnonymousValueInfo();
+  RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentsVI,
+      getGlobalRegionInfo(CurrentFunction));
+  ValueInfo *VAListVI = analyzeValue(I.getArgList());
+  // Pretend that va_start stores the va_list address to itself.
+  RelationHandler::handleRelation<STORED_TO>(VAListVI, VAListVI);
+  // Pretend that va_start stores the arguments to the va_list.
+  RelationHandler::handleRelation<STORED_TO>(ArgumentsVI, VAListVI);
+}
+
+void InstructionAnalyzer::visitVACopyInst(VACopyInst &I) {
+  // Assume that a value loaded from the destination va_list may potentially
+  // alias the arguments, the destination va_list itself, or the source va_list
+  // (and any other va_lists from which it was copied).
+  ValueInfo *SrcVI = analyzeValue(I.getSrc());
+  ValueInfo *DestVI = analyzeValue(I.getDest());
+  // Pretend that va_copy copies the va_list contents.
+  ValueInfo *ContentsVI = createAnonymousValueInfo();
+  RelationHandler::handleRelation<LOADED_FROM>(ContentsVI, SrcVI);
+  RelationHandler::handleRelation<STORED_TO>(ContentsVI, DestVI);
+  // Pretend that it also writes the destination va_list's address to itself.
+  RelationHandler::handleRelation<STORED_TO>(DestVI, DestVI);
+}
+
 void InstructionAnalyzer::visitVAArgInst(VAArgInst &I) {
-  // TODO: Not right. Needs special handling for va_start intrinsic.
-  cacheNil(&I);
+  // TODO: With the help of a special relation, we could model that this can
+  // only return arguments and not the va_list address.
+  ValueInfo *VAListVI = analyzeValue(I.getPointerOperand());
+  ValueInfo *VAArgVI = cacheNewValueInfo(&I);
+  // Pretend that va_arg just reads from the va_list, returning either an
+  // argument or the va_list itself.
+  RelationHandler::handleRelation<LOADED_FROM>(VAArgVI, VAListVI);
 }
 
 void InstructionAnalyzer::visitInstruction(Instruction &I) {
@@ -251,18 +285,22 @@ bool InstructionAnalyzer::analyzed(const Value *V) {
   return Data->ValueInfos.count(V);
 }
 
-ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
-  return new ValueInfo(V);
-}
-
-ValueInfo *InstructionAnalyzer::createRegion(const Value *V) {
-  ValueInfo *VI = createValueInfo(V);
+ValueInfo *InstructionAnalyzer::makeRegion(ValueInfo *VI) {
   VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()
       ->addValueInfo(VI);
   return VI;
 }
 
+ValueInfo *InstructionAnalyzer::createValueInfo(const Value *V) {
+  return new ValueInfo(V);
+}
+
+ValueInfo *InstructionAnalyzer::createRegion(const Value *V) {
+  return makeRegion(createValueInfo(V));
+}
+
 ValueInfo *InstructionAnalyzer::cache(const Value *V, ValueInfo *VI) {
+  assert(V);
   assert(!analyzed(V));
   Data->ValueInfos[V] = VI;
   return VI;
@@ -273,7 +311,7 @@ ValueInfo *InstructionAnalyzer::cacheNewValueInfo(const Value *V) {
 }
 
 ValueInfo *InstructionAnalyzer::cacheNewRegion(const Value *V) {
-  return cache(V, createRegion(V));
+  return makeRegion(cacheNewValueInfo(V));
 }
 
 ValueInfo *InstructionAnalyzer::cacheNil(const Value *V) {
@@ -294,7 +332,14 @@ ValueInfo *InstructionAnalyzer::getGlobalRegionInfo(const GlobalValue *G) {
   return Out;
 }
 
+ValueInfo *InstructionAnalyzer::createAnonymousValueInfo() {
+  ValueInfo *VI = createValueInfo(0);
+  Data->AnonymousValueInfos.push_back(VI);
+  return VI;
+}
+
 ValueInfo *InstructionAnalyzer::analyzeValue(const Value *V) {
+  assert(V);
   ValueInfoMap::const_iterator i = Data->ValueInfos.find(V);
   if (i != Data->ValueInfos.end()) {
     // Previously analyzed.

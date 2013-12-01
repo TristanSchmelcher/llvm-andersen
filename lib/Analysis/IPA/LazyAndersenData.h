@@ -17,6 +17,8 @@
 #include "LazyAndersenGraphNode.h"
 #include "LazyAndersenValueInfo.h"
 
+#include <vector>
+
 namespace llvm {
 class Function;
 class Value;
@@ -25,6 +27,7 @@ namespace lazyandersen {
 
 // TODO: Should this be a ValueMap?
 typedef DenseMap<const Value *, ValueInfo::Ref> ValueInfoMap;
+typedef std::vector<ValueInfo::Ref> ValueInfoVector;
 
 class LazyAndersenData : public GraphNode {
   friend class InstructionAnalyzer;
@@ -38,6 +41,7 @@ public:
   ValueInfoMap GlobalRegionInfos;
   const ValueInfo::Ref ExternallyLinkableRegions;
   const ValueInfo::Ref ExternallyAccessibleRegions;
+  ValueInfoVector AnonymousValueInfos;
 
   virtual ~LazyAndersenData();
 
