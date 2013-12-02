@@ -24,6 +24,7 @@ add_llvm_library(LLVMipa
   LazyAndersenLoadedValuesReversePointsToAlgorithm.cpp
   LazyAndersenPointsToAlgorithm.cpp
   LazyAndersenRecursiveEnumerate.cpp
+  LazyAndersenRelationHandler.cpp
   LazyAndersenReversePointsToAlgorithm.cpp
   LazyAndersenStoredValuesPointsToAlgorithm.cpp
   LazyAndersenTopEnumerator.cpp
