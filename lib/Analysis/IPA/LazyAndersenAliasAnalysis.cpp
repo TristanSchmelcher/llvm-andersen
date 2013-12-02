@@ -14,9 +14,13 @@
 
 #define DEBUG_TYPE "lazy-andersen-aa"
 #include "LazyAndersenTopEnumerator.h"
+#include "LazyAndersenValueInfo.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/LazyAndersen.h"
 #include "llvm/Analysis/Passes.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Pass.h"
 
 using namespace llvm;
@@ -110,8 +114,33 @@ LazyAndersenAliasAnalysis::alias(const Location &LocA,
 
 bool LazyAndersenAliasAnalysis::pointsToConstantMemory(const Location &Loc,
                                                        bool OrLocal) {
-  // TODO
-  return AliasAnalysis::pointsToConstantMemory(Loc, OrLocal);
+  // This is loosely based on the BasicAliasAnalysis implementation.
+  for (TopEnumerator TE(LA->enumeratePointsToSet(Loc.Ptr));; ) {
+    ValueInfo *Next = TE.enumerate();
+    if (!Next) break;
+    const Value *V = Next->getValue();
+    if (!V) {
+      // External regions can't be guaranteed to be either const or local.
+      // TODO: We can do better for overridable GlobalVariables if we introduce
+      // a special VI for externally linkable constant regions, since it isn't
+      // legal for a global to be marked constant in some modules and
+      // non-constant in others
+      return AliasAnalysis::pointsToConstantMemory(Loc, OrLocal);
+    }
+
+    if (OrLocal && isa<AllocaInst>(V)) {
+      continue;
+    }
+
+    if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(V)) {
+      if (GV->isConstant()) {
+        continue;
+      }
+    }
+
+    return AliasAnalysis::pointsToConstantMemory(Loc, OrLocal);
+  }
+  return true;
 }
 
 void LazyAndersenAliasAnalysis::deleteValue(Value *V) {
