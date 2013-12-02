@@ -180,11 +180,20 @@ void InstructionAnalyzer::visitFenceInst(FenceInst &I) {
 
 InstructionAnalyzer::InstructionAnalyzer(ModulePass *MP, Module &M)
   : MP(MP), Data(createLazyAndersenData()) {
-  for (Module::iterator i = M.begin(); i != M.end(); ++i) {
+  for (Module::iterator i = M.begin(), End = M.end(); i != End; ++i) {
     Function &F(*i);
     if (!F.isDeclaration()) {
       processFunction(F);
     }
+    analyzeValue(&F);
+  }
+  for (Module::global_iterator i = M.global_begin(), End = M.global_end();
+       i != End; ++i) {
+    analyzeValue(&*i);
+  }
+  for (Module::alias_iterator i = M.alias_begin(), End = M.alias_end();
+       i != End; ++i) {
+    analyzeValue(&*i);
   }
 }
 
@@ -231,8 +240,6 @@ void InstructionAnalyzer::processFunction(Function &F) {
   CurrentFunction = &F;
   // Visit the basic blocks in a depth-first traversal of the dominator tree.
   // This ensures that we visit each instruction before each non-PHI use of it.
-  // TODO: This skips (seemingly) unreachable code, so a future alias lookup on
-  // such code may break.
   DomTreeNode *Root = MP->getAnalysis<DominatorTree>(F).getRootNode();
   for (df_iterator<DomTreeNode *> i = df_begin(Root), End = df_end(Root);
        i != End; ++i) {

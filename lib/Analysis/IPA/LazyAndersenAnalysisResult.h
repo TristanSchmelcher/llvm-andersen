@@ -21,6 +21,7 @@
 namespace llvm {
 namespace lazyandersen {
   class ValueInfo;
+  typedef SetVector<ValueInfo *> ValueInfoSetVector;
 
   class AnalysisResult : public GraphNode {
     friend class EnumerationContext;
@@ -28,7 +29,6 @@ namespace lazyandersen {
     friend class ScopedSetEnumerating;
 
     int EnumerationDepth;
-    typedef SetVector<ValueInfo *> ValueInfoSetVector;
     ValueInfoSetVector Set;
     AnalysisResultWorkList Work;
 
@@ -38,6 +38,8 @@ namespace lazyandersen {
 
     bool addValueInfo(ValueInfo *VI) { return Set.insert(VI); }
     void addWork(AnalysisResultWork *Entry) { Work.push_back(Entry); }
+    const ValueInfoSetVector &getSetContentsSoFar() const { return Set; }
+    bool isDone() const { return Work.empty(); }
 
     virtual GraphEdgeDeque getOutgoingEdges() const;
     virtual std::string getNodeLabel(const LazyAndersenData &Data) const;

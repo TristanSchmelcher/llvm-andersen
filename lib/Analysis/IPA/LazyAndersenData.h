@@ -14,6 +14,7 @@
 #ifndef LAZYANDERSENDATA_H
 #define LAZYANDERSENDATA_H
 
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenGraphNode.h"
 #include "LazyAndersenValueInfo.h"
 
@@ -39,9 +40,15 @@ public:
   // the Module. These only differ from the ValueInfos entry if the symbol is
   // overridable.
   ValueInfoMap GlobalRegionInfos;
+  // The special VI for regions that can be linked into other translation units.
   const ValueInfo::Ref ExternallyLinkableRegions;
+  // The special VI for all regions that can be accessed by other translation
+  // units.
   const ValueInfo::Ref ExternallyAccessibleRegions;
+  // VIs not associated with any Value (e.g., generated for intrinsics).
   ValueInfoVector AnonymousValueInfos;
+  // A special empty AR for use with TopEnumerator.
+  AnalysisResult EmptyAnalysisResult;
 
   virtual ~LazyAndersenData();
 

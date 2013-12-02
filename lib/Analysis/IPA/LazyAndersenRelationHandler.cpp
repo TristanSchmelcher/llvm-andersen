@@ -25,6 +25,8 @@
 #include "LazyAndersenTraversalAlgorithm.h"
 #include "LazyAndersenValueInfo.h"
 
+#include <cassert>
+
 using namespace llvm;
 using namespace llvm::lazyandersen;
 

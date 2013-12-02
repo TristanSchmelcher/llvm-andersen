@@ -15,14 +15,18 @@
 #ifndef LLVM_ANALYSIS_LAZYANDERSEN_H
 #define LLVM_ANALYSIS_LAZYANDERSEN_H
 
-#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/Pass.h"
 
 namespace llvm {
 namespace lazyandersen {
 
+class AnalysisResult;
 class LazyAndersenData;
 class LazyAndersenGraphPass;
+class TopEnumerator;
+class ValueInfo;
+typedef SetVector<ValueInfo *> ValueInfoSetVector;
 
 }
 }
@@ -41,9 +45,21 @@ public:
   static char ID; // Pass identification, replacement for typeid
   LazyAndersen();
 
-  DenseSet<const Value *> getPointsToSet(const Value *V) const;
+  // Get the points-to set of V, or null if V cannot point to anything. The
+  // elements should be treated as opaque ids for abstract memory regions in the
+  // program.
+  const lazyandersen::ValueInfoSetVector *getPointsToSet(const Value *V) const;
+
+  // Get an enumerator for the points-to set of V which enumerates the set
+  // lazily. This is more efficient than getPointsToSet() if the full set may
+  // not be needed.
+  // TODO: Put TopEnumerator in a public header.
+  lazyandersen::TopEnumerator enumeratePointsToSet(const Value *V) const;
 
 private:
+  lazyandersen::AnalysisResult *getPointsToSetAnalysisResult(const Value *V)
+      const;
+
   virtual bool runOnModule(Module &M);
   virtual void releaseMemory();
   virtual void getAnalysisUsage(AnalysisUsage &AU) const;

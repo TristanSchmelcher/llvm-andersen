@@ -13,12 +13,14 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "lazy-andersen-aa"
+#include "LazyAndersenTopEnumerator.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/LazyAndersen.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Pass.h"
 
 using namespace llvm;
+using namespace llvm::lazyandersen;
 
 namespace {
   /// LazyAndersenAliasAnalysis - An alias analysis implementation that uses
@@ -90,9 +92,20 @@ bool LazyAndersenAliasAnalysis::runOnModule(Module &M) {
 AliasAnalysis::AliasResult
 LazyAndersenAliasAnalysis::alias(const Location &LocA,
                                  const Location &LocB) {
-  // TODO
-  DenseSet<const Value *> PointsTo(LA->getPointsToSet(LocA.Ptr));
-  return AliasAnalysis::alias(LocA, LocB);
+  const ValueInfoSetVector *PointsToSetA = LA->getPointsToSet(LocA.Ptr);
+  if (!PointsToSetA) {
+    return NoAlias;
+  }
+  for (TopEnumerator TE(LA->enumeratePointsToSet(LocB.Ptr));; ) {
+    ValueInfo *Next = TE.enumerate();
+    if (!Next) break;
+    if (PointsToSetA->count(Next)) {
+      // MayAlias as far as we can tell. Chain to next AliasAnalysis.
+      return AliasAnalysis::alias(LocA, LocB);
+    }
+  }
+  // No overlap in the points-to sets, so cannot alias.
+  return NoAlias;
 }
 
 bool LazyAndersenAliasAnalysis::pointsToConstantMemory(const Location &Loc,

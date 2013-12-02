@@ -25,10 +25,9 @@ namespace lazyandersen {
     Enumerator E;
 
   public:
-    explicit TopEnumerator(AnalysisResult *AR);
-    ~TopEnumerator();
+    explicit TopEnumerator(AnalysisResult *AR, size_t i = 0) : E(AR, i) {}
 
-    // Get next VI or null.
+    // Get next VI or null if done.
     ValueInfo *enumerate();
   };
 }

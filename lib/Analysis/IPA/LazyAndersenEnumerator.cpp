@@ -13,7 +13,6 @@
 
 #include "LazyAndersenEnumerator.h"
 
-#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenEnumerationContext.h"
 #include "llvm/Support/ErrorHandling.h"
 

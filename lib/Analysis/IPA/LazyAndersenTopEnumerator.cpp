@@ -18,10 +18,6 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
-TopEnumerator::TopEnumerator(AnalysisResult *AR) : E(AR) {}
-
-TopEnumerator::~TopEnumerator() {}
-
 ValueInfo *TopEnumerator::enumerate() {
   EnumerationResult ER(E.enumerate(0));
   switch (ER.getResultType()) {

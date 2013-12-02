@@ -61,20 +61,50 @@ LazyAndersen::LazyAndersen()
   initializeLazyAndersenPass(*PassRegistry::getPassRegistry());
 }
 
-DenseSet<const Value *> LazyAndersen::getPointsToSet(const Value *V) const {
-  assert(Data->ValueInfos.count(V));
-  DenseSet<const Value *> Out;
-  if (Data->ValueInfos[V]) {
-    AnalysisResult *AR = Data->ValueInfos[V]->getAlgorithmResult<
-        PointsToAlgorithm, ENUMERATION_PHASE>();
-    if (AR) {
-      TopEnumerator TE(AR);
-      for (ValueInfo *VI; (VI = TE.enumerate()); ) {
-        Out.insert(VI->getValue());
-      }
-    }
+const SetVector<ValueInfo *> *LazyAndersen::getPointsToSet(const Value *V)
+    const {
+  AnalysisResult *AR = getPointsToSetAnalysisResult(V);
+  if (!AR) {
+    // We determined this points to nothing at instruction analysis time.
+    return 0;
   }
-  return Out;
+  // Else it could point to something. Finish any deferred work.
+  if (!AR->isDone()) {
+    for (TopEnumerator TE(AR, AR->getSetContentsSoFar().size());
+         TE.enumerate(); );
+    assert(AR->isDone());
+  }
+  if (AR->getSetContentsSoFar().empty()) {
+    // Doesn't point to anything after all. Return null for consistency.
+    return 0;
+  }
+  return &AR->getSetContentsSoFar();
+}
+
+TopEnumerator LazyAndersen::enumeratePointsToSet(const Value *V) const {
+  AnalysisResult *AR = getPointsToSetAnalysisResult(V);
+  if (!AR) {
+    // We determined this points to nothing at instruction analysis time.
+    return TopEnumerator(&Data->EmptyAnalysisResult);
+  }
+  return TopEnumerator(AR);
+}
+
+AnalysisResult *LazyAndersen::getPointsToSetAnalysisResult(const Value *V)
+    const {
+  ValueInfoMap::const_iterator i = Data->ValueInfos.find(V);
+  if (!V) {
+    // This can only happen if we are being queried for an unreachable
+    // instruction. Pretend its result points to nothing.
+    // TODO: Write an assert that verifies this.
+    return 0;
+  }
+  ValueInfo *VI = i->second.getPtr();
+  if (!VI) {
+    // We determined this points to nothing at instruction analysis time.
+    return 0;
+  }
+  return VI->getAlgorithmResult<PointsToAlgorithm, ENUMERATION_PHASE>();
 }
 
 bool LazyAndersen::runOnModule(Module &M) {
@@ -108,11 +138,13 @@ void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
   }
   for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin();
        i != Data->ValueInfos.end(); ++i) {
-    DenseSet<const Value *> PointsTo(getPointsToSet(i->first));
+    const ValueInfoSetVector *PointsToSet = getPointsToSet(i->first);
     OS << "Points-to set for " << prettyPrintValue(i->first) << ":\n";
-    for (DenseSet<const Value *>::iterator i = PointsTo.begin();
-         i != PointsTo.end(); ++i) {
-      OS << "  " << prettyPrintValueOrExternal(*i) << "\n";
+    if (PointsToSet) {
+      for (ValueInfoSetVector::const_iterator i = PointsToSet->begin();
+           i != PointsToSet->end(); ++i) {
+        OS << "  " << prettyPrintValueOrExternal((*i)->getValue()) << "\n";
+      }
     }
   }
 }
