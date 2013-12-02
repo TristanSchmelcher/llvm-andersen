@@ -45,10 +45,14 @@ namespace lazyandersen {
     void visitPHINode(PHINode &I);
     void visitCallSite(CallSite CS);
     void visitVAStartInst(VAStartInst &I);
+    void visitVAEndInst(VAEndInst &I);
     void visitVACopyInst(VACopyInst &I);
     void visitVAArgInst(VAArgInst &I);
     void visitInstruction(Instruction &I);
     void visitFenceInst(FenceInst &I);
+    void visitMemSetInst(MemSetInst &I);
+    void visitMemCpyInst(MemCpyInst &I);
+    void visitMemMoveInst(MemMoveInst &I);
 
   private:
     InstructionAnalyzer(ModulePass *MP, Module &M);
@@ -70,6 +74,7 @@ namespace lazyandersen {
     ValueInfo *analyzeGlobalRegion(const GlobalValue *G);
     ValueInfo *analyzeArgument(const Argument *A);
     ValueInfo *analyzeUser(const User *U);
+    void visitMemTransferInst(MemTransferInst &I);
   };
 }
 }

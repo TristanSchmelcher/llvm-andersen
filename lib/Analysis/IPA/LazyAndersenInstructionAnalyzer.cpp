@@ -139,10 +139,15 @@ void InstructionAnalyzer::visitVAStartInst(VAStartInst &I) {
   RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentsVI,
       getGlobalRegionInfo(CurrentFunction));
   ValueInfo *VAListVI = analyzeValue(I.getArgList());
+  if (!VAListVI) return;
   // Pretend that va_start stores the va_list address to itself.
   RelationHandler::handleRelation<STORED_TO>(VAListVI, VAListVI);
   // Pretend that va_start stores the arguments to the va_list.
   RelationHandler::handleRelation<STORED_TO>(ArgumentsVI, VAListVI);
+}
+
+void InstructionAnalyzer::visitVAEndInst(VAEndInst &I) {
+  // No-op (va_end just deallocates stuff).
 }
 
 void InstructionAnalyzer::visitVACopyInst(VACopyInst &I) {
@@ -151,6 +156,7 @@ void InstructionAnalyzer::visitVACopyInst(VACopyInst &I) {
   // (and any other va_lists from which it was copied).
   ValueInfo *SrcVI = analyzeValue(I.getSrc());
   ValueInfo *DestVI = analyzeValue(I.getDest());
+  if (!SrcVI || !DestVI) return;
   // Pretend that va_copy copies the va_list contents.
   ValueInfo *ContentsVI = createAnonymousValueInfo();
   RelationHandler::handleRelation<LOADED_FROM>(ContentsVI, SrcVI);
@@ -163,6 +169,10 @@ void InstructionAnalyzer::visitVAArgInst(VAArgInst &I) {
   // TODO: With the help of a special relation, we could model that this can
   // only return arguments and not the va_list address.
   ValueInfo *VAListVI = analyzeValue(I.getPointerOperand());
+  if (!VAListVI) {
+    cacheNil(&I);
+    return;
+  }
   ValueInfo *VAArgVI = cacheNewValueInfo(&I);
   // Pretend that va_arg just reads from the va_list, returning either an
   // argument or the va_list itself.
@@ -176,6 +186,32 @@ void InstructionAnalyzer::visitInstruction(Instruction &I) {
 
 void InstructionAnalyzer::visitFenceInst(FenceInst &I) {
   // No-op (can't use default visitInstruction because it fails the assert).
+}
+
+void InstructionAnalyzer::visitMemSetInst(MemSetInst &I) {
+  // Equivalent to a write.
+  ValueInfo *DestVI = analyzeValue(I.getRawDest());
+  ValueInfo *ValueVI = analyzeValue(I.getValue());
+  if (!DestVI || !ValueVI) return;
+  RelationHandler::handleRelation<STORED_TO>(ValueVI, DestVI);
+}
+
+void InstructionAnalyzer::visitMemCpyInst(MemCpyInst &I) {
+  visitMemTransferInst(I);
+}
+
+void InstructionAnalyzer::visitMemMoveInst(MemMoveInst &I) {
+  visitMemTransferInst(I);
+}
+
+void InstructionAnalyzer::visitMemTransferInst(MemTransferInst &I) {
+  // Equivalent to a load and store.
+  ValueInfo *DestVI = analyzeValue(I.getRawDest());
+  ValueInfo *SrcVI = analyzeValue(I.getRawSource());
+  if (!DestVI || !SrcVI) return;
+  ValueInfo *LoadVI = createAnonymousValueInfo();
+  RelationHandler::handleRelation<LOADED_FROM>(LoadVI, SrcVI);
+  RelationHandler::handleRelation<STORED_TO>(LoadVI, DestVI);
 }
 
 InstructionAnalyzer::InstructionAnalyzer(ModulePass *MP, Module &M)
