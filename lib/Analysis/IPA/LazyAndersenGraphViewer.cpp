@@ -21,6 +21,7 @@
 #include "llvm/Support/GraphWriter.h"
 
 #include <sstream>
+#include <string>
 
 using namespace llvm;
 using namespace llvm::lazyandersen;

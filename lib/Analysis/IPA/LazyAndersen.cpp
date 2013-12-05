@@ -30,8 +30,12 @@
 using namespace llvm;
 using namespace llvm::lazyandersen;
 
+namespace {
+
 cl::opt<bool> NonLazy("andersen-non-lazy",
                       cl::desc("Perform Andersen analysis non-lazily"));
+
+}
 
 char LazyAndersen::ID = 0;
 // TODO: What do these two bools mean?
