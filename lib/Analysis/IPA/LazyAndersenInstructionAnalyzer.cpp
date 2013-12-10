@@ -41,13 +41,6 @@ public:
 
   Visitor(ModulePass *MP, Module &M)
     : MP(MP), Data(createLazyAndersenData()) {
-    for (Module::iterator i = M.begin(), End = M.end(); i != End; ++i) {
-      Function &F(*i);
-      if (!F.isDeclaration()) {
-        processFunction(F);
-      }
-      analyzeValue(&F);
-    }
     for (Module::global_iterator i = M.global_begin(), End = M.global_end();
          i != End; ++i) {
       analyzeValue(&*i);
@@ -55,6 +48,13 @@ public:
     for (Module::alias_iterator i = M.alias_begin(), End = M.alias_end();
          i != End; ++i) {
       analyzeValue(&*i);
+    }
+    for (Module::iterator i = M.begin(), End = M.end(); i != End; ++i) {
+      Function &F(*i);
+      analyzeValue(&F);
+      if (!F.isDeclaration()) {
+        processFunction(F);
+      }
     }
   }
 
@@ -89,13 +89,11 @@ public:
 
   void visitStoreInst(StoreInst &I) {
     ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
-    if (AddressAnalysis) {
-      ValueInfo *StoredValueInfo = analyzeValue(I.getValueOperand());
-      if (StoredValueInfo) {
-        RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
-            AddressAnalysis);
-        // TODO: Record that the current function may store this address.
-      }
+    ValueInfo *StoredValueInfo = analyzeValue(I.getValueOperand());
+    if (AddressAnalysis && StoredValueInfo) {
+      RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
+          AddressAnalysis);
+      // TODO: Record that the current function may store this address.
     }
   }
 
@@ -111,20 +109,7 @@ public:
     // return old;  
     //
     // which is just a load relation and a store relation.
-    ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
-    if (AddressAnalysis) {
-      ValueInfo *LoadedValueInfo = cacheNewValueInfo(&I);
-      RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
-          AddressAnalysis);
-      ValueInfo *StoredValueInfo = analyzeValue(I.getNewValOperand());
-      if (StoredValueInfo) {
-        RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
-            AddressAnalysis);
-      }
-    } else {
-      cacheNil(&I);
-    }
-    // TODO: Record that the current function may load and store this address.
+    visitAtomicMutateInst(I, I.getPointerOperand(), I.getNewValOperand());
   }
 
   void visitAtomicRMWInst(AtomicRMWInst &I) {
@@ -138,19 +123,7 @@ public:
     //
     // From an Andersen perspective, this is the same as simply clobbering the
     // value with ValOperand, so the effect is the same as in AtomicCmpXchgInst.
-    ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
-    if (AddressAnalysis) {
-      ValueInfo *LoadedValueInfo = cacheNewValueInfo(&I);
-      RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
-          AddressAnalysis);
-      ValueInfo *StoredValueInfo = analyzeValue(I.getValOperand());
-      if (StoredValueInfo) {
-        RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
-            AddressAnalysis);
-      }
-    } else {
-      cacheNil(&I);
-    }
+    visitAtomicMutateInst(I, I.getPointerOperand(), I.getValOperand());
   }
 
   void visitPHINode(PHINode &I) {
@@ -161,15 +134,13 @@ public:
   void visitCallSite(CallSite CS) {
     const Value *CalledValue = CS.getCalledValue();
     ValueInfo *CalledValueInfo = analyzeValue(CalledValue);
-    if (CalledValueInfo) {
-      for (CallSite::arg_iterator i = CS.arg_begin(), End = CS.arg_end();
-           i != End; ++i) {
-        const Value *ArgumentValue = *i;
-        ValueInfo *ArgumentValueInfo = analyzeValue(ArgumentValue);
-        if (ArgumentValueInfo) {
-          RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(ArgumentValueInfo,
-              CalledValueInfo);
-        }
+    for (CallSite::arg_iterator i = CS.arg_begin(), End = CS.arg_end();
+         i != End; ++i) {
+      const Value *ArgumentValue = *i;
+      ValueInfo *ArgumentValueInfo = analyzeValue(ArgumentValue);
+      if (CalledValueInfo && ArgumentValueInfo) {
+        RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(ArgumentValueInfo,
+            CalledValueInfo);
       }
     }
     if (!CS.getType()->isVoidTy()) {
@@ -194,11 +165,12 @@ public:
     RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentsVI,
         getGlobalRegionInfo(CurrentFunction));
     ValueInfo *VAListVI = analyzeValue(I.getArgList());
-    if (!VAListVI) return;
-    // Pretend that va_start stores the va_list address to itself.
-    RelationHandler::handleRelation<STORED_TO>(VAListVI, VAListVI);
-    // Pretend that va_start stores the arguments to the va_list.
-    RelationHandler::handleRelation<STORED_TO>(ArgumentsVI, VAListVI);
+    if (VAListVI) {
+      // Pretend that va_start stores the va_list address to itself.
+      RelationHandler::handleRelation<STORED_TO>(VAListVI, VAListVI);
+      // Pretend that va_start stores the arguments to the va_list.
+      RelationHandler::handleRelation<STORED_TO>(ArgumentsVI, VAListVI);
+    }
   }
 
   void visitVAEndInst(VAEndInst &I) {
@@ -211,27 +183,29 @@ public:
     // va_list (and any other va_lists from which it was copied).
     ValueInfo *SrcVI = analyzeValue(I.getSrc());
     ValueInfo *DestVI = analyzeValue(I.getDest());
-    if (!SrcVI || !DestVI) return;
-    // Pretend that va_copy copies the va_list contents.
-    ValueInfo *ContentsVI = createAnonymousValueInfo();
-    RelationHandler::handleRelation<LOADED_FROM>(ContentsVI, SrcVI);
-    RelationHandler::handleRelation<STORED_TO>(ContentsVI, DestVI);
-    // Pretend that it also writes the destination va_list's address to itself.
-    RelationHandler::handleRelation<STORED_TO>(DestVI, DestVI);
+    if (SrcVI && DestVI) {
+      // Pretend that va_copy copies the va_list contents.
+      ValueInfo *ContentsVI = createAnonymousValueInfo();
+      RelationHandler::handleRelation<LOADED_FROM>(ContentsVI, SrcVI);
+      RelationHandler::handleRelation<STORED_TO>(ContentsVI, DestVI);
+      // Pretend that it also writes the destination va_list's address to
+      // itself.
+      RelationHandler::handleRelation<STORED_TO>(DestVI, DestVI);
+    }
   }
 
   void visitVAArgInst(VAArgInst &I) {
     // TODO: With the help of a special relation, we could model that this can
     // only return arguments and not the va_list address.
     ValueInfo *VAListVI = analyzeValue(I.getPointerOperand());
-    if (!VAListVI) {
+    if (VAListVI) {
+      ValueInfo *VAArgVI = cacheNewValueInfo(&I);
+      // Pretend that va_arg just reads from the va_list, returning either an
+      // argument or the va_list itself.
+      RelationHandler::handleRelation<LOADED_FROM>(VAArgVI, VAListVI);
+    } else {
       cacheNil(&I);
-      return;
     }
-    ValueInfo *VAArgVI = cacheNewValueInfo(&I);
-    // Pretend that va_arg just reads from the va_list, returning either an
-    // argument or the va_list itself.
-    RelationHandler::handleRelation<LOADED_FROM>(VAArgVI, VAListVI);
   }
 
   void visitInstruction(Instruction &I) {
@@ -247,8 +221,9 @@ public:
     // Equivalent to a write.
     ValueInfo *DestVI = analyzeValue(I.getRawDest());
     ValueInfo *ValueVI = analyzeValue(I.getValue());
-    if (!DestVI || !ValueVI) return;
-    RelationHandler::handleRelation<STORED_TO>(ValueVI, DestVI);
+    if (DestVI && ValueVI) {
+      RelationHandler::handleRelation<STORED_TO>(ValueVI, DestVI);
+    }
   }
 
   void visitMemCpyInst(MemCpyInst &I) {
@@ -301,6 +276,10 @@ private:
 
   void processFunction(Function &F) {
     CurrentFunction = &F;
+    for (Function::arg_iterator i = F.arg_begin(), End = F.arg_end(); i != End;
+         ++i) {
+      analyzeValue(&*i);
+    }
     // Visit the basic blocks in a depth-first traversal of the dominator tree.
     // This ensures that we visit each instruction before each non-PHI use of
     // it.
@@ -518,14 +497,33 @@ private:
     return Result;
   }
 
+  void visitAtomicMutateInst(Instruction &I, Value *PointerOperand,
+      Value *ValOperand) {
+    ValueInfo *AddressAnalysis = analyzeValue(PointerOperand);
+    ValueInfo *StoredValueInfo = analyzeValue(ValOperand);
+    if (AddressAnalysis) {
+      ValueInfo *LoadedValueInfo = cacheNewValueInfo(&I);
+      RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
+          AddressAnalysis);
+      if (StoredValueInfo) {
+        RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
+            AddressAnalysis);
+      }
+    } else {
+      cacheNil(&I);
+    }
+    // TODO: Record that the current function may load and store this address.
+  }
+
   void visitMemTransferInst(MemTransferInst &I) {
     // Equivalent to a load and store.
     ValueInfo *DestVI = analyzeValue(I.getRawDest());
     ValueInfo *SrcVI = analyzeValue(I.getRawSource());
-    if (!DestVI || !SrcVI) return;
-    ValueInfo *LoadVI = createAnonymousValueInfo();
-    RelationHandler::handleRelation<LOADED_FROM>(LoadVI, SrcVI);
-    RelationHandler::handleRelation<STORED_TO>(LoadVI, DestVI);
+    if (DestVI && SrcVI) {
+      ValueInfo *LoadVI = createAnonymousValueInfo();
+      RelationHandler::handleRelation<LOADED_FROM>(LoadVI, SrcVI);
+      RelationHandler::handleRelation<STORED_TO>(LoadVI, DestVI);
+    }
   }
 };
 
