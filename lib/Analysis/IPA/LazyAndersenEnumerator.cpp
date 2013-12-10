@@ -13,6 +13,7 @@
 
 #include "LazyAndersenEnumerator.h"
 
+#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenEnumerationContext.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -20,6 +21,11 @@
 
 using namespace llvm;
 using namespace llvm::lazyandersen;
+
+Enumerator::Enumerator(AnalysisResult *AR, size_t i) : AR(AR), i(i) {
+  assert(AR);
+  assert(i <= AR->Set.size());
+}
 
 EnumerationResult Enumerator::enumerate(int Depth) {
   assert(i <= AR->Set.size());

@@ -37,8 +37,13 @@ namespace lazyandersen {
     virtual ~AnalysisResult();
 
     bool addValueInfo(ValueInfo *VI) { return Set.insert(VI); }
+
+    // If WorkEntry is a RecursiveEnumerate whose target is "this", then it's
+    // superfluous, but in practice that doesn't happen.
     void addWork(AnalysisResultWork *Entry) { Work.push_back(Entry); }
+
     const ValueInfoSetVector &getSetContentsSoFar() const { return Set; }
+
     bool isDone() const { return Work.empty(); }
 
     virtual GraphEdgeDeque getOutgoingEdges() const;

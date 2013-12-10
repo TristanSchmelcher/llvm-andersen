@@ -14,7 +14,6 @@
 #ifndef LAZYANDERSENENUMERATOR_H
 #define LAZYANDERSENENUMERATOR_H
 
-#include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenEnumerationResult.h"
 #include "LazyAndersenGraphNode.h"
 
@@ -27,10 +26,7 @@ namespace lazyandersen {
     size_t i;
 
   public:
-    explicit Enumerator(AnalysisResult *AR, size_t i = 0) : AR(AR), i(i) {
-      assert(AR);
-      assert(i <= AR->Set.size());
-    }
+    explicit Enumerator(AnalysisResult *AR, size_t i = 0);
 
     EnumerationResult enumerate(int Depth);
 
