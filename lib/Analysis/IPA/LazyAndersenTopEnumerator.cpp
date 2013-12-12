@@ -19,13 +19,17 @@ using namespace llvm;
 using namespace llvm::lazyandersen;
 
 ValueInfo *TopEnumerator::enumerate() {
-  EnumerationResult ER(E.enumerate(0));
+  EnumerationResult ER(E.enumerate(0, -1));
   switch (ER.getResultType()) {
   case EnumerationResult::NEXT_VALUE:
     return ER.getNextValue();
 
   case EnumerationResult::RETRY:
     llvm_unreachable("Received uncancelled retry-result");
+    break;
+
+  case EnumerationResult::REWRITE:
+    llvm_unreachable("Received unfinished rewrite-result");
     break;
 
   case EnumerationResult::COMPLETE:

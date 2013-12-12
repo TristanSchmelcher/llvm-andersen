@@ -23,7 +23,7 @@ RecursiveEnumerate::RecursiveEnumerate(AnalysisResult *AR) : E(AR) {}
 RecursiveEnumerate::~RecursiveEnumerate() {}
 
 EnumerationResult RecursiveEnumerate::enumerate(EnumerationContext *Ctx) {
-  return E.enumerate(Ctx->getNextDepth());
+  return E.enumerate(Ctx->getNextDepth(), Ctx->getLastTransformDepth());
 }
 
 GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {

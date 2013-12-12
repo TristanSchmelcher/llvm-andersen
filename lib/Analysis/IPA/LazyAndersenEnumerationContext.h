@@ -33,14 +33,19 @@ namespace lazyandersen {
   class EnumerationContext : private ScopedSetEnumerating {
     friend class Enumerator;
 
-    const int NextDepth;
+    const int Depth;
+    const int LastTransformDepth;
     AnalysisResultWorkList::iterator Pos;
 
-    EnumerationContext(AnalysisResult *AR, int Depth);
+    EnumerationContext(AnalysisResult *AR, int Depth, int LastTransformDepth);
     ~EnumerationContext();
 
   public:
-    int getNextDepth() const { return NextDepth; }
+    int getDepth() const { return Depth; }
+
+    int getLastTransformDepth() const { return LastTransformDepth; }
+
+    int getNextDepth() const { return getDepth() + 1; }
 
     EnumerationResult pushWork(AnalysisResult *Child);
   };

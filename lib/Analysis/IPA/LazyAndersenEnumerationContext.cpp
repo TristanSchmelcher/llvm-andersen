@@ -33,9 +33,11 @@ inline ScopedSetEnumerating::~ScopedSetEnumerating() {
   AR->EnumerationDepth = -1;
 }
 
-EnumerationContext::EnumerationContext(AnalysisResult *AR, int Depth)
+EnumerationContext::EnumerationContext(AnalysisResult *AR, int Depth,
+    int LastTransformDepth)
   : ScopedSetEnumerating(AR, Depth),
-    NextDepth(Depth + 1),
+    Depth(Depth),
+    LastTransformDepth(LastTransformDepth),
     Pos(AR->Work.begin()) {}
 
 EnumerationContext::~EnumerationContext() {}

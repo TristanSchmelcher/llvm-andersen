@@ -30,7 +30,7 @@ TransformStepBase::~TransformStepBase() {}
 
 EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
   for (;;) {
-    EnumerationResult ER(E.enumerate(Ctx->getNextDepth()));
+    EnumerationResult ER(E.enumerate(Ctx->getNextDepth(), Ctx->getDepth()));
     switch (ER.getResultType()) {
     case EnumerationResult::NEXT_VALUE: {
       AnalysisResult *AR = analyzeValueInfo(ER.getNextValue());
@@ -40,13 +40,16 @@ EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
 
     case EnumerationResult::RETRY:
     case EnumerationResult::COMPLETE:
-      return ER;
+      break;
+
+    case EnumerationResult::REWRITE:
+      llvm_unreachable("Cannot rewrite past a transform");
+      break;
 
     default:
       llvm_unreachable("Not a recognized EnumerationResult");
       break;
     }
-    // Not reached.
     return ER;
   }
 }

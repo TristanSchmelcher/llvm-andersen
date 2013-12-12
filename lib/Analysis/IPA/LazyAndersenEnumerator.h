@@ -28,7 +28,7 @@ namespace lazyandersen {
   public:
     explicit Enumerator(AnalysisResult *AR, size_t i = 0);
 
-    EnumerationResult enumerate(int Depth);
+    EnumerationResult enumerate(int Depth, int LastTransformDepth);
 
     GraphEdge toGraphEdge() const;
   };

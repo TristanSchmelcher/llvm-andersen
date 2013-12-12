@@ -26,6 +26,7 @@ namespace lazyandersen {
     enum Type {
       NEXT_VALUE,
       RETRY,
+      REWRITE,
       COMPLETE
     };
 
@@ -33,15 +34,17 @@ namespace lazyandersen {
     Type type;
     union {
       ValueInfo *NextValue;
-      AnalysisResult *CancellationPoint;
+      AnalysisResult *AR;
       void *Unused;
     };
 
     explicit EnumerationResult(ValueInfo *NextValue)
       : type(NEXT_VALUE), NextValue(NextValue) {}
 
-    explicit EnumerationResult(AnalysisResult *CancellationPoint)
-      : type(RETRY), CancellationPoint(CancellationPoint) {}
+    EnumerationResult(Type type, AnalysisResult *AR)
+      : type(type), AR(AR) {
+      assert(type == RETRY || type == REWRITE);
+    }
 
     EnumerationResult()
       : type(COMPLETE), Unused(0) {}
@@ -53,7 +56,12 @@ namespace lazyandersen {
 
     static EnumerationResult makeRetryResult(
         AnalysisResult *CancellationPoint) {
-      return EnumerationResult(CancellationPoint);
+      return EnumerationResult(RETRY, CancellationPoint);
+    }
+
+    static EnumerationResult makeRewriteResult(
+        AnalysisResult *Target) {
+      return EnumerationResult(REWRITE, Target);
     }
 
     static EnumerationResult makeCompleteResult() {
@@ -71,7 +79,12 @@ namespace lazyandersen {
 
     AnalysisResult *getRetryCancellationPoint() const {
       assert(type == RETRY);
-      return CancellationPoint;
+      return AR;
+    }
+
+    AnalysisResult *getRewriteTarget() const {
+      assert(type == REWRITE);
+      return AR;
     }
   };
 }

@@ -15,6 +15,7 @@
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenEnumerationContext.h"
+#include "LazyAndersenRecursiveEnumerate.h"
 #include "llvm/Support/ErrorHandling.h"
 
 #include <sstream>
@@ -27,17 +28,24 @@ Enumerator::Enumerator(AnalysisResult *AR, size_t i) : AR(AR), i(i) {
   assert(i <= AR->Set.size());
 }
 
-EnumerationResult Enumerator::enumerate(int Depth) {
+EnumerationResult Enumerator::enumerate(int Depth, int LastTransformDepth) {
   assert(i <= AR->Set.size());
+  // If not enumerating, AR->EnumerationDepth is -1. If no last transform,
+  // LastTransformDepth is -1.
+  if (LastTransformDepth < AR->EnumerationDepth) {
+    // Infinite recursion of enumerate. Rewrite the chain of work to avoid it.
+    return EnumerationResult::makeRewriteResult(AR);
+  }
+  // Else check for cached result.
   if (i < AR->Set.size()) {
     return EnumerationResult::makeNextValueResult(AR->Set[i++]);
   }
   // Else need to compute the next element.
   if (AR->isEnumerating()) {
-    // We have entered a loop. Defer.
+    // Application of a transform to a set containing itself. Defer.
     return EnumerationResult::makeRetryResult(AR);
   }
-  EnumerationContext Ctx(AR, Depth);
+  EnumerationContext Ctx(AR, Depth, LastTransformDepth);
   AnalysisResult *RetryCancellationPoint = 0;
   // TODO: When there's just a single RecursiveEnumerate work item, we can
   // "inline" it into the caller.
@@ -48,7 +56,7 @@ EnumerationResult Enumerator::enumerate(int Depth) {
       ValueInfo *VI = ER.getNextValue();
       if (AR->addValueInfo(VI)) {
         ++i;
-        return EnumerationResult::makeNextValueResult(VI);
+        return ER;
       }
       break;
     }
@@ -69,6 +77,21 @@ EnumerationResult Enumerator::enumerate(int Depth) {
       }
       // Skip it. Will retry later if needed.
       ++Ctx.Pos;
+      break;
+    }
+
+    case EnumerationResult::REWRITE: {
+      // Move all other work to the rewrite target and replace this work list
+      // with a reference to it.
+      AnalysisResult *RewriteTarget = ER.getRewriteTarget();
+      Ctx.Pos = AR->Work.erase(Ctx.Pos);
+      if (RewriteTarget != AR) {
+        assert(RewriteTarget->EnumerationDepth < AR->EnumerationDepth);
+        RewriteTarget->Work.splice(RewriteTarget->Work.end(),
+                                   AR->Work);
+        AR->addWork(new RecursiveEnumerate(RewriteTarget));
+        return ER;
+      }
       break;
     }
 
