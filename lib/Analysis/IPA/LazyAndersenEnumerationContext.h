@@ -15,7 +15,6 @@
 #define LAZYANDERSENENUMERATIONCONTEXT_H
 
 #include "LazyAndersenAnalysisResultWork.h"
-#include "LazyAndersenEnumerationResult.h"
 
 namespace llvm {
 namespace lazyandersen {

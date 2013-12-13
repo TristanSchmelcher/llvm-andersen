@@ -13,6 +13,7 @@
 
 #include "LazyAndersenTopEnumerator.h"
 
+#include "LazyAndersenEnumerationResult.h"
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;

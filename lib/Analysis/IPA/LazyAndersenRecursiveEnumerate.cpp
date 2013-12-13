@@ -14,6 +14,7 @@
 #include "LazyAndersenRecursiveEnumerate.h"
 
 #include "LazyAndersenEnumerationContext.h"
+#include "LazyAndersenEnumerationResult.h"
 
 using namespace llvm;
 using namespace llvm::lazyandersen;

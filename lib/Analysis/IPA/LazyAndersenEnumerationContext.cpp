@@ -14,6 +14,7 @@
 #include "LazyAndersenEnumerationContext.h"
 
 #include "LazyAndersenAnalysisResult.h"
+#include "LazyAndersenEnumerationResult.h"
 #include "LazyAndersenRecursiveEnumerate.h"
 
 #include <cassert>

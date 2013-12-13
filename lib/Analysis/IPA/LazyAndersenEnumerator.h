@@ -14,13 +14,14 @@
 #ifndef LAZYANDERSENENUMERATOR_H
 #define LAZYANDERSENENUMERATOR_H
 
-#include "LazyAndersenEnumerationResult.h"
-#include "LazyAndersenGraphNode.h"
-
-#include <cassert>
+#include <cstddef>
 
 namespace llvm {
 namespace lazyandersen {
+  class AnalysisResult;
+  class EnumerationResult;
+  class GraphEdge;
+
   class Enumerator {
     AnalysisResult *const AR;
     size_t i;

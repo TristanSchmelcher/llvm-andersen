@@ -14,7 +14,6 @@
 #ifndef LAZYANDERSENANALYSISRESULTWORK_H
 #define LAZYANDERSENANALYSISRESULTWORK_H
 
-#include "LazyAndersenEnumerationResult.h"
 #include "LazyAndersenGraphNode.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
@@ -22,6 +21,7 @@
 namespace llvm {
 namespace lazyandersen {
   class EnumerationContext;
+  class EnumerationResult;
 
   class AnalysisResultWork :
       public ilist_node<AnalysisResultWork>,

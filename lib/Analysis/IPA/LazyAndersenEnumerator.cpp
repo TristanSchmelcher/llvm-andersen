@@ -15,9 +15,12 @@
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenEnumerationContext.h"
+#include "LazyAndersenEnumerationResult.h"
+#include "LazyAndersenGraphNode.h"
 #include "LazyAndersenRecursiveEnumerate.h"
 #include "llvm/Support/ErrorHandling.h"
 
+#include <cassert>
 #include <sstream>
 
 using namespace llvm;
