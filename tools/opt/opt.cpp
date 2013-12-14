@@ -575,6 +575,7 @@ int main(int argc, char **argv) {
   initializeIPO(Registry);
   initializeAnalysis(Registry);
   initializeIPA(Registry);
+  initializeAndersen(Registry);
   initializeTransformUtils(Registry);
   initializeInstCombine(Registry);
   initializeInstrumentation(Registry);

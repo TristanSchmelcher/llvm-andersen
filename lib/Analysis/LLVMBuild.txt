@@ -16,7 +16,7 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = IPA
+subdirectories = Andersen IPA
 
 [component_0]
 type = Library

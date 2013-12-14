@@ -56,6 +56,9 @@ void initializeAnalysis(PassRegistry&);
 /// initializeIPA - Initialize all passes linked into the IPA library.
 void initializeIPA(PassRegistry&);
 
+/// initializeAndersen - Initialize all passes linked into the Andersen library.
+void initializeAndersen(PassRegistry&);
+
 /// initializeCodeGen - Initialize all passes linked into the CodeGen library.
 void initializeCodeGen(PassRegistry&);
 

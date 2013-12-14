@@ -41,6 +41,7 @@ void LLVMInitializeIPO(LLVMPassRegistryRef R);
 void LLVMInitializeInstrumentation(LLVMPassRegistryRef R);
 void LLVMInitializeAnalysis(LLVMPassRegistryRef R);
 void LLVMInitializeIPA(LLVMPassRegistryRef R);
+void LLVMInitializeAndersen(LLVMPassRegistryRef R);
 void LLVMInitializeCodeGen(LLVMPassRegistryRef R);
 void LLVMInitializeTarget(LLVMPassRegistryRef R);
 

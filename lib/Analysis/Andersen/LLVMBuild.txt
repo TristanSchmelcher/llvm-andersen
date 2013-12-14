@@ -1,4 +1,4 @@
-;===- ./tools/opt/LLVMBuild.txt --------------------------------*- Conf -*--===;
+;===- ./lib/Analysis/Andersen/LLVMBuild.txt --------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -16,7 +16,8 @@
 ;===------------------------------------------------------------------------===;
 
 [component_0]
-type = Tool
-name = opt
-parent = Tools
-required_libraries = Andersen AsmParser BitReader BitWriter IRReader IPO Instrumentation Scalar ObjCARC all-targets
+type = Library
+name = Andersen
+parent = Libraries
+library_name = Andersen
+required_libraries = Analysis Core Support

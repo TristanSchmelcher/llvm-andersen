@@ -1,4 +1,4 @@
-set(LLVM_LINK_COMPONENTS asmparser instrumentation scalaropts ipo
+set(LLVM_LINK_COMPONENTS Andersen asmparser instrumentation scalaropts ipo
   linker bitreader bitwriter irreader vectorize objcarcopts)
 
 add_llvm_tool(bugpoint

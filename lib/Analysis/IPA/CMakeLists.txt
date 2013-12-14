@@ -6,32 +6,6 @@ add_llvm_library(LLVMipa
   GlobalsModRef.cpp
   IPA.cpp
   InlineCost.cpp
-  LazyAndersenActualParametersPointsToAlgorithm.cpp
-  LazyAndersenActualReturnValuePointsToAlgorithm.cpp
-  LazyAndersenAliasAnalysis.cpp
-  LazyAndersenAnalysisResult.cpp
-  LazyAndersenAnalysisResultWork.cpp
-  LazyAndersen.cpp
-  LazyAndersenData.cpp
-  LazyAndersenEnumerationContext.cpp
-  LazyAndersenEnumerator.cpp
-  LazyAndersenFormalParametersReversePointsToAlgorithm.cpp
-  LazyAndersenFormalReturnValueReversePointsToAlgorithm.cpp
-  LazyAndersenGraphViewer.cpp
-  LazyAndersenInstructionAnalysisAlgorithm.cpp
-  LazyAndersenInstructionAnalyzer.cpp
-  LazyAndersenLiteralAlgorithmId.cpp
-  LazyAndersenLoadedValuesReversePointsToAlgorithm.cpp
-  LazyAndersenPointsToAlgorithm.cpp
-  LazyAndersenRecursiveEnumerate.cpp
-  LazyAndersenRelationHandler.cpp
-  LazyAndersenReversePointsToAlgorithm.cpp
-  LazyAndersenStoredValuesPointsToAlgorithm.cpp
-  LazyAndersenTopEnumerator.cpp
-  LazyAndersenTransformStepBase.cpp
-  LazyAndersenTraversalAlgorithmId.cpp
-  LazyAndersenValueInfo.cpp
-  LazyAndersenValuePrinter.cpp
   )
 
 add_dependencies(LLVMipa intrinsics_gen)

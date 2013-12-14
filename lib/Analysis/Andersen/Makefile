@@ -1,4 +1,4 @@
-##===- lib/Analysis/Makefile -------------------------------*- Makefile -*-===##
+##===- lib/Analysis/Andersen/Makefile ----------------------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -7,9 +7,8 @@
 #
 ##===----------------------------------------------------------------------===##
 
-LEVEL = ../..
-LIBRARYNAME = LLVMAnalysis
-DIRS = Andersen IPA
+LEVEL = ../../..
+LIBRARYNAME = LLVMAndersen
 BUILD_ARCHIVE = 1
 
 include $(LEVEL)/Makefile.common
