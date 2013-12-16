@@ -65,8 +65,7 @@ LazyAndersen::LazyAndersen()
   initializeLazyAndersenPass(*PassRegistry::getPassRegistry());
 }
 
-const SetVector<ValueInfo *> *LazyAndersen::getPointsToSet(const Value *V)
-    const {
+const PointsToSet *LazyAndersen::getPointsToSet(const Value *V) const {
   AnalysisResult *AR = getPointsToSetAnalysisResult(V);
   if (!AR) {
     // We determined this points to nothing at instruction analysis time.

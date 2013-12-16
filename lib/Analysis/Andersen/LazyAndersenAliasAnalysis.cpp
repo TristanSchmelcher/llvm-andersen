@@ -96,7 +96,7 @@ bool LazyAndersenAliasAnalysis::runOnModule(Module &M) {
 AliasAnalysis::AliasResult
 LazyAndersenAliasAnalysis::alias(const Location &LocA,
                                  const Location &LocB) {
-  const ValueInfoSetVector *PointsToSetA = LA->getPointsToSet(LocA.Ptr);
+  const PointsToSet *PointsToSetA = LA->getPointsToSet(LocA.Ptr);
   if (!PointsToSetA) {
     return NoAlias;
   }
