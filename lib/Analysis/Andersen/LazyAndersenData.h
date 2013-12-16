@@ -24,7 +24,7 @@ namespace llvm {
 class Function;
 class Value;
 
-namespace lazyandersen {
+namespace andersen_internal {
 
 // TODO: Should this be a ValueMap?
 typedef DenseMap<const Value *, ValueInfo::Ref> ValueInfoMap;
@@ -47,7 +47,7 @@ public:
   const ValueInfo::Ref ExternallyAccessibleRegions;
   // VIs not associated with any Value (e.g., generated for intrinsics).
   ValueInfoVector AnonymousValueInfos;
-  // A special empty AR for use with TopEnumerator.
+  // A special always-empty AR for use with getPointsToSet.
   AnalysisResult EmptyAnalysisResult;
 
   virtual ~LazyAndersenData();

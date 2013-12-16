@@ -24,7 +24,7 @@
 #include <sstream>
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 ValueInfo *const ValueInfo::Nil = 0;
 

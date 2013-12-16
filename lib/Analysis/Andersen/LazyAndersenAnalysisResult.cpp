@@ -18,7 +18,7 @@
 #include <sstream>
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 AnalysisResult::AnalysisResult() : EnumerationDepth(-1) {}
 

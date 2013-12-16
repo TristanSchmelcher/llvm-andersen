@@ -14,7 +14,7 @@
 #include "LazyAndersenLoadedValuesReversePointsToAlgorithm.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 const LiteralAlgorithmId LoadedValuesReversePointsToAlgorithm::ID(
     "loaded values reverse");

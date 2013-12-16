@@ -16,7 +16,7 @@
 #include "LazyAndersenAnalysisResult.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 const LiteralAlgorithmId ReversePointsToAlgorithm::ID("self reverse");
 

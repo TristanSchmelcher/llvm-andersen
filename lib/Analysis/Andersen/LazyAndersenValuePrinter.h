@@ -22,7 +22,7 @@ namespace llvm {
 }
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   // Returns a string containing the first line of the printed form of V plus
   // its name (if any). If the first line exceeds MaxPrintedSize characters, it
   // is truncated and " ..." is added. The name is never truncated.

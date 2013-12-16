@@ -19,7 +19,7 @@
 #include <sstream>
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 namespace {
   // Trim functions taken from
@@ -51,7 +51,7 @@ namespace {
 }
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   std::string prettyPrintValue(const Value *V, size_t MaxPrintedSize) {
     assert(V);
     std::ostringstream OSS;

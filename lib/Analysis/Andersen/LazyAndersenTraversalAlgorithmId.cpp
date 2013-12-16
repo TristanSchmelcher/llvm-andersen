@@ -17,7 +17,7 @@
 #include <sstream>
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 TraversalAlgorithmId::TraversalAlgorithmId(
     const AlgorithmId *SrcId, const AlgorithmId *DstId)

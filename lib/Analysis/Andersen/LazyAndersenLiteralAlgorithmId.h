@@ -18,7 +18,7 @@
 #include "LazyAndersenAlgorithmId.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class LiteralAlgorithmId : public AlgorithmId {
   public:
     LiteralAlgorithmId(const char *Name);

@@ -17,7 +17,7 @@
 #include "LazyAndersenEnumerationResult.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 RecursiveEnumerate::RecursiveEnumerate(AnalysisResult *AR) : E(AR) {}
 

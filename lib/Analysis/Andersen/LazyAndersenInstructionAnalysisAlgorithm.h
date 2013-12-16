@@ -18,7 +18,7 @@
 #include "LazyAndersenIsEmptyIfMissingInEnumerationPhaseProperty.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class AnalysisResult;
   class ValueInfo;
 

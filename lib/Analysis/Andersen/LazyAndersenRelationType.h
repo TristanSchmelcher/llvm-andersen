@@ -15,7 +15,7 @@
 #define LAZYANDERSENRELATIONTYPE_H
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   enum RelationType {
     ARGUMENT_FROM_CALLER,
     ARGUMENT_TO_CALLEE,

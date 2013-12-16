@@ -15,7 +15,7 @@
 #include "LazyAndersenLiteralAlgorithmId.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 LiteralAlgorithmId::LiteralAlgorithmId(const char *Name) : Name(Name) {}
 

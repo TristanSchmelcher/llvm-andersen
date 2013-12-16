@@ -18,7 +18,7 @@
 #include "LazyAndersenLiteralAlgorithmId.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   struct StoredValuesPointsToAlgorithm :
       public InstructionAnalysisAlgorithm {
     static const LiteralAlgorithmId ID;

@@ -16,7 +16,7 @@
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 LazyAndersenData::LazyAndersenData(ValueInfo *ExternallyLinkableRegions,
                                    ValueInfo *ExternallyAccessibleRegions)

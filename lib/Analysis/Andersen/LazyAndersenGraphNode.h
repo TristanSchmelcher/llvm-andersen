@@ -19,7 +19,7 @@
 #include <deque>
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class GraphNode;
   class LazyAndersenData;
 

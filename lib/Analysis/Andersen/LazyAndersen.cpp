@@ -21,14 +21,14 @@
 #include "LazyAndersenInstructionAnalyzer.h"
 #include "LazyAndersenPhase.h"
 #include "LazyAndersenPointsToAlgorithm.h"
-#include "LazyAndersenTopEnumerator.h"
 #include "LazyAndersenValuePrinter.h"
+#include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 namespace {
 
@@ -74,8 +74,8 @@ const SetVector<ValueInfo *> *LazyAndersen::getPointsToSet(const Value *V)
   }
   // Else it could point to something. Finish any deferred work.
   if (!AR->isDone()) {
-    for (TopEnumerator TE(AR, AR->getSetContentsSoFar().size());
-         TE.enumerate(); );
+    for (AndersenEnumerator AE(AR, AR->getSetContentsSoFar().size());
+         AE.enumerate(); );
     assert(AR->isDone());
   }
   if (AR->getSetContentsSoFar().empty()) {
@@ -85,13 +85,13 @@ const SetVector<ValueInfo *> *LazyAndersen::getPointsToSet(const Value *V)
   return &AR->getSetContentsSoFar();
 }
 
-TopEnumerator LazyAndersen::enumeratePointsToSet(const Value *V) const {
+AndersenEnumerator LazyAndersen::enumeratePointsToSet(const Value *V) const {
   AnalysisResult *AR = getPointsToSetAnalysisResult(V);
   if (!AR) {
     // We determined this points to nothing at instruction analysis time.
-    return TopEnumerator(&Data->EmptyAnalysisResult);
+    return AndersenEnumerator(&Data->EmptyAnalysisResult);
   }
-  return TopEnumerator(AR);
+  return AndersenEnumerator(AR);
 }
 
 AnalysisResult *LazyAndersen::getPointsToSetAnalysisResult(const Value *V)

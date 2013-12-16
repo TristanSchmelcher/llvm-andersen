@@ -15,7 +15,7 @@
 #include "LazyAndersenFormalReturnValueReversePointsToAlgorithm.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 const LiteralAlgorithmId FormalReturnValueReversePointsToAlgorithm::ID(
     "formal return value");

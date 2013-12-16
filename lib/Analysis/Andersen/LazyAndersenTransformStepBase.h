@@ -17,12 +17,12 @@
 #define LAZYANDERSENTRANSFORMSTEPBASE_H
 
 #include "LazyAndersenAnalysisResultWork.h"
-#include "LazyAndersenEnumerator.h"
+#include "llvm/Analysis/AndersenEnumerator.h"
 
 #include <string>
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class AlgorithmId;
   class AnalysisResult;
   class ValueInfo;

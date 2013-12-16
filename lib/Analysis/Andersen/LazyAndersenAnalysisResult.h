@@ -19,7 +19,7 @@
 #include "llvm/ADT/SetVector.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class ValueInfo;
   typedef SetVector<ValueInfo *> ValueInfoSetVector;
 

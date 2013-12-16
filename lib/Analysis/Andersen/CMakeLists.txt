@@ -1,5 +1,6 @@
 add_llvm_library(LLVMAndersen
   Andersen.cpp
+  AndersenEnumerator.cpp
   LazyAndersenActualParametersPointsToAlgorithm.cpp
   LazyAndersenActualReturnValuePointsToAlgorithm.cpp
   LazyAndersenAliasAnalysis.cpp
@@ -8,7 +9,6 @@ add_llvm_library(LLVMAndersen
   LazyAndersen.cpp
   LazyAndersenData.cpp
   LazyAndersenEnumerationContext.cpp
-  LazyAndersenEnumerator.cpp
   LazyAndersenFormalParametersReversePointsToAlgorithm.cpp
   LazyAndersenFormalReturnValueReversePointsToAlgorithm.cpp
   LazyAndersenGraphViewer.cpp
@@ -21,7 +21,6 @@ add_llvm_library(LLVMAndersen
   LazyAndersenRelationHandler.cpp
   LazyAndersenReversePointsToAlgorithm.cpp
   LazyAndersenStoredValuesPointsToAlgorithm.cpp
-  LazyAndersenTopEnumerator.cpp
   LazyAndersenTransformStepBase.cpp
   LazyAndersenTraversalAlgorithmId.cpp
   LazyAndersenValueInfo.cpp

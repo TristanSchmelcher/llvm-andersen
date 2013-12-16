@@ -18,7 +18,7 @@
 #include "LazyAndersenRelationType.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class ValueInfo;
 
   struct RelationHandler {

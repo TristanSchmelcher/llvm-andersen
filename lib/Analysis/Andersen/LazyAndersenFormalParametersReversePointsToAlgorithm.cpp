@@ -15,7 +15,7 @@
 #include "LazyAndersenFormalParametersReversePointsToAlgorithm.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 const LiteralAlgorithmId FormalParametersReversePointsToAlgorithm::ID(
     "formal params reverse");

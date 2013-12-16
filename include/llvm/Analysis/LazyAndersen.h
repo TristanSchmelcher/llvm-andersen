@@ -19,12 +19,11 @@
 #include "llvm/Pass.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
 
 class AnalysisResult;
 class LazyAndersenData;
 class LazyAndersenGraphPass;
-class TopEnumerator;
 class ValueInfo;
 typedef SetVector<ValueInfo *> ValueInfoSetVector;
 
@@ -33,13 +32,14 @@ typedef SetVector<ValueInfo *> ValueInfoSetVector;
 
 namespace llvm {
 
+class AndersenEnumerator;
 class Value;
 
 /// LazyAndersen - An LLVM pass which implements a lazy version of Andersen's
 /// algorithm for points-to analysis.
 class LazyAndersen : public ModulePass {
-  friend class lazyandersen::LazyAndersenGraphPass;
-  lazyandersen::LazyAndersenData *Data;
+  friend class andersen_internal::LazyAndersenGraphPass;
+  andersen_internal::LazyAndersenData *Data;
 
 public:
   static char ID; // Pass identification, replacement for typeid
@@ -48,17 +48,17 @@ public:
   // Get the points-to set of V, or null if V cannot point to anything. The
   // elements should be treated as opaque ids for abstract memory regions in the
   // program.
-  const lazyandersen::ValueInfoSetVector *getPointsToSet(const Value *V) const;
+  const andersen_internal::ValueInfoSetVector *getPointsToSet(const Value *V)
+      const;
 
   // Get an enumerator for the points-to set of V which enumerates the set
   // lazily. This is more efficient than getPointsToSet() if the full set may
   // not be needed.
-  // TODO: Put TopEnumerator in a public header.
-  lazyandersen::TopEnumerator enumeratePointsToSet(const Value *V) const;
+  AndersenEnumerator enumeratePointsToSet(const Value *V) const;
 
 private:
-  lazyandersen::AnalysisResult *getPointsToSetAnalysisResult(const Value *V)
-      const;
+  andersen_internal::AnalysisResult *getPointsToSetAnalysisResult(
+      const Value *V) const;
 
   virtual bool runOnModule(Module &M);
   virtual void releaseMemory();

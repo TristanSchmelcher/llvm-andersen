@@ -1,4 +1,4 @@
-//===- LazyAndersenEnumerator.cpp - algorithm classes ---------------------===//
+//===- AndersenEnumerator.cpp - enumerator for AndersenPass ---------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,11 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a type for enumerating an analysis result's contents.
+// This file defines an enumerator for the contents of lazy sets created by
+// AndersenPass.
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenEnumerator.h"
+#include "llvm/Analysis/AndersenEnumerator.h"
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenEnumerationContext.h"
@@ -23,8 +24,8 @@
 #include <cassert>
 #include <sstream>
 
-using namespace llvm;
-using namespace llvm::lazyandersen;
+namespace llvm {
+namespace andersen_internal {
 
 Enumerator::Enumerator(AnalysisResult *AR, size_t i) : AR(AR), i(i) {
   assert(AR);
@@ -131,4 +132,37 @@ GraphEdge Enumerator::toGraphEdge() const {
   std::ostringstream OSS;
   OSS << "Index " << i;
   return GraphEdge(AR, OSS.str());
+}
+
+}
+}
+
+namespace llvm {
+
+using namespace andersen_internal;
+
+ValueInfo *AndersenEnumerator::enumerate() {
+  EnumerationResult ER(E.enumerate(0, -1));
+  switch (ER.getResultType()) {
+  case EnumerationResult::NEXT_VALUE:
+    return ER.getNextValue();
+
+  case EnumerationResult::RETRY:
+    llvm_unreachable("Received uncancelled retry-result");
+    break;
+
+  case EnumerationResult::REWRITE:
+    llvm_unreachable("Received unfinished rewrite-result");
+    break;
+
+  case EnumerationResult::COMPLETE:
+    break;
+
+  default:
+    llvm_unreachable("Not a recognized EnumerationResult");
+    break;
+  }
+  return 0;
+}
+
 }

@@ -15,10 +15,10 @@
 #define LAZYANDERSENRECURSIVEENUMERATE_H
 
 #include "LazyAndersenAnalysisResultWork.h"
-#include "LazyAndersenEnumerator.h"
+#include "llvm/Analysis/AndersenEnumerator.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class AnalysisResult;
 
   class RecursiveEnumerate : public AnalysisResultWork {

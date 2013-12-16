@@ -23,7 +23,7 @@
 #include <string>
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class AnalysisResult;
 
   template<typename AlgorithmTy>

@@ -24,7 +24,7 @@ namespace llvm {
 }
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class AlgorithmId;
   class AnalysisResult;
 

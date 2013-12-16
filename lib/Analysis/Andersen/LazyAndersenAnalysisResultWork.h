@@ -19,7 +19,7 @@
 #include "llvm/ADT/ilist_node.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class EnumerationContext;
   class EnumerationResult;
 
@@ -40,10 +40,11 @@ namespace lazyandersen {
 
 namespace llvm {
   template<>
-  struct ilist_traits<lazyandersen::AnalysisResultWork>
-    : public ilist_nextprev_traits<lazyandersen::AnalysisResultWork>,
-      public ilist_ghostly_sentinel_traits<lazyandersen::AnalysisResultWork>,
-      public ilist_node_traits<lazyandersen::AnalysisResultWork> {};
+  struct ilist_traits<andersen_internal::AnalysisResultWork>
+    : public ilist_nextprev_traits<andersen_internal::AnalysisResultWork>,
+      public ilist_ghostly_sentinel_traits<
+          andersen_internal::AnalysisResultWork>,
+      public ilist_node_traits<andersen_internal::AnalysisResultWork> {};
 }
 
 #endif

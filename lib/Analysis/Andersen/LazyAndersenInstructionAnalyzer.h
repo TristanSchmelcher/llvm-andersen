@@ -20,7 +20,7 @@ namespace llvm {
 }
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class LazyAndersenData;
 
   class InstructionAnalyzer {

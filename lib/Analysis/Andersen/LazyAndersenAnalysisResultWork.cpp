@@ -14,7 +14,7 @@
 #include "LazyAndersenAnalysisResultWork.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 AnalysisResultWork::AnalysisResultWork() {}
 

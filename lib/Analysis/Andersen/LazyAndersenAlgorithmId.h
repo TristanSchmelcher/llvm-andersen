@@ -17,7 +17,7 @@
 #include <string>
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class AlgorithmId {
   public:
     virtual std::string getAlgorithmName() const = 0;

@@ -19,7 +19,7 @@
 #include "LazyAndersenPhase.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   struct IsNotNecessarilyEmptyIfMissingProperty {
     template<Phase CurrentPhase>
     struct IsEmptyIfMissing {

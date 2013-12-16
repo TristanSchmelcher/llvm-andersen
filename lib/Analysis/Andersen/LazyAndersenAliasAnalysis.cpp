@@ -13,9 +13,9 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "lazy-andersen-aa"
-#include "LazyAndersenTopEnumerator.h"
 #include "LazyAndersenValueInfo.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/LazyAndersen.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -24,7 +24,7 @@
 #include "llvm/Pass.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 namespace {
   /// LazyAndersenAliasAnalysis - An alias analysis implementation that uses
@@ -100,8 +100,8 @@ LazyAndersenAliasAnalysis::alias(const Location &LocA,
   if (!PointsToSetA) {
     return NoAlias;
   }
-  for (TopEnumerator TE(LA->enumeratePointsToSet(LocB.Ptr));; ) {
-    ValueInfo *Next = TE.enumerate();
+  for (AndersenEnumerator AE(LA->enumeratePointsToSet(LocB.Ptr));; ) {
+    ValueInfo *Next = AE.enumerate();
     if (!Next) break;
     if (PointsToSetA->count(Next)) {
       // MayAlias as far as we can tell. Chain to next AliasAnalysis.
@@ -115,8 +115,8 @@ LazyAndersenAliasAnalysis::alias(const Location &LocA,
 bool LazyAndersenAliasAnalysis::pointsToConstantMemory(const Location &Loc,
                                                        bool OrLocal) {
   // This is loosely based on the BasicAliasAnalysis implementation.
-  for (TopEnumerator TE(LA->enumeratePointsToSet(Loc.Ptr));; ) {
-    ValueInfo *Next = TE.enumerate();
+  for (AndersenEnumerator AE(LA->enumeratePointsToSet(Loc.Ptr));; ) {
+    ValueInfo *Next = AE.enumerate();
     if (!Next) break;
     const Value *V = Next->getValue();
     if (!V) {

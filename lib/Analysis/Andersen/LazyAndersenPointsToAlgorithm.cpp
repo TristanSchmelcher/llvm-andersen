@@ -14,6 +14,6 @@
 #include "LazyAndersenPointsToAlgorithm.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 const LiteralAlgorithmId PointsToAlgorithm::ID("self");

@@ -20,7 +20,7 @@
 #include <string>
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   class TraversalAlgorithmId : public AlgorithmId {
   public:
     TraversalAlgorithmId(const AlgorithmId *SrcId, const AlgorithmId *DstId);

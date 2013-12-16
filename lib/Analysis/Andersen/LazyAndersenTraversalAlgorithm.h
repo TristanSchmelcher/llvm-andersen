@@ -23,7 +23,7 @@
 #include "LazyAndersenValueInfo.h"
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   struct TraversalBase {
   private:
     template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,

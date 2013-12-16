@@ -17,7 +17,7 @@
 #include "LazyAndersenAnalysisResult.h"
 
 using namespace llvm;
-using namespace llvm::lazyandersen;
+using namespace llvm::andersen_internal;
 
 AnalysisResult *InstructionAnalysisAlgorithm::run(ValueInfo *VI) {
   return new AnalysisResult();

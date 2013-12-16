@@ -15,7 +15,7 @@
 #define LAZYANDERSENPHASE_H
 
 namespace llvm {
-namespace lazyandersen {
+namespace andersen_internal {
   enum Phase {
     // In the instruction analysis phase, we do a O(n) scan of the code and
     // build work lists for algorithms' AnalysisResults.
