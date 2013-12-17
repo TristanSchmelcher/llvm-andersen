@@ -88,10 +88,10 @@ namespace llvm {
 
   //===--------------------------------------------------------------------===//
   //
-  // createLazyAndersenAliasAnalysisPass - This pass implements alias analysis
-  // using LazyAndersen queries.
+  // createAndersenAliasAnalysisPass - This pass implements alias analysis
+  // using AndersenPass queries.
   //
-  ModulePass *createLazyAndersenAliasAnalysisPass();
+  ModulePass *createAndersenAliasAnalysisPass();
 
   //===--------------------------------------------------------------------===//
   //

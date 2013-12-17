@@ -1,4 +1,4 @@
-//===- LazyAndersen.cpp - Lazy Andersen's algorithm -----------------------===//
+//===- AndersenPass.cpp - Andersen's algorithm ----------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,14 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the LazyAndersen pass, which is a subset-based and
-// context-, flow-, and field-insensitive points-to analysis based on a lazy
-// version of Andersen's algorithm.
+// The AndersenPass class is an LLVM pass which implements Andersen's algorithm
+// for points-to analysis with some modifications for lazy evaluation.
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "lazy-andersen"
-#include "llvm/Analysis/LazyAndersen.h"
+#define DEBUG_TYPE "andersen"
+#include "llvm/Analysis/AndersenPass.h"
 
 #include "LazyAndersenAnalysisResult.h"
 #include "LazyAndersenData.h"
@@ -27,27 +26,14 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+
+using namespace andersen_internal;
 
 namespace {
 
 cl::opt<bool> NonLazy("andersen-non-lazy",
                       cl::desc("Perform Andersen analysis non-lazily"));
-
-}
-
-char LazyAndersen::ID = 0;
-// TODO: What do these two bools mean?
-INITIALIZE_PASS_BEGIN(LazyAndersen, "lazy-andersen",
-                      "Lazy Andersen's Algorithm for Points-To Analysis", false,
-                      true)
-INITIALIZE_PASS_DEPENDENCY(DominatorTree)
-INITIALIZE_PASS_END(LazyAndersen, "lazy-andersen",
-                    "Lazy Andersen's Algorithm for Points-To Analysis", false,
-                    true)
-
-namespace {
 
 std::string prettyPrintValueOrExternal(const Value *V) {
   if (V) {
@@ -60,12 +46,14 @@ std::string prettyPrintValueOrExternal(const Value *V) {
 
 }
 
-LazyAndersen::LazyAndersen()
+char AndersenPass::ID = 0;
+
+AndersenPass::AndersenPass()
   : ModulePass(ID), Data(0) {
-  initializeLazyAndersenPass(*PassRegistry::getPassRegistry());
+  initializeAndersenPassPass(*PassRegistry::getPassRegistry());
 }
 
-const PointsToSet *LazyAndersen::getPointsToSet(const Value *V) const {
+const PointsToSet *AndersenPass::getPointsToSet(const Value *V) const {
   AnalysisResult *AR = getPointsToSetAnalysisResult(V);
   if (!AR) {
     // We determined this points to nothing at instruction analysis time.
@@ -84,7 +72,7 @@ const PointsToSet *LazyAndersen::getPointsToSet(const Value *V) const {
   return &AR->getSetContentsSoFar();
 }
 
-AndersenEnumerator LazyAndersen::enumeratePointsToSet(const Value *V) const {
+AndersenEnumerator AndersenPass::enumeratePointsToSet(const Value *V) const {
   AnalysisResult *AR = getPointsToSetAnalysisResult(V);
   if (!AR) {
     // We determined this points to nothing at instruction analysis time.
@@ -93,7 +81,7 @@ AndersenEnumerator LazyAndersen::enumeratePointsToSet(const Value *V) const {
   return AndersenEnumerator(AR);
 }
 
-AnalysisResult *LazyAndersen::getPointsToSetAnalysisResult(const Value *V)
+AnalysisResult *AndersenPass::getPointsToSetAnalysisResult(const Value *V)
     const {
   ValueInfoMap::const_iterator i = Data->ValueInfos.find(V);
   if (!V) {
@@ -110,7 +98,7 @@ AnalysisResult *LazyAndersen::getPointsToSetAnalysisResult(const Value *V)
   return VI->getAlgorithmResult<PointsToAlgorithm, ENUMERATION_PHASE>();
 }
 
-bool LazyAndersen::runOnModule(Module &M) {
+bool AndersenPass::runOnModule(Module &M) {
   assert(!Data);
   Data = InstructionAnalyzer::run(this, M);
   if (NonLazy) {
@@ -122,17 +110,17 @@ bool LazyAndersen::runOnModule(Module &M) {
   return false;
 }
 
-void LazyAndersen::releaseMemory() {
+void AndersenPass::releaseMemory() {
   delete Data;
   Data = 0;
 }
 
-void LazyAndersen::getAnalysisUsage(AnalysisUsage &AU) const {
+void AndersenPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   AU.addRequired<DominatorTree>();
 }
 
-void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
+void AndersenPass::print(raw_ostream &OS, const Module *M) const {
   assert(Data);
   if (!NonLazy) {
     OS << "Nothing to print. Re-run with -andersen-non-lazy to see points-to"
@@ -151,3 +139,16 @@ void LazyAndersen::print(raw_ostream &OS, const Module *M) const {
     }
   }
 }
+
+}
+
+using namespace llvm;
+
+// TODO: What do these two bools mean?
+INITIALIZE_PASS_BEGIN(AndersenPass, "andersen",
+                      "Andersen's Algorithm for Points-To Analysis", false,
+                      true)
+INITIALIZE_PASS_DEPENDENCY(DominatorTree)
+INITIALIZE_PASS_END(AndersenPass, "andersen",
+                    "Andersen's Algorithm for Points-To Analysis", false,
+                    true)

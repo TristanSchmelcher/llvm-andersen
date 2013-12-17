@@ -20,10 +20,10 @@ using namespace llvm;
 
 /// initializeAndersen - Initialize all passes linked into the Andersen library.
 void llvm::initializeAndersen(PassRegistry &Registry) {
-  initializeLazyAndersenAliasAnalysisPass(Registry);
-  initializeLazyAndersenGraphPrinterPass(Registry);
-  initializeLazyAndersenGraphViewerPass(Registry);
-  initializeLazyAndersenPass(Registry);
+  initializeAndersenAliasAnalysisPass(Registry);
+  initializeAndersenGraphPrinterPass(Registry);
+  initializeAndersenGraphViewerPass(Registry);
+  initializeAndersenPassPass(Registry);
 }
 
 void LLVMInitializeAndersen(LLVMPassRegistryRef R) {

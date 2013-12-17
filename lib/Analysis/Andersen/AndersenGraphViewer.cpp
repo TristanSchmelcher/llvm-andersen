@@ -1,4 +1,4 @@
-//===- LazyAndersenGraphViewer.cpp - graph viewing ------------------------===//
+//===- AndersenGraphViewer.cpp - graph viewing ----------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,7 +15,7 @@
 #include "LazyAndersenData.h"
 #include "LazyAndersenGraphNode.h"
 #include "llvm/ADT/DepthFirstIterator.h"
-#include "llvm/Analysis/LazyAndersen.h"
+#include "llvm/Analysis/AndersenPass.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/GraphWriter.h"
@@ -23,10 +23,9 @@
 #include <sstream>
 #include <string>
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
-
 namespace llvm {
+
+using namespace andersen_internal;
 
 namespace {
 
@@ -70,6 +69,15 @@ public:
     return Tmp;
   }
 };
+
+std::string getGraphTitle(const Module *M) {
+  std::ostringstream OSS;
+  OSS << "AndersenPass analysis results";
+  if (M) {
+    OSS << " for module " << M->getModuleIdentifier();
+  }
+  return OSS.str();
+}
 
 }
 
@@ -120,26 +128,8 @@ public:
   }
 };
 
-}
-
-namespace llvm {
-namespace andersen_internal {
-
-namespace {
-
-std::string getGraphTitle(const Module *M) {
-  std::ostringstream OSS;
-  OSS << "LazyAndersen analysis results";
-  if (M) {
-    OSS << " for module " << M->getModuleIdentifier();
-  }
-  return OSS.str();
-}
-
-}
-
 void viewGraph(const LazyAndersenData *Data, const Module *M) {
-  ViewGraph(*Data, "LazyAndersen", false, getGraphTitle(M));
+  ViewGraph(*Data, "AndersenPass", false, getGraphTitle(M));
 }
 
 void printGraph(const LazyAndersenData *Data, const Module *M) {
@@ -156,12 +146,12 @@ void printGraph(const LazyAndersenData *Data, const Module *M) {
   errs() << "\n";
 }
 
-class LazyAndersenGraphPass : public ModulePass {
+class AndersenGraphPass : public ModulePass {
 public:
-  explicit LazyAndersenGraphPass(char &ID) : ModulePass(ID) {}
+  explicit AndersenGraphPass(char &ID) : ModulePass(ID) {}
 
   virtual bool runOnModule(Module &M) {
-    process(getAnalysis<LazyAndersen>().Data, M);
+    process(getAnalysis<AndersenPass>().Data, M);
     return false;
   }
 
@@ -169,7 +159,7 @@ public:
 
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
-    AU.addRequired<LazyAndersen>();
+    AU.addRequired<AndersenPass>();
   }
 
 protected:
@@ -178,12 +168,12 @@ protected:
 
 namespace {
 
-class LazyAndersenGraphViewer : public LazyAndersenGraphPass {
+class AndersenGraphViewer : public AndersenGraphPass {
 public:
-  static char ID; // Pass identifcation, replacement for typeid
+  static char ID; // Pass identification, replacement for typeid
 
-  LazyAndersenGraphViewer() : LazyAndersenGraphPass(ID) {
-    initializeLazyAndersenGraphViewerPass(*PassRegistry::getPassRegistry());
+  AndersenGraphViewer() : AndersenGraphPass(ID) {
+    initializeAndersenGraphViewerPass(*PassRegistry::getPassRegistry());
   }
 
 protected:
@@ -192,12 +182,14 @@ protected:
   }
 };
 
-class LazyAndersenGraphPrinter : public LazyAndersenGraphPass {
-public:
-  static char ID; // Pass identifcation, replacement for typeid
+char AndersenGraphViewer::ID = 0;
 
-  LazyAndersenGraphPrinter() : LazyAndersenGraphPass(ID) {
-    initializeLazyAndersenGraphPrinterPass(*PassRegistry::getPassRegistry());
+class AndersenGraphPrinter : public AndersenGraphPass {
+public:
+  static char ID; // Pass identification, replacement for typeid
+
+  AndersenGraphPrinter() : AndersenGraphPass(ID) {
+    initializeAndersenGraphPrinterPass(*PassRegistry::getPassRegistry());
   }
 
 protected:
@@ -206,21 +198,22 @@ protected:
   }
 };
 
+char AndersenGraphPrinter::ID = 0;
+
 }
 
 }
-}
 
-char LazyAndersenGraphViewer::ID = 0;
-INITIALIZE_PASS_BEGIN(LazyAndersenGraphViewer, "view-andersen",
+using namespace llvm;
+
+INITIALIZE_PASS_BEGIN(AndersenGraphViewer, "view-andersen",
                       "View Andersen graph", false, true)
-INITIALIZE_PASS_DEPENDENCY(LazyAndersen)
-INITIALIZE_PASS_END(LazyAndersenGraphViewer, "view-andersen",
+INITIALIZE_PASS_DEPENDENCY(AndersenPass)
+INITIALIZE_PASS_END(AndersenGraphViewer, "view-andersen",
                     "View Andersen graph", false, true)
 
-char LazyAndersenGraphPrinter::ID = 0;
-INITIALIZE_PASS_BEGIN(LazyAndersenGraphPrinter, "dot-andersen",
+INITIALIZE_PASS_BEGIN(AndersenGraphPrinter, "dot-andersen",
                       "Print Andersen graph to 'dot' file", false, true)
-INITIALIZE_PASS_DEPENDENCY(LazyAndersen)
-INITIALIZE_PASS_END(LazyAndersenGraphPrinter, "dot-andersen",
+INITIALIZE_PASS_DEPENDENCY(AndersenPass)
+INITIALIZE_PASS_END(AndersenGraphPrinter, "dot-andersen",
                     "Print Andersen graph to 'dot' file", false, true)

@@ -51,12 +51,12 @@ namespace {
       (void) llvm::createAggressiveDCEPass();
       (void) llvm::createAliasAnalysisCounterPass();
       (void) llvm::createAliasDebugger();
+      (void) llvm::createAndersenAliasAnalysisPass();
       (void) llvm::createArgumentPromotionPass();
       (void) llvm::createBasicAliasAnalysisPass();
       (void) llvm::createLibCallAliasAnalysisPass(0);
       (void) llvm::createScalarEvolutionAliasAnalysisPass();
       (void) llvm::createTypeBasedAliasAnalysisPass();
-      (void) llvm::createLazyAndersenAliasAnalysisPass();
       (void) llvm::createBlockPlacementPass();
       (void) llvm::createBoundsCheckingPass();
       (void) llvm::createBreakCriticalEdgesPass();

@@ -1,4 +1,4 @@
-//===- llvm/Analysis/LazyAndersen.h - Lazy Andersen's algorithm -----------===//
+//===- llvm/Analysis/AndersenPass.h - Andersen's algorithm ----------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,13 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// The LazyAndersen class is an LLVM pass which implements a lazy version of
-// Andersen's algorithm for points-to analysis.
+// The AndersenPass class is an LLVM pass which implements Andersen's algorithm
+// for points-to analysis with some modifications for lazy evaluation.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_ANALYSIS_LAZYANDERSEN_H
-#define LLVM_ANALYSIS_LAZYANDERSEN_H
+#ifndef LLVM_ANALYSIS_ANDERSENPASS_H
+#define LLVM_ANALYSIS_ANDERSENPASS_H
 
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Pass.h"
@@ -23,7 +23,6 @@ namespace andersen_internal {
 
 class AnalysisResult;
 class LazyAndersenData;
-class LazyAndersenGraphPass;
 class ValueInfo;
 
 }
@@ -36,15 +35,15 @@ class Value;
 // Same as andersen_internal::ValueInfoSetVector.
 typedef SetVector<andersen_internal::ValueInfo *> PointsToSet;
 
-/// LazyAndersen - An LLVM pass which implements a lazy version of Andersen's
-/// algorithm for points-to analysis.
-class LazyAndersen : public ModulePass {
-  friend class andersen_internal::LazyAndersenGraphPass;
+/// AndersenPass - An LLVM pass which implements Andersen's algorithm for
+/// points-to analysis with some modifications for lazy evaluation.
+class AndersenPass : public ModulePass {
+  friend class AndersenGraphPass;
   andersen_internal::LazyAndersenData *Data;
 
 public:
   static char ID; // Pass identification, replacement for typeid
-  LazyAndersen();
+  AndersenPass();
 
   // Get the points-to set of V, or null if V cannot point to anything. If the
   // points-to set has not yet been fully computed, this method computes it.
