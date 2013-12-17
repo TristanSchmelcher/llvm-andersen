@@ -23,24 +23,26 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class AlgorithmId;
-  class AnalysisResult;
-  class ValueInfo;
 
-  class TransformStepBase : public AnalysisResultWork {
-    Enumerator E;
+class AlgorithmId;
+class AnalysisResult;
+class ValueInfo;
 
-  public:
-    explicit TransformStepBase(AnalysisResult *AR);
-    virtual ~TransformStepBase();
-    virtual GraphEdgeDeque getOutgoingEdges() const;
-    virtual EnumerationResult enumerate(EnumerationContext *Ctx);
+class TransformStepBase : public AnalysisResultWork {
+  Enumerator E;
 
-  protected:
-    static std::string buildTransformStepName(const AlgorithmId& Id);
+public:
+  explicit TransformStepBase(AnalysisResult *AR);
+  virtual ~TransformStepBase();
+  virtual GraphEdgeDeque getOutgoingEdges() const;
+  virtual EnumerationResult enumerate(EnumerationContext *Ctx);
 
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) = 0;
-  };
+protected:
+  static std::string buildTransformStepName(const AlgorithmId& Id);
+
+  virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) = 0;
+};
+
 }
 }
 

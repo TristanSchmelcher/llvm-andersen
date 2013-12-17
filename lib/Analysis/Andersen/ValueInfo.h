@@ -20,89 +20,93 @@
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 
 namespace llvm {
-  class Value;
+
+class Value;
+
 }
 
 namespace llvm {
 namespace andersen_internal {
-  class AlgorithmId;
-  class AnalysisResult;
 
-  class ValueInfo : private RefCountedBase<ValueInfo>, public GraphNode {
-    friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
-    friend class RefCountedBase<ValueInfo>;
-    typedef AnalysisResult *(*AlgorithmFn)(ValueInfo *);
-    typedef DenseMap<const AlgorithmId *, AnalysisResult *> ResultsMapTy;
-    ResultsMapTy Results;
-    // The Value that maps to this object, or null for the special ValueInfos
-    // owned by Data. (If this analysis applies to multiple Values, this is the
-    // first one that was analyzed.)
-    const Value *V;
+class AlgorithmId;
+class AnalysisResult;
 
-  public:
-    typedef IntrusiveRefCntPtr<ValueInfo> Ref;
+class ValueInfo : private RefCountedBase<ValueInfo>, public GraphNode {
+  friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
+  friend class RefCountedBase<ValueInfo>;
+  typedef AnalysisResult *(*AlgorithmFn)(ValueInfo *);
+  typedef DenseMap<const AlgorithmId *, AnalysisResult *> ResultsMapTy;
+  ResultsMapTy Results;
+  // The Value that maps to this object, or null for the special ValueInfos
+  // owned by Data. (If this analysis applies to multiple Values, this is the
+  // first one that was analyzed.)
+  const Value *V;
 
-    static ValueInfo *const Nil;
+public:
+  typedef IntrusiveRefCntPtr<ValueInfo> Ref;
 
-    ValueInfo(const Value *V);
+  static ValueInfo *const Nil;
 
-    const Value *getValue() const {
-      return V;
-    }
+  ValueInfo(const Value *V);
 
-    virtual GraphEdgeDeque getOutgoingEdges() const;
-    virtual std::string getNodeLabel(const Data &Data) const;
-    virtual bool isNodeHidden() const;
+  const Value *getValue() const {
+    return V;
+  }
 
-    template<typename AlgorithmTy, Phase CurrentPhase>
-    AnalysisResult *getAlgorithmResult() {
-      return GetAlgorithmResultHelper<
-          AlgorithmTy::template IsEmptyIfMissing<CurrentPhase>::value>
-              ::template getAlgorithmResult<AlgorithmTy>(this);
-    }
+  virtual GraphEdgeDeque getOutgoingEdges() const;
+  virtual std::string getNodeLabel(const Data &Data) const;
+  virtual bool isNodeHidden() const;
 
-    template<typename AlgorithmTy1, typename AlgorithmTy2>
-    void addInstructionAnalysisWork(ValueInfo *that) {
-      assert(!AlgorithmTy1::template IsEmptyIfMissing<
-          INSTRUCTION_ANALYSIS_PHASE>::value);
-      assert(!AlgorithmTy2::template IsEmptyIfMissing<
-          INSTRUCTION_ANALYSIS_PHASE>::value);
-      addInstructionAnalysisWorkInternal(&AlgorithmTy1::ID,
-          &AlgorithmTy1::run, that, &AlgorithmTy2::ID,
-          &AlgorithmTy2::run);
-    }
+  template<typename AlgorithmTy, Phase CurrentPhase>
+  AnalysisResult *getAlgorithmResult() {
+    return GetAlgorithmResultHelper<
+        AlgorithmTy::template IsEmptyIfMissing<CurrentPhase>::value>
+            ::template getAlgorithmResult<AlgorithmTy>(this);
+  }
 
-  private:
-    virtual ~ValueInfo();
+  template<typename AlgorithmTy1, typename AlgorithmTy2>
+  void addInstructionAnalysisWork(ValueInfo *that) {
+    assert(!AlgorithmTy1::template IsEmptyIfMissing<
+        INSTRUCTION_ANALYSIS_PHASE>::value);
+    assert(!AlgorithmTy2::template IsEmptyIfMissing<
+        INSTRUCTION_ANALYSIS_PHASE>::value);
+    addInstructionAnalysisWorkInternal(&AlgorithmTy1::ID,
+        &AlgorithmTy1::run, that, &AlgorithmTy2::ID,
+        &AlgorithmTy2::run);
+  }
 
-    template<bool IsEmptyIfMissing>
-    struct GetAlgorithmResultHelper;
+private:
+  virtual ~ValueInfo();
 
-    AnalysisResult *getOrCreateAlgorithmResult(const AlgorithmId *Id,
-        AlgorithmFn Fn);
-    AnalysisResult *getAlgorithmResultOrNull(const AlgorithmId *Id) const;
+  template<bool IsEmptyIfMissing>
+  struct GetAlgorithmResultHelper;
 
-    void addInstructionAnalysisWorkInternal(const AlgorithmId *Id1,
-        AlgorithmFn Fn1, ValueInfo *that, const AlgorithmId *Id2,
-        AlgorithmFn Fn2);
-  };
+  AnalysisResult *getOrCreateAlgorithmResult(const AlgorithmId *Id,
+      AlgorithmFn Fn);
+  AnalysisResult *getAlgorithmResultOrNull(const AlgorithmId *Id) const;
 
-  template<>
-  struct ValueInfo::GetAlgorithmResultHelper<false> {
-    template<typename AlgorithmTy>
-    static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
-      return VI->getOrCreateAlgorithmResult(&AlgorithmTy::ID,
-          &AlgorithmTy::run);
-    }
-  };
+  void addInstructionAnalysisWorkInternal(const AlgorithmId *Id1,
+      AlgorithmFn Fn1, ValueInfo *that, const AlgorithmId *Id2,
+      AlgorithmFn Fn2);
+};
 
-  template<>
-  struct ValueInfo::GetAlgorithmResultHelper<true> {
-    template<typename AlgorithmTy>
-    static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
-      return VI->getAlgorithmResultOrNull(&AlgorithmTy::ID);
-    }
-  };
+template<>
+struct ValueInfo::GetAlgorithmResultHelper<false> {
+  template<typename AlgorithmTy>
+  static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
+    return VI->getOrCreateAlgorithmResult(&AlgorithmTy::ID,
+        &AlgorithmTy::run);
+  }
+};
+
+template<>
+struct ValueInfo::GetAlgorithmResultHelper<true> {
+  template<typename AlgorithmTy>
+  static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
+    return VI->getAlgorithmResultOrNull(&AlgorithmTy::ID);
+  }
+};
+
 }
 }
 

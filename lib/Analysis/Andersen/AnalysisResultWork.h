@@ -20,31 +20,35 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class EnumerationContext;
-  class EnumerationResult;
 
-  class AnalysisResultWork :
-      public ilist_node<AnalysisResultWork>,
-      public GraphNode {
-  public:
-    AnalysisResultWork();
-    virtual ~AnalysisResultWork();
-    virtual bool isNodeHidden() const;
+class EnumerationContext;
+class EnumerationResult;
 
-    virtual EnumerationResult enumerate(EnumerationContext *Ctx) = 0;
-  };
+class AnalysisResultWork :
+    public ilist_node<AnalysisResultWork>,
+    public GraphNode {
+public:
+  AnalysisResultWork();
+  virtual ~AnalysisResultWork();
+  virtual bool isNodeHidden() const;
 
-  typedef iplist<AnalysisResultWork> AnalysisResultWorkList;
+  virtual EnumerationResult enumerate(EnumerationContext *Ctx) = 0;
+};
+
+typedef iplist<AnalysisResultWork> AnalysisResultWorkList;
+
 }
 }
 
 namespace llvm {
-  template<>
-  struct ilist_traits<andersen_internal::AnalysisResultWork>
-    : public ilist_nextprev_traits<andersen_internal::AnalysisResultWork>,
-      public ilist_ghostly_sentinel_traits<
-          andersen_internal::AnalysisResultWork>,
-      public ilist_node_traits<andersen_internal::AnalysisResultWork> {};
+
+template<>
+struct ilist_traits<andersen_internal::AnalysisResultWork>
+  : public ilist_nextprev_traits<andersen_internal::AnalysisResultWork>,
+    public ilist_ghostly_sentinel_traits<
+        andersen_internal::AnalysisResultWork>,
+    public ilist_node_traits<andersen_internal::AnalysisResultWork> {};
+
 }
 
 #endif

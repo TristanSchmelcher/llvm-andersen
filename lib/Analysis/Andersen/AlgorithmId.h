@@ -18,13 +18,15 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class AlgorithmId {
-  public:
-    virtual std::string getAlgorithmName() const = 0;
 
-  protected:
-    ~AlgorithmId() {}
-  };
+class AlgorithmId {
+public:
+  virtual std::string getAlgorithmName() const = 0;
+
+protected:
+  ~AlgorithmId() {}
+};
+
 }
 }
 

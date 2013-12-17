@@ -14,8 +14,11 @@
 
 #include "FormalReturnValueReversePointsToAlgorithm.h"
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 const LiteralAlgorithmId FormalReturnValueReversePointsToAlgorithm::ID(
     "formal return value");
+
+}
+}

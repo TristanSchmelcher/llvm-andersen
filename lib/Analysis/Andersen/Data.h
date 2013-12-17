@@ -21,9 +21,13 @@
 #include <vector>
 
 namespace llvm {
+
 class Function;
 class Value;
 
+}
+
+namespace llvm {
 namespace andersen_internal {
 
 // TODO: Should this be a ValueMap?

@@ -20,12 +20,14 @@
 
 namespace llvm {
 namespace andersen_internal {
-  struct IsNotNecessarilyEmptyIfMissingProperty {
-    template<Phase CurrentPhase>
-    struct IsEmptyIfMissing {
-      static const bool value = false;
-    };
+
+struct IsNotNecessarilyEmptyIfMissingProperty {
+  template<Phase CurrentPhase>
+  struct IsEmptyIfMissing {
+    static const bool value = false;
   };
+};
+
 }
 }
 

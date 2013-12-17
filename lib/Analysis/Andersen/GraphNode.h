@@ -20,29 +20,31 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class GraphNode;
-  class Data;
 
-  struct GraphEdge {
-    GraphEdge() : Dst(0) {}
-    GraphEdge(const GraphNode *Dst, StringRef Label)
-      : Dst(Dst), Label(Label.str()) {}
+class GraphNode;
+class Data;
 
-    const GraphNode *Dst;
-    std::string Label;
-  };
+struct GraphEdge {
+  GraphEdge() : Dst(0) {}
+  GraphEdge(const GraphNode *Dst, StringRef Label)
+    : Dst(Dst), Label(Label.str()) {}
 
-  typedef std::deque<GraphEdge> GraphEdgeDeque;
+  const GraphNode *Dst;
+  std::string Label;
+};
 
-  class GraphNode {
-  public:
-    virtual GraphEdgeDeque getOutgoingEdges() const = 0;
-    virtual std::string getNodeLabel(const Data &Data) const = 0;
-    virtual bool isNodeHidden() const = 0;
+typedef std::deque<GraphEdge> GraphEdgeDeque;
 
-  protected:
-    ~GraphNode() {}
-  };
+class GraphNode {
+public:
+  virtual GraphEdgeDeque getOutgoingEdges() const = 0;
+  virtual std::string getNodeLabel(const Data &Data) const = 0;
+  virtual bool isNodeHidden() const = 0;
+
+protected:
+  ~GraphNode() {}
+};
+
 }
 }
 

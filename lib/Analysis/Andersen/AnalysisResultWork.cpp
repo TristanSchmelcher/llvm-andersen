@@ -13,8 +13,8 @@
 
 #include "AnalysisResultWork.h"
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 AnalysisResultWork::AnalysisResultWork() {}
 
@@ -22,4 +22,7 @@ AnalysisResultWork::~AnalysisResultWork() {}
 
 bool AnalysisResultWork::isNodeHidden() const {
   return false;
+}
+
+}
 }

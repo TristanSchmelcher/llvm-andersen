@@ -16,8 +16,8 @@
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 RecursiveEnumerate::RecursiveEnumerate(AnalysisResult *AR) : E(AR) {}
 
@@ -35,4 +35,7 @@ GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {
 
 std::string RecursiveEnumerate::getNodeLabel(const Data &Data) const {
   return "Recurse";
+}
+
+}
 }

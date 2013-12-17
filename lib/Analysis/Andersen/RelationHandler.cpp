@@ -27,183 +27,185 @@
 
 #include <cassert>
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 namespace {
-  template<typename AlgorithmTy>
-  struct ForAlgorithm;
 
-  // ActualParametersPointsToAlgorithm
-  template<>
-  struct ForAlgorithm<ActualParametersPointsToAlgorithm> {
-    template<RelationType RT>
-    static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
-  };
+template<typename AlgorithmTy>
+struct ForAlgorithm;
 
-  template<>
-  inline void ForAlgorithm<ActualParametersPointsToAlgorithm>
-      ::handleRelation<ARGUMENT_TO_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
-    Dst->addInstructionAnalysisWork<ActualParametersPointsToAlgorithm,
-        PointsToAlgorithm>(Src);
-  }
+// ActualParametersPointsToAlgorithm
+template<>
+struct ForAlgorithm<ActualParametersPointsToAlgorithm> {
+  template<RelationType RT>
+  static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
+};
 
-  // ActualReturnValuePointsToAlgorithm
-  template<>
-  struct ForAlgorithm<ActualReturnValuePointsToAlgorithm> {
-    template<RelationType RT>
-    static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
-  };
+template<>
+inline void ForAlgorithm<ActualParametersPointsToAlgorithm>
+    ::handleRelation<ARGUMENT_TO_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
+  Dst->addInstructionAnalysisWork<ActualParametersPointsToAlgorithm,
+      PointsToAlgorithm>(Src);
+}
 
-  template<>
-  inline void ForAlgorithm<ActualReturnValuePointsToAlgorithm>
-      ::handleRelation<RETURNED_TO_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
-    Dst->addInstructionAnalysisWork<ActualReturnValuePointsToAlgorithm,
-        PointsToAlgorithm>(Src);
-  }
+// ActualReturnValuePointsToAlgorithm
+template<>
+struct ForAlgorithm<ActualReturnValuePointsToAlgorithm> {
+  template<RelationType RT>
+  static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
+};
 
-  // FormalParametersReversePointsToAlgorithm
-  template<>
-  struct ForAlgorithm<FormalParametersReversePointsToAlgorithm> {
-    template<RelationType RT>
-    static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
-  };
+template<>
+inline void ForAlgorithm<ActualReturnValuePointsToAlgorithm>
+    ::handleRelation<RETURNED_TO_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
+  Dst->addInstructionAnalysisWork<ActualReturnValuePointsToAlgorithm,
+      PointsToAlgorithm>(Src);
+}
 
-  template<>
-  inline void ForAlgorithm<FormalParametersReversePointsToAlgorithm>
-      ::handleRelation<ARGUMENT_FROM_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
-    Dst->addInstructionAnalysisWork<FormalParametersReversePointsToAlgorithm,
-        ReversePointsToAlgorithm>(Src);
-  }
+// FormalParametersReversePointsToAlgorithm
+template<>
+struct ForAlgorithm<FormalParametersReversePointsToAlgorithm> {
+  template<RelationType RT>
+  static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
+};
 
-  // FormalReturnValueReversePointsToAlgorithm
-  template<>
-  struct ForAlgorithm<FormalReturnValueReversePointsToAlgorithm> {
-    template<RelationType RT>
-    static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
-  };
+template<>
+inline void ForAlgorithm<FormalParametersReversePointsToAlgorithm>
+    ::handleRelation<ARGUMENT_FROM_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
+  Dst->addInstructionAnalysisWork<FormalParametersReversePointsToAlgorithm,
+      ReversePointsToAlgorithm>(Src);
+}
 
-  template<>
-  inline void ForAlgorithm<FormalReturnValueReversePointsToAlgorithm>
-      ::handleRelation<RETURNED_FROM_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
-    Dst->addInstructionAnalysisWork<FormalReturnValueReversePointsToAlgorithm,
-        ReversePointsToAlgorithm>(Src);
-  }
+// FormalReturnValueReversePointsToAlgorithm
+template<>
+struct ForAlgorithm<FormalReturnValueReversePointsToAlgorithm> {
+  template<RelationType RT>
+  static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
+};
 
-  // LoadedValuesReversePointsToAlgorithm
-  template<>
-  struct ForAlgorithm<LoadedValuesReversePointsToAlgorithm> {
-    template<RelationType RT>
-    static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
-  };
+template<>
+inline void ForAlgorithm<FormalReturnValueReversePointsToAlgorithm>
+    ::handleRelation<RETURNED_FROM_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
+  Dst->addInstructionAnalysisWork<FormalReturnValueReversePointsToAlgorithm,
+      ReversePointsToAlgorithm>(Src);
+}
 
-  template<>
-  inline void ForAlgorithm<LoadedValuesReversePointsToAlgorithm>
-      ::handleRelation<LOADED_FROM>(ValueInfo *Src, ValueInfo *Dst) {
-    Dst->addInstructionAnalysisWork<LoadedValuesReversePointsToAlgorithm,
-        ReversePointsToAlgorithm>(Src);
-  }
+// LoadedValuesReversePointsToAlgorithm
+template<>
+struct ForAlgorithm<LoadedValuesReversePointsToAlgorithm> {
+  template<RelationType RT>
+  static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
+};
 
-  // PointsToAlgorithm
-  template<>
-  struct ForAlgorithm<PointsToAlgorithm> {
-    template<RelationType RT>
-    static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
-  };
+template<>
+inline void ForAlgorithm<LoadedValuesReversePointsToAlgorithm>
+    ::handleRelation<LOADED_FROM>(ValueInfo *Src, ValueInfo *Dst) {
+  Dst->addInstructionAnalysisWork<LoadedValuesReversePointsToAlgorithm,
+      ReversePointsToAlgorithm>(Src);
+}
 
-  template<>
-  inline void ForAlgorithm<PointsToAlgorithm>
-      ::handleRelation<ARGUMENT_FROM_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
-    Src->addInstructionAnalysisWork<
-        PointsToAlgorithm,
-        TwoHopTraversal<ReversePointsToAlgorithm,
-                        ActualParametersPointsToAlgorithm>::Algorithm>(Dst);
-  }
+// PointsToAlgorithm
+template<>
+struct ForAlgorithm<PointsToAlgorithm> {
+  template<RelationType RT>
+  static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
+};
 
-  template<>
-  inline void ForAlgorithm<PointsToAlgorithm>
-      ::handleRelation<DEPENDS_ON>(ValueInfo *Src, ValueInfo *Dst) {
-    Src->addInstructionAnalysisWork<PointsToAlgorithm,
-        PointsToAlgorithm>(Dst);
-  }
+template<>
+inline void ForAlgorithm<PointsToAlgorithm>
+    ::handleRelation<ARGUMENT_FROM_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
+  Src->addInstructionAnalysisWork<
+      PointsToAlgorithm,
+      TwoHopTraversal<ReversePointsToAlgorithm,
+                      ActualParametersPointsToAlgorithm>::Algorithm>(Dst);
+}
 
-  template<>
-  inline void ForAlgorithm<PointsToAlgorithm>
-      ::handleRelation<LOADED_FROM>(ValueInfo *Src, ValueInfo *Dst) {
-    Src->addInstructionAnalysisWork<
-        PointsToAlgorithm,
-        ThreeHopTraversal<PointsToAlgorithm,
-                          ReversePointsToAlgorithm,
-                          StoredValuesPointsToAlgorithm>::Algorithm>(Dst);
-  }
+template<>
+inline void ForAlgorithm<PointsToAlgorithm>
+    ::handleRelation<DEPENDS_ON>(ValueInfo *Src, ValueInfo *Dst) {
+  Src->addInstructionAnalysisWork<PointsToAlgorithm,
+      PointsToAlgorithm>(Dst);
+}
 
-  template<>
-  inline void ForAlgorithm<PointsToAlgorithm>
-      ::handleRelation<RETURNED_FROM_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
-    Src->addInstructionAnalysisWork<
-        PointsToAlgorithm,
-        TwoHopTraversal<PointsToAlgorithm,
-                        ActualReturnValuePointsToAlgorithm>::Algorithm>(Dst);
-  }
+template<>
+inline void ForAlgorithm<PointsToAlgorithm>
+    ::handleRelation<LOADED_FROM>(ValueInfo *Src, ValueInfo *Dst) {
+  Src->addInstructionAnalysisWork<
+      PointsToAlgorithm,
+      ThreeHopTraversal<PointsToAlgorithm,
+                        ReversePointsToAlgorithm,
+                        StoredValuesPointsToAlgorithm>::Algorithm>(Dst);
+}
 
-  // ReversePointsToAlgorithm
-  template<>
-  struct ForAlgorithm<ReversePointsToAlgorithm> {
-    template<RelationType RT>
-    static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
-  };
+template<>
+inline void ForAlgorithm<PointsToAlgorithm>
+    ::handleRelation<RETURNED_FROM_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
+  Src->addInstructionAnalysisWork<
+      PointsToAlgorithm,
+      TwoHopTraversal<PointsToAlgorithm,
+                      ActualReturnValuePointsToAlgorithm>::Algorithm>(Dst);
+}
 
-  template<>
-  inline void ForAlgorithm<ReversePointsToAlgorithm>
-      ::handleRelation<ARGUMENT_TO_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
-    Src->addInstructionAnalysisWork<
-        ReversePointsToAlgorithm,
-        TwoHopTraversal<PointsToAlgorithm,
-                        FormalParametersReversePointsToAlgorithm>::Algorithm>(
-            Dst);
-  }
+// ReversePointsToAlgorithm
+template<>
+struct ForAlgorithm<ReversePointsToAlgorithm> {
+  template<RelationType RT>
+  static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
+};
 
-  template<>
-  inline void ForAlgorithm<ReversePointsToAlgorithm>
-      ::handleRelation<DEPENDS_ON>(ValueInfo *Src, ValueInfo *Dst) {
-    Dst->addInstructionAnalysisWork<ReversePointsToAlgorithm,
-        ReversePointsToAlgorithm>(Src);
-  }
+template<>
+inline void ForAlgorithm<ReversePointsToAlgorithm>
+    ::handleRelation<ARGUMENT_TO_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
+  Src->addInstructionAnalysisWork<
+      ReversePointsToAlgorithm,
+      TwoHopTraversal<PointsToAlgorithm,
+                      FormalParametersReversePointsToAlgorithm>::Algorithm>(
+          Dst);
+}
 
-  template<>
-  inline void ForAlgorithm<ReversePointsToAlgorithm>
-      ::handleRelation<RETURNED_TO_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
-    Src->addInstructionAnalysisWork<
-        ReversePointsToAlgorithm,
-        TwoHopTraversal<
-            ReversePointsToAlgorithm,
-            FormalReturnValueReversePointsToAlgorithm>::Algorithm>(Dst);
-  }
+template<>
+inline void ForAlgorithm<ReversePointsToAlgorithm>
+    ::handleRelation<DEPENDS_ON>(ValueInfo *Src, ValueInfo *Dst) {
+  Dst->addInstructionAnalysisWork<ReversePointsToAlgorithm,
+      ReversePointsToAlgorithm>(Src);
+}
 
-  template<>
-  inline void ForAlgorithm<ReversePointsToAlgorithm>
-      ::handleRelation<STORED_TO>(ValueInfo *Src, ValueInfo *Dst) {
-    Src->addInstructionAnalysisWork<
-        ReversePointsToAlgorithm,
-        ThreeHopTraversal<
-            PointsToAlgorithm,
-            ReversePointsToAlgorithm,
-            LoadedValuesReversePointsToAlgorithm>::Algorithm>(Dst);
-  }
+template<>
+inline void ForAlgorithm<ReversePointsToAlgorithm>
+    ::handleRelation<RETURNED_TO_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
+  Src->addInstructionAnalysisWork<
+      ReversePointsToAlgorithm,
+      TwoHopTraversal<
+          ReversePointsToAlgorithm,
+          FormalReturnValueReversePointsToAlgorithm>::Algorithm>(Dst);
+}
 
-  // StoredValuesPointsToAlgorithm
-  template<>
-  struct ForAlgorithm<StoredValuesPointsToAlgorithm> {
-    template<RelationType RT>
-    static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
-  };
+template<>
+inline void ForAlgorithm<ReversePointsToAlgorithm>
+    ::handleRelation<STORED_TO>(ValueInfo *Src, ValueInfo *Dst) {
+  Src->addInstructionAnalysisWork<
+      ReversePointsToAlgorithm,
+      ThreeHopTraversal<
+          PointsToAlgorithm,
+          ReversePointsToAlgorithm,
+          LoadedValuesReversePointsToAlgorithm>::Algorithm>(Dst);
+}
 
-  template<>
-  inline void ForAlgorithm<StoredValuesPointsToAlgorithm>
-      ::handleRelation<STORED_TO>(ValueInfo *Src, ValueInfo *Dst) {
-    Dst->addInstructionAnalysisWork<StoredValuesPointsToAlgorithm,
-        PointsToAlgorithm>(Src);
-  }
+// StoredValuesPointsToAlgorithm
+template<>
+struct ForAlgorithm<StoredValuesPointsToAlgorithm> {
+  template<RelationType RT>
+  static void handleRelation(ValueInfo *Src, ValueInfo *Dst) {}
+};
+
+template<>
+inline void ForAlgorithm<StoredValuesPointsToAlgorithm>
+    ::handleRelation<STORED_TO>(ValueInfo *Src, ValueInfo *Dst) {
+  Dst->addInstructionAnalysisWork<StoredValuesPointsToAlgorithm,
+      PointsToAlgorithm>(Src);
+}
+
 }
 
 // Now put it all together.
@@ -245,3 +247,6 @@ template void RelationHandler::handleRelation<RETURNED_TO_CALLER>(
     ValueInfo *Src, ValueInfo *Dst);
 template void RelationHandler::handleRelation<STORED_TO>(
     ValueInfo *Src, ValueInfo *Dst);
+
+}
+}

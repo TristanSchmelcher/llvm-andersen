@@ -17,8 +17,8 @@
 
 #include <sstream>
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 AnalysisResult::AnalysisResult() : EnumerationDepth(-1) {}
 
@@ -52,4 +52,7 @@ std::string AnalysisResult::getNodeLabel(const Data &Data) const {
 
 bool AnalysisResult::isNodeHidden() const {
   return false;
+}
+
+}
 }

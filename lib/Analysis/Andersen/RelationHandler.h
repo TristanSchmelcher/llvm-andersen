@@ -19,14 +19,16 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class ValueInfo;
 
-  struct RelationHandler {
-    // Creates graph traversal steps to handle the relation RT between Src and
-    // Dst.
-    template<RelationType RT>
-    static void handleRelation(ValueInfo *Src, ValueInfo *Dst);
-  };
+class ValueInfo;
+
+struct RelationHandler {
+  // Creates graph traversal steps to handle the relation RT between Src and
+  // Dst.
+  template<RelationType RT>
+  static void handleRelation(ValueInfo *Src, ValueInfo *Dst);
+};
+
 }
 }
 

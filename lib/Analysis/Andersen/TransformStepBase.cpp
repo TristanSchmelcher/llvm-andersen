@@ -22,8 +22,8 @@
 
 #include <sstream>
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 TransformStepBase::TransformStepBase(AnalysisResult *AR) : E(AR) {}
 
@@ -65,4 +65,7 @@ std::string TransformStepBase::buildTransformStepName(const AlgorithmId& Id) {
   std::ostringstream OSS;
   OSS << "Transform(" << Id.getAlgorithmName() << ')';
   return OSS.str();
+}
+
+}
 }

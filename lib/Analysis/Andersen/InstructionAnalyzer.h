@@ -15,20 +15,24 @@
 #define INSTRUCTIONANALYZER_H
 
 namespace llvm {
-  class Module;
-  class ModulePass;
+
+class Module;
+class ModulePass;
+
 }
 
 namespace llvm {
 namespace andersen_internal {
-  class Data;
 
-  class InstructionAnalyzer {
-    class Visitor;
+class Data;
 
-  public:
-    static Data *run(ModulePass *MP, Module &M);
-  };
+class InstructionAnalyzer {
+  class Visitor;
+
+public:
+  static Data *run(ModulePass *MP, Module &M);
+};
+
 }
 }
 

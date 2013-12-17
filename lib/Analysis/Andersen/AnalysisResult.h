@@ -20,39 +20,41 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class ValueInfo;
-  typedef SetVector<ValueInfo *> ValueInfoSetVector;
 
-  class AnalysisResult : public GraphNode {
-    friend class EnumerationContext;
-    friend class Enumerator;
-    friend class ScopedSetEnumerating;
+class ValueInfo;
+typedef SetVector<ValueInfo *> ValueInfoSetVector;
 
-    int EnumerationDepth;
-    ValueInfoSetVector Set;
-    AnalysisResultWorkList Work;
+class AnalysisResult : public GraphNode {
+  friend class EnumerationContext;
+  friend class Enumerator;
+  friend class ScopedSetEnumerating;
 
-  public:
-    AnalysisResult();
-    virtual ~AnalysisResult();
+  int EnumerationDepth;
+  ValueInfoSetVector Set;
+  AnalysisResultWorkList Work;
 
-    bool addValueInfo(ValueInfo *VI) { return Set.insert(VI); }
+public:
+  AnalysisResult();
+  virtual ~AnalysisResult();
 
-    // If WorkEntry is a RecursiveEnumerate whose target is "this", then it's
-    // superfluous, but in practice that doesn't happen.
-    void addWork(AnalysisResultWork *Entry) { Work.push_back(Entry); }
+  bool addValueInfo(ValueInfo *VI) { return Set.insert(VI); }
 
-    const ValueInfoSetVector &getSetContentsSoFar() const { return Set; }
+  // If WorkEntry is a RecursiveEnumerate whose target is "this", then it's
+  // superfluous, but in practice that doesn't happen.
+  void addWork(AnalysisResultWork *Entry) { Work.push_back(Entry); }
 
-    bool isDone() const { return Work.empty(); }
+  const ValueInfoSetVector &getSetContentsSoFar() const { return Set; }
 
-    virtual GraphEdgeDeque getOutgoingEdges() const;
-    virtual std::string getNodeLabel(const Data &Data) const;
-    virtual bool isNodeHidden() const;
+  bool isDone() const { return Work.empty(); }
 
-  private:
-    bool isEnumerating() const { return EnumerationDepth >= 0; }
-  };
+  virtual GraphEdgeDeque getOutgoingEdges() const;
+  virtual std::string getNodeLabel(const Data &Data) const;
+  virtual bool isNodeHidden() const;
+
+private:
+  bool isEnumerating() const { return EnumerationDepth >= 0; }
+};
+
 }
 }
 

@@ -19,18 +19,20 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class AnalysisResult;
-  class ValueInfo;
 
-  // Reverse points-to is like an InstructionAnalysisAlgorithm, except it is
-  // irregular in that all ValueInfo's are implicitly in their own reverse
-  // points-to set.
-  struct ReversePointsToAlgorithm :
-      public IsNotNecessarilyEmptyIfMissingProperty {
-    static const LiteralAlgorithmId ID;
+class AnalysisResult;
+class ValueInfo;
 
-    static AnalysisResult *run(ValueInfo *VI);
-  };
+// Reverse points-to is like an InstructionAnalysisAlgorithm, except it is
+// irregular in that all ValueInfo's are implicitly in their own reverse
+// points-to set.
+struct ReversePointsToAlgorithm :
+    public IsNotNecessarilyEmptyIfMissingProperty {
+  static const LiteralAlgorithmId ID;
+
+  static AnalysisResult *run(ValueInfo *VI);
+};
+
 }
 }
 

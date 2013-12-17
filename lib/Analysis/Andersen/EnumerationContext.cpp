@@ -19,8 +19,8 @@
 
 #include <cassert>
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 inline ScopedSetEnumerating::ScopedSetEnumerating(AnalysisResult *AR, int Depth)
   : AR(AR) {
@@ -48,4 +48,7 @@ EnumerationResult EnumerationContext::pushWork(AnalysisResult *Child) {
   RecursiveEnumerate *RE = new RecursiveEnumerate(Child);
   Pos = AR->Work.insert(Pos, RE);
   return RE->enumerate(this);
+}
+
+}
 }

@@ -19,13 +19,15 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class AnalysisResult;
-  class ValueInfo;
 
-  struct InstructionAnalysisAlgorithm :
-      public IsEmptyIfMissingInEnumerationPhaseProperty {
-    static AnalysisResult *run(ValueInfo *VI);
-  };
+class AnalysisResult;
+class ValueInfo;
+
+struct InstructionAnalysisAlgorithm :
+    public IsEmptyIfMissingInEnumerationPhaseProperty {
+  static AnalysisResult *run(ValueInfo *VI);
+};
+
 }
 }
 

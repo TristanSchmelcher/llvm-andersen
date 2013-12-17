@@ -20,10 +20,12 @@
 
 namespace llvm {
 namespace andersen_internal {
-  struct FormalParametersReversePointsToAlgorithm :
-      public InstructionAnalysisAlgorithm {
-    static const LiteralAlgorithmId ID;
-  };
+
+struct FormalParametersReversePointsToAlgorithm :
+    public InstructionAnalysisAlgorithm {
+  static const LiteralAlgorithmId ID;
+};
+
 }
 }
 

@@ -19,10 +19,12 @@
 
 namespace llvm {
 namespace andersen_internal {
-  struct ActualParametersPointsToAlgorithm :
-      public InstructionAnalysisAlgorithm {
-    static const LiteralAlgorithmId ID;
-  };
+
+struct ActualParametersPointsToAlgorithm :
+    public InstructionAnalysisAlgorithm {
+  static const LiteralAlgorithmId ID;
+};
+
 }
 }
 

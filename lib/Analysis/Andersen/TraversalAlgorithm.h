@@ -16,63 +16,65 @@
 #define TRAVERSALALGORITHM_H
 
 #include "AnalysisResult.h"
-#include "Phase.h"
 #include "IsNotNecessarilyEmptyIfMissingProperty.h"
+#include "Phase.h"
 #include "TransformStep.h"
 #include "TraversalAlgorithmId.h"
 #include "ValueInfo.h"
 
 namespace llvm {
 namespace andersen_internal {
-  struct TraversalBase {
-  private:
-    template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
-             Phase RunPhase>
-    struct TraversalAlgorithm :
-        public IsNotNecessarilyEmptyIfMissingProperty {
-      static const TraversalAlgorithmId ID;
 
-      static AnalysisResult *run(ValueInfo *VI) {
-        AnalysisResult *AR = new AnalysisResult();
-        AR->addWork(new TransformStep<SecondHopAlgorithm>(
-            VI->getAlgorithmResult<FirstHopAlgorithm, RunPhase>()));
-        return AR;
-      }
-    };
-
-    template<typename FirstHopAlgorithm, typename SecondHopAlgorithm>
-    friend struct TwoHopTraversal;
-
-    template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
-             typename ThirdHopAlgorithm>
-    friend struct ThreeHopTraversal;
-  };
-
+struct TraversalBase {
+private:
   template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
            Phase RunPhase>
-  const TraversalAlgorithmId TraversalBase::TraversalAlgorithm<
-      FirstHopAlgorithm,
-      SecondHopAlgorithm,
-      RunPhase>::ID(&FirstHopAlgorithm::ID,
-                    &SecondHopAlgorithm::ID);
+  struct TraversalAlgorithm :
+      public IsNotNecessarilyEmptyIfMissingProperty {
+    static const TraversalAlgorithmId ID;
+
+    static AnalysisResult *run(ValueInfo *VI) {
+      AnalysisResult *AR = new AnalysisResult();
+      AR->addWork(new TransformStep<SecondHopAlgorithm>(
+          VI->getAlgorithmResult<FirstHopAlgorithm, RunPhase>()));
+      return AR;
+    }
+  };
 
   template<typename FirstHopAlgorithm, typename SecondHopAlgorithm>
-  struct TwoHopTraversal : private TraversalBase {
-    typedef TraversalAlgorithm<FirstHopAlgorithm,
-                               SecondHopAlgorithm,
-                               INSTRUCTION_ANALYSIS_PHASE> Algorithm;
-  };
+  friend struct TwoHopTraversal;
 
   template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
            typename ThirdHopAlgorithm>
-  struct ThreeHopTraversal : private TraversalBase {
-    typedef TraversalAlgorithm<
-        FirstHopAlgorithm,
-        TraversalAlgorithm<SecondHopAlgorithm,
-                           ThirdHopAlgorithm,
-                           ENUMERATION_PHASE>,
-        INSTRUCTION_ANALYSIS_PHASE> Algorithm;
-  };
+  friend struct ThreeHopTraversal;
+};
+
+template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
+         Phase RunPhase>
+const TraversalAlgorithmId TraversalBase::TraversalAlgorithm<
+    FirstHopAlgorithm,
+    SecondHopAlgorithm,
+    RunPhase>::ID(&FirstHopAlgorithm::ID,
+                  &SecondHopAlgorithm::ID);
+
+template<typename FirstHopAlgorithm, typename SecondHopAlgorithm>
+struct TwoHopTraversal : private TraversalBase {
+  typedef TraversalAlgorithm<FirstHopAlgorithm,
+                             SecondHopAlgorithm,
+                             INSTRUCTION_ANALYSIS_PHASE> Algorithm;
+};
+
+template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
+         typename ThirdHopAlgorithm>
+struct ThreeHopTraversal : private TraversalBase {
+  typedef TraversalAlgorithm<
+      FirstHopAlgorithm,
+      TraversalAlgorithm<SecondHopAlgorithm,
+                         ThirdHopAlgorithm,
+                         ENUMERATION_PHASE>,
+      INSTRUCTION_ANALYSIS_PHASE> Algorithm;
+};
+
 }
 }
 

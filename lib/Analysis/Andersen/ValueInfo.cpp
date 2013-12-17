@@ -23,8 +23,8 @@
 
 #include <sstream>
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 ValueInfo *const ValueInfo::Nil = 0;
 
@@ -90,4 +90,7 @@ void ValueInfo::addInstructionAnalysisWorkInternal(const AlgorithmId *Id1,
     AlgorithmFn Fn2) {
   getOrCreateAlgorithmResult(Id1, Fn1)->addWork(
       new RecursiveEnumerate(that->getOrCreateAlgorithmResult(Id2, Fn2)));
+}
+
+}
 }

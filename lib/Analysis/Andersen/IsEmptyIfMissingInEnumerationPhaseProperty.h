@@ -19,22 +19,24 @@
 
 namespace llvm {
 namespace andersen_internal {
-  struct IsEmptyIfMissingInEnumerationPhaseProperty {
-    template<Phase CurrentPhase>
-    struct IsEmptyIfMissing;
-  };
 
-  template<>
-  struct IsEmptyIfMissingInEnumerationPhaseProperty::IsEmptyIfMissing<
-      INSTRUCTION_ANALYSIS_PHASE> {
-    static const bool value = false;
-  };
+struct IsEmptyIfMissingInEnumerationPhaseProperty {
+  template<Phase CurrentPhase>
+  struct IsEmptyIfMissing;
+};
 
-  template<>
-  struct IsEmptyIfMissingInEnumerationPhaseProperty::IsEmptyIfMissing<
-      ENUMERATION_PHASE> {
-    static const bool value = true;
-  };
+template<>
+struct IsEmptyIfMissingInEnumerationPhaseProperty::IsEmptyIfMissing<
+    INSTRUCTION_ANALYSIS_PHASE> {
+  static const bool value = false;
+};
+
+template<>
+struct IsEmptyIfMissingInEnumerationPhaseProperty::IsEmptyIfMissing<
+    ENUMERATION_PHASE> {
+  static const bool value = true;
+};
+
 }
 }
 

@@ -179,11 +179,11 @@ AndersenAliasAnalysis::getModRefBehavior(const Function *F) {
 }
 }
 
-llvm::ModulePass *llvm::createAndersenAliasAnalysisPass() {
+using namespace llvm;
+
+ModulePass *llvm::createAndersenAliasAnalysisPass() {
   return new AndersenAliasAnalysis();
 }
-
-using namespace llvm;
 
 // TODO: What do these three bools mean?
 INITIALIZE_AG_PASS_BEGIN(AndersenAliasAnalysis, AliasAnalysis,

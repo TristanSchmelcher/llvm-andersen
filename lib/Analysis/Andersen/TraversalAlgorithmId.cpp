@@ -16,8 +16,8 @@
 
 #include <sstream>
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 TraversalAlgorithmId::TraversalAlgorithmId(
     const AlgorithmId *SrcId, const AlgorithmId *DstId)
@@ -29,4 +29,7 @@ std::string TraversalAlgorithmId::getAlgorithmName() const {
   std::ostringstream OSS;
   OSS << SrcId->getAlgorithmName() << ':' << DstId->getAlgorithmName();
   return OSS.str();
+}
+
+}
 }

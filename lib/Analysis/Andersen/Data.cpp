@@ -15,8 +15,8 @@
 
 #include "llvm/Support/ErrorHandling.h"
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 Data::Data(ValueInfo *ExternallyLinkableRegions,
            ValueInfo *ExternallyAccessibleRegions)
@@ -54,4 +54,7 @@ std::string Data::getNodeLabel(const Data &Data) const {
 
 bool Data::isNodeHidden() const {
   return true;
+}
+
+}
 }

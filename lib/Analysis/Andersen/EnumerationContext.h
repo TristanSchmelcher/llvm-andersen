@@ -18,36 +18,38 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class AnalysisResult;
 
-  class ScopedSetEnumerating {
-    friend class EnumerationContext;
+class AnalysisResult;
 
-    AnalysisResult *const AR;
+class ScopedSetEnumerating {
+  friend class EnumerationContext;
 
-    ScopedSetEnumerating(AnalysisResult *AR, int Depth);
-    ~ScopedSetEnumerating();
-  };
+  AnalysisResult *const AR;
 
-  class EnumerationContext : private ScopedSetEnumerating {
-    friend class Enumerator;
+  ScopedSetEnumerating(AnalysisResult *AR, int Depth);
+  ~ScopedSetEnumerating();
+};
 
-    const int Depth;
-    const int LastTransformDepth;
-    AnalysisResultWorkList::iterator Pos;
+class EnumerationContext : private ScopedSetEnumerating {
+  friend class Enumerator;
 
-    EnumerationContext(AnalysisResult *AR, int Depth, int LastTransformDepth);
-    ~EnumerationContext();
+  const int Depth;
+  const int LastTransformDepth;
+  AnalysisResultWorkList::iterator Pos;
 
-  public:
-    int getDepth() const { return Depth; }
+  EnumerationContext(AnalysisResult *AR, int Depth, int LastTransformDepth);
+  ~EnumerationContext();
 
-    int getLastTransformDepth() const { return LastTransformDepth; }
+public:
+  int getDepth() const { return Depth; }
 
-    int getNextDepth() const { return getDepth() + 1; }
+  int getLastTransformDepth() const { return LastTransformDepth; }
 
-    EnumerationResult pushWork(AnalysisResult *Child);
-  };
+  int getNextDepth() const { return getDepth() + 1; }
+
+  EnumerationResult pushWork(AnalysisResult *Child);
+};
+
 }
 }
 

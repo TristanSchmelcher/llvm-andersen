@@ -24,22 +24,24 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class AnalysisResult;
 
-  template<typename AlgorithmTy>
-  class TransformStep : public TransformStepBase {
-  public:
-    explicit TransformStep(AnalysisResult *AR) : TransformStepBase(AR) {}
+class AnalysisResult;
 
-    virtual std::string getNodeLabel(const Data &Data) const {
-      return buildTransformStepName(AlgorithmTy::ID);
-    }
+template<typename AlgorithmTy>
+class TransformStep : public TransformStepBase {
+public:
+  explicit TransformStep(AnalysisResult *AR) : TransformStepBase(AR) {}
 
-  protected:
-    virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-      return VI->getAlgorithmResult<AlgorithmTy, ENUMERATION_PHASE>();
-    }
-  };
+  virtual std::string getNodeLabel(const Data &Data) const {
+    return buildTransformStepName(AlgorithmTy::ID);
+  }
+
+protected:
+  virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
+    return VI->getAlgorithmResult<AlgorithmTy, ENUMERATION_PHASE>();
+  }
+};
+
 }
 }
 

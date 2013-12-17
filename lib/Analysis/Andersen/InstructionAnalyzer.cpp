@@ -25,8 +25,8 @@
 #include "llvm/InstVisitor.h"
 #include "llvm/Pass.h"
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 class InstructionAnalyzer::Visitor
   : public InstVisitor<InstructionAnalyzer::Visitor> {
@@ -528,4 +528,7 @@ private:
 
 Data *InstructionAnalyzer::run(ModulePass *MP, Module &M) {
   return Visitor(MP, M).D;
+}
+
+}
 }

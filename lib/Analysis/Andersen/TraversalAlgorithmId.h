@@ -21,17 +21,19 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class TraversalAlgorithmId : public AlgorithmId {
-  public:
-    TraversalAlgorithmId(const AlgorithmId *SrcId, const AlgorithmId *DstId);
-    ~TraversalAlgorithmId();
 
-    virtual std::string getAlgorithmName() const;
+class TraversalAlgorithmId : public AlgorithmId {
+public:
+  TraversalAlgorithmId(const AlgorithmId *SrcId, const AlgorithmId *DstId);
+  ~TraversalAlgorithmId();
 
-  private:
-    const AlgorithmId *const SrcId;
-    const AlgorithmId *const DstId;
-  };
+  virtual std::string getAlgorithmName() const;
+
+private:
+  const AlgorithmId *const SrcId;
+  const AlgorithmId *const DstId;
+};
+
 }
 }
 

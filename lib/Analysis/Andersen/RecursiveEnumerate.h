@@ -19,18 +19,20 @@
 
 namespace llvm {
 namespace andersen_internal {
-  class AnalysisResult;
 
-  class RecursiveEnumerate : public AnalysisResultWork {
-    Enumerator E;
+class AnalysisResult;
 
-  public:
-    RecursiveEnumerate(AnalysisResult *AR);
-    ~RecursiveEnumerate();
-    virtual EnumerationResult enumerate(EnumerationContext *Ctx);
-    virtual GraphEdgeDeque getOutgoingEdges() const;
-    virtual std::string getNodeLabel(const Data &Data) const;
-  };
+class RecursiveEnumerate : public AnalysisResultWork {
+  Enumerator E;
+
+public:
+  RecursiveEnumerate(AnalysisResult *AR);
+  ~RecursiveEnumerate();
+  virtual EnumerationResult enumerate(EnumerationContext *Ctx);
+  virtual GraphEdgeDeque getOutgoingEdges() const;
+  virtual std::string getNodeLabel(const Data &Data) const;
+};
+
 }
 }
 

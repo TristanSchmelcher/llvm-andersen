@@ -16,9 +16,12 @@
 
 #include "AnalysisResult.h"
 
-using namespace llvm;
-using namespace llvm::andersen_internal;
+namespace llvm {
+namespace andersen_internal {
 
 AnalysisResult *InstructionAnalysisAlgorithm::run(ValueInfo *VI) {
   return new AnalysisResult();
+}
+
+}
 }
