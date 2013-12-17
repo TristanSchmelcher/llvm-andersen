@@ -1,30 +1,30 @@
 add_llvm_library(LLVMAndersen
+  ActualParametersPointsToAlgorithm.cpp
+  ActualReturnValuePointsToAlgorithm.cpp
+  AliasAnalysis.cpp
+  AnalysisResult.cpp
+  AnalysisResultWork.cpp
   Andersen.cpp
   AndersenEnumerator.cpp
   AndersenGraphViewer.cpp
   AndersenPass.cpp
-  LazyAndersenActualParametersPointsToAlgorithm.cpp
-  LazyAndersenActualReturnValuePointsToAlgorithm.cpp
-  LazyAndersenAliasAnalysis.cpp
-  LazyAndersenAnalysisResult.cpp
-  LazyAndersenAnalysisResultWork.cpp
-  LazyAndersenData.cpp
-  LazyAndersenEnumerationContext.cpp
-  LazyAndersenFormalParametersReversePointsToAlgorithm.cpp
-  LazyAndersenFormalReturnValueReversePointsToAlgorithm.cpp
-  LazyAndersenInstructionAnalysisAlgorithm.cpp
-  LazyAndersenInstructionAnalyzer.cpp
-  LazyAndersenLiteralAlgorithmId.cpp
-  LazyAndersenLoadedValuesReversePointsToAlgorithm.cpp
-  LazyAndersenPointsToAlgorithm.cpp
-  LazyAndersenRecursiveEnumerate.cpp
-  LazyAndersenRelationHandler.cpp
-  LazyAndersenReversePointsToAlgorithm.cpp
-  LazyAndersenStoredValuesPointsToAlgorithm.cpp
-  LazyAndersenTransformStepBase.cpp
-  LazyAndersenTraversalAlgorithmId.cpp
-  LazyAndersenValueInfo.cpp
-  LazyAndersenValuePrinter.cpp
+  Data.cpp
+  EnumerationContext.cpp
+  FormalParametersReversePointsToAlgorithm.cpp
+  FormalReturnValueReversePointsToAlgorithm.cpp
+  InstructionAnalysisAlgorithm.cpp
+  InstructionAnalyzer.cpp
+  LiteralAlgorithmId.cpp
+  LoadedValuesReversePointsToAlgorithm.cpp
+  PointsToAlgorithm.cpp
+  RecursiveEnumerate.cpp
+  RelationHandler.cpp
+  ReversePointsToAlgorithm.cpp
+  StoredValuesPointsToAlgorithm.cpp
+  TransformStepBase.cpp
+  TraversalAlgorithmId.cpp
+  ValueInfo.cpp
+  ValuePrinter.cpp
   )
 
 add_dependencies(LLVMAndersen intrinsics_gen)

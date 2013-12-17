@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LazyAndersenData.h"
-#include "LazyAndersenGraphNode.h"
+#include "Data.h"
+#include "GraphNode.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/Analysis/AndersenPass.h"
 #include "llvm/IR/Module.h"
@@ -82,9 +82,9 @@ std::string getGraphTitle(const Module *M) {
 }
 
 template<>
-struct GraphTraits<LazyAndersenData> {
+struct GraphTraits<Data> {
   typedef const GraphNode NodeType;
-  typedef df_iterator<LazyAndersenData> nodes_iterator;
+  typedef df_iterator<Data> nodes_iterator;
   typedef NodeForwardIterator ChildIteratorType;
 
   static ChildIteratorType child_begin(NodeType *Node) {
@@ -95,26 +95,26 @@ struct GraphTraits<LazyAndersenData> {
     return ChildIteratorType();
   }
 
-  static NodeType *getEntryNode(const LazyAndersenData &Data) {
+  static NodeType *getEntryNode(const Data &Data) {
     return &Data;
   }
 
-  static nodes_iterator nodes_begin(const LazyAndersenData &Data) {
+  static nodes_iterator nodes_begin(const Data &Data) {
     return df_begin(Data);
   }
 
-  static nodes_iterator nodes_end(const LazyAndersenData &Data) {
+  static nodes_iterator nodes_end(const Data &Data) {
     return df_end(Data);
   }
 };
 
 template<>
-class DOTGraphTraits<LazyAndersenData> : public DefaultDOTGraphTraits {
+class DOTGraphTraits<Data> : public DefaultDOTGraphTraits {
 public:
   DOTGraphTraits(bool simple = false) : DefaultDOTGraphTraits(simple) {}
 
   std::string getNodeLabel(const GraphNode *Node,
-                           const LazyAndersenData &Data) {
+                           const Data &Data) {
     return Node->getNodeLabel(Data);
   }
 
@@ -128,11 +128,11 @@ public:
   }
 };
 
-void viewGraph(const LazyAndersenData *Data, const Module *M) {
+void viewGraph(const Data *Data, const Module *M) {
   ViewGraph(*Data, "AndersenPass", false, getGraphTitle(M));
 }
 
-void printGraph(const LazyAndersenData *Data, const Module *M) {
+void printGraph(const Data *Data, const Module *M) {
   const char *Filename = "andersen.dot";
   errs() << "Writing '" << Filename << "'...";
 
@@ -163,7 +163,7 @@ public:
   }
 
 protected:
-  virtual void process(const LazyAndersenData *Data, const Module &M) = 0;
+  virtual void process(const Data *Data, const Module &M) = 0;
 };
 
 namespace {
@@ -177,7 +177,7 @@ public:
   }
 
 protected:
-  virtual void process(const LazyAndersenData *Data, const Module &M) {
+  virtual void process(const Data *Data, const Module &M) {
     viewGraph(Data, &M);
   }
 };
@@ -193,7 +193,7 @@ public:
   }
 
 protected:
-  virtual void process(const LazyAndersenData *Data, const Module &M) {
+  virtual void process(const Data *Data, const Module &M) {
     printGraph(Data, &M);
   }
 };

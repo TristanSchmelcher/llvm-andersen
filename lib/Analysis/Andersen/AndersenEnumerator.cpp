@@ -14,11 +14,11 @@
 
 #include "llvm/Analysis/AndersenEnumerator.h"
 
-#include "LazyAndersenAnalysisResult.h"
-#include "LazyAndersenEnumerationContext.h"
-#include "LazyAndersenEnumerationResult.h"
-#include "LazyAndersenGraphNode.h"
-#include "LazyAndersenRecursiveEnumerate.h"
+#include "AnalysisResult.h"
+#include "EnumerationContext.h"
+#include "EnumerationResult.h"
+#include "GraphNode.h"
+#include "RecursiveEnumerate.h"
 #include "llvm/Support/ErrorHandling.h"
 
 #include <cassert>

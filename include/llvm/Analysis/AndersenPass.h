@@ -22,7 +22,7 @@ namespace llvm {
 namespace andersen_internal {
 
 class AnalysisResult;
-class LazyAndersenData;
+class Data;
 class ValueInfo;
 
 }
@@ -39,7 +39,7 @@ typedef SetVector<andersen_internal::ValueInfo *> PointsToSet;
 /// points-to analysis with some modifications for lazy evaluation.
 class AndersenPass : public ModulePass {
   friend class AndersenGraphPass;
-  andersen_internal::LazyAndersenData *Data;
+  andersen_internal::Data *Data;
 
 public:
   static char ID; // Pass identification, replacement for typeid

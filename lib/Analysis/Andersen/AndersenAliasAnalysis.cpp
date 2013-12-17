@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "andersen-aa"
-#include "LazyAndersenValueInfo.h"
+#include "ValueInfo.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/AndersenPass.h"
