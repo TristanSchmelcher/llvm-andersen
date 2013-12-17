@@ -37,7 +37,7 @@ cl::opt<bool> NonLazy("andersen-non-lazy",
 
 std::string prettyPrintValueOrExternal(const Value *V) {
   if (V) {
-    return prettyPrintValue(V);
+    return ValuePrinter::prettyPrintValue(V);
   } else {
     // Placeholder for externally-defined regions.
     return "EXTERNAL";
@@ -130,7 +130,8 @@ void AndersenPass::print(raw_ostream &OS, const Module *M) const {
   for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin();
        i != Data->ValueInfos.end(); ++i) {
     const ValueInfoSetVector *PointsToSet = getPointsToSet(i->first);
-    OS << "Points-to set for " << prettyPrintValue(i->first) << ":\n";
+    OS << "Points-to set for " << ValuePrinter::prettyPrintValue(i->first)
+       << ":\n";
     if (PointsToSet) {
       for (ValueInfoSetVector::const_iterator i = PointsToSet->begin();
            i != PointsToSet->end(); ++i) {

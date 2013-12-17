@@ -52,7 +52,8 @@ std::string getPrintedValue(const Value *V) {
 
 }
 
-std::string prettyPrintValue(const Value *V, size_t MaxPrintedSize) {
+std::string ValuePrinter::prettyPrintValue(const Value *V,
+                                           size_t MaxPrintedSize) {
   assert(V);
   std::ostringstream OSS;
   {
