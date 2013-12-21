@@ -34,6 +34,7 @@ class AndersenEnumerator;
 class Value;
 // Same as andersen_internal::ValueInfoSetVector.
 typedef SetVector<andersen_internal::ValueInfo *> PointsToSet;
+typedef andersen_internal::AnalysisResult *AndersenHandle;
 
 /// AndersenPass - An LLVM pass which implements Andersen's algorithm for
 /// points-to analysis with some modifications for lazy evaluation.
@@ -45,21 +46,35 @@ public:
   static char ID; // Pass identification, replacement for typeid
   AndersenPass();
 
+  // Get an opaque handle to the points-to set of V which can be used for the
+  // other methods.
+  AndersenHandle getHandleToPointsToSet(const Value *V) const;
+
   // Get the points-to set of V, or null if V cannot point to anything. If the
   // points-to set has not yet been fully computed, this method computes it.
   // The elements should be treated as opaque ids for abstract memory regions in
   // the program.
-  const PointsToSet *getPointsToSet(const Value *V) const;
+  const PointsToSet *getPointsToSet(AndersenHandle AH) const;
+
+  // Equivalent to getPointsToSet(AH).empty(), but does not force computation of
+  // the whole set.
+  bool isPointsToSetEmpty(AndersenHandle AH) const;
 
   // Get an enumerator for the points-to set of V which computes the set
   // lazily. This is more efficient than getPointsToSet() if the full set may
   // not be needed.
-  AndersenEnumerator enumeratePointsToSet(const Value *V) const;
+  AndersenEnumerator enumeratePointsToSet(AndersenHandle AH) const;
+
+  // Get the contents of the points-to set of V that have so far been
+  // computed, or null if V cannot point to anything.
+  const PointsToSet *getPointsToSetContentsSoFar(AndersenHandle AH) const;
+
+  // Get an enumerator for any remaining contents of the points-to set of V
+  // which have not yet been computed.
+  AndersenEnumerator enumeratePointsToSetContentsRemaining(AndersenHandle AH)
+      const;
 
 private:
-  andersen_internal::AnalysisResult *getPointsToSetAnalysisResult(
-      const Value *V) const;
-
   virtual bool runOnModule(Module &M);
   virtual void releaseMemory();
   virtual void getAnalysisUsage(AnalysisUsage &AU) const;

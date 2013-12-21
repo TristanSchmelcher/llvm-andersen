@@ -44,6 +44,10 @@ std::string prettyPrintValueOrExternal(const Value *V) {
   }
 }
 
+AndersenEnumerator enumerateRemaining(AnalysisResult *AR) {
+  return AndersenEnumerator(AR, AR->getSetContentsSoFar().size());
+}
+
 }
 
 char AndersenPass::ID = 0;
@@ -53,38 +57,10 @@ AndersenPass::AndersenPass()
   initializeAndersenPassPass(*PassRegistry::getPassRegistry());
 }
 
-const PointsToSet *AndersenPass::getPointsToSet(const Value *V) const {
-  AnalysisResult *AR = getPointsToSetAnalysisResult(V);
-  if (!AR) {
-    // We determined this points to nothing at instruction analysis time.
-    return 0;
-  }
-  // Else it could point to something. Finish any deferred work.
-  if (!AR->isDone()) {
-    for (AndersenEnumerator AE(AR, AR->getSetContentsSoFar().size());
-         AE.enumerate(); );
-    assert(AR->isDone());
-  }
-  if (AR->getSetContentsSoFar().empty()) {
-    // Doesn't point to anything after all. Return null for consistency.
-    return 0;
-  }
-  return &AR->getSetContentsSoFar();
-}
-
-AndersenEnumerator AndersenPass::enumeratePointsToSet(const Value *V) const {
-  AnalysisResult *AR = getPointsToSetAnalysisResult(V);
-  if (!AR) {
-    // We determined this points to nothing at instruction analysis time.
-    return AndersenEnumerator(&Data->EmptyAnalysisResult);
-  }
-  return AndersenEnumerator(AR);
-}
-
-AnalysisResult *AndersenPass::getPointsToSetAnalysisResult(const Value *V)
-    const {
+AndersenHandle AndersenPass::getHandleToPointsToSet(const Value *V) const {
+  assert(V);
   ValueInfoMap::const_iterator i = Data->ValueInfos.find(V);
-  if (!V) {
+  if (i == Data->ValueInfos.end()) {
     // This can only happen if we are being queried for an unreachable
     // instruction. Pretend its result points to nothing.
     // TODO: Write an assert that verifies this.
@@ -98,13 +74,65 @@ AnalysisResult *AndersenPass::getPointsToSetAnalysisResult(const Value *V)
   return VI->getAlgorithmResult<PointsToAlgorithm, ENUMERATION_PHASE>();
 }
 
+const PointsToSet *AndersenPass::getPointsToSet(AndersenHandle AH) const {
+  AnalysisResult *AR = AH;
+  if (!AR) {
+    // We determined this points to nothing at instruction analysis time.
+    return 0;
+  }
+  // Else it could point to something. Finish any deferred work.
+  if (!AR->isDone()) {
+    for (AndersenEnumerator AE(enumerateRemaining(AR)); AE.enumerate(); );
+    assert(AR->isDone());
+  }
+  if (AR->getSetContentsSoFar().empty()) {
+    // Doesn't point to anything after all. Return null for consistency.
+    return 0;
+  }
+  return &AR->getSetContentsSoFar();
+}
+
+bool AndersenPass::isPointsToSetEmpty(AndersenHandle AH) const {
+  AnalysisResult *AR = AH;
+  return !AR || AndersenEnumerator(AR).enumerate() != 0;
+}
+
+AndersenEnumerator AndersenPass::enumeratePointsToSet(AndersenHandle AH) const {
+  AnalysisResult *AR = AH;
+  if (!AR) {
+    // We determined this points to nothing at instruction analysis time.
+    return AndersenEnumerator(&Data->EmptyAnalysisResult);
+  }
+  return AndersenEnumerator(AR);
+}
+
+const PointsToSet *AndersenPass::getPointsToSetContentsSoFar(AndersenHandle AH)
+    const {
+  AnalysisResult *AR = AH;
+  if (!AR) {
+    // We determined this points to nothing at instruction analysis time.
+    return 0;
+  }
+  return &AR->getSetContentsSoFar();
+}
+
+AndersenEnumerator AndersenPass::enumeratePointsToSetContentsRemaining(
+    AndersenHandle AH) const {
+  AnalysisResult *AR = AH;
+  if (!AR) {
+    // We determined this points to nothing at instruction analysis time.
+    return AndersenEnumerator(&Data->EmptyAnalysisResult);
+  }
+  return enumerateRemaining(AR);
+}
+
 bool AndersenPass::runOnModule(Module &M) {
   assert(!Data);
   Data = InstructionAnalyzer::run(this, M);
   if (NonLazy) {
     for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin();
          i != Data->ValueInfos.end(); ++i) {
-      getPointsToSet(i->first);
+      getPointsToSet(getHandleToPointsToSet(i->first));
     }
   }
   return false;
@@ -129,7 +157,8 @@ void AndersenPass::print(raw_ostream &OS, const Module *M) const {
   }
   for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin();
        i != Data->ValueInfos.end(); ++i) {
-    const ValueInfoSetVector *PointsToSet = getPointsToSet(i->first);
+    const ValueInfoSetVector *PointsToSet =
+        getPointsToSet(getHandleToPointsToSet(i->first));
     OS << "Points-to set for " << ValuePrinter::prettyPrintValue(i->first)
        << ":\n";
     if (PointsToSet) {

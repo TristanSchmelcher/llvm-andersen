@@ -14,6 +14,7 @@
 
 #define DEBUG_TYPE "andersen-aa"
 #include "ValueInfo.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/AndersenPass.h"
@@ -82,15 +83,22 @@ bool AndersenAliasAnalysis::runOnModule(Module &M) {
 AliasAnalysis::AliasResult
 AndersenAliasAnalysis::alias(const Location &LocA,
                              const Location &LocB) {
-  const PointsToSet *PointsToSetA = AP->getPointsToSet(LocA.Ptr);
-  if (!PointsToSetA) {
+  AndersenHandle A = AP->getHandleToPointsToSet(LocA.Ptr);
+  AndersenHandle B = AP->getHandleToPointsToSet(LocB.Ptr);
+  if (AP->isPointsToSetEmpty(A) || AP->isPointsToSetEmpty(B)) {
+    // If either points to nothing, then we can skip the rest.
     return NoAlias;
   }
-  for (AndersenEnumerator AE(AP->enumeratePointsToSet(LocB.Ptr));; ) {
+  // TODO: What is the optimal enumeration strategy?
+  const PointsToSet *PointsToSetA = AP->getPointsToSet(A);
+  assert(PointsToSetA);
+  for (AndersenEnumerator AE(AP->enumeratePointsToSet(B));; ) {
     ValueInfo *Next = AE.enumerate();
     if (!Next) break;
     if (PointsToSetA->count(Next)) {
-      // MayAlias as far as we can tell. Chain to next AliasAnalysis.
+      // TODO: We may be able to eliminate some MayAlias results by calling
+      // through to the base AA with the Value(s) related to A and B's
+      // dependency on Next.
       return AliasAnalysis::alias(LocA, LocB);
     }
   }
@@ -100,8 +108,9 @@ AndersenAliasAnalysis::alias(const Location &LocA,
 
 bool AndersenAliasAnalysis::pointsToConstantMemory(const Location &Loc,
                                                    bool OrLocal) {
+  AndersenHandle L = AP->getHandleToPointsToSet(Loc.Ptr);
   // This is loosely based on the BasicAliasAnalysis implementation.
-  for (AndersenEnumerator AE(AP->enumeratePointsToSet(Loc.Ptr));; ) {
+  for (AndersenEnumerator AE(AP->enumeratePointsToSet(L));; ) {
     ValueInfo *Next = AE.enumerate();
     if (!Next) break;
     const Value *V = Next->getValue();
