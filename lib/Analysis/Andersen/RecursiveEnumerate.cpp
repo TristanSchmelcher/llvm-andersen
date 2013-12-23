@@ -11,10 +11,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "andersen"
 #include "RecursiveEnumerate.h"
 
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
 namespace andersen_internal {
@@ -24,6 +27,9 @@ RecursiveEnumerate::RecursiveEnumerate(AnalysisResult *AR) : E(AR) {}
 RecursiveEnumerate::~RecursiveEnumerate() {}
 
 EnumerationResult RecursiveEnumerate::enumerate(EnumerationContext *Ctx) {
+  DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
+               << " In " << Ctx->getAnalysisResult() << ": recurse to "
+               << E.getAnalysisResult() << '[' << E.getPosition() << "]\n");
   return E.enumerate(Ctx->getNextDepth(), Ctx->getLastTransformDepth());
 }
 

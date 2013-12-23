@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "andersen"
 #include "llvm/Analysis/AndersenPass.h"
 
 #include "AnalysisResult.h"
@@ -24,7 +23,6 @@
 #include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Debug.h"
 
 namespace llvm {
 

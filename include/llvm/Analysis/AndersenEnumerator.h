@@ -35,6 +35,10 @@ public:
   EnumerationResult enumerate(int Depth, int LastTransformDepth);
 
   GraphEdge toGraphEdge() const;
+
+  AnalysisResult *getAnalysisResult() const { return AR; }
+
+  size_t getPosition() const { return i; }
 };
 
 }

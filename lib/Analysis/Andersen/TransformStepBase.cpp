@@ -13,12 +13,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "andersen"
 #include "TransformStepBase.h"
 
 #include "AlgorithmId.h"
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <sstream>
 
@@ -31,11 +34,24 @@ TransformStepBase::~TransformStepBase() {}
 
 EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
   for (;;) {
+    DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
+                 << " In " << Ctx->getAnalysisResult() << ": transform "
+                 << E.getAnalysisResult() << '[' << E.getPosition() << "]\n");
     EnumerationResult ER(E.enumerate(Ctx->getNextDepth(), Ctx->getDepth()));
     switch (ER.getResultType()) {
     case EnumerationResult::NEXT_VALUE: {
       AnalysisResult *AR = analyzeValueInfo(ER.getNextValue());
-      if (!AR) continue;
+      if (!AR) {
+        DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
+                     << " In " << Ctx->getAnalysisResult() << ": transformed "
+                     << E.getAnalysisResult() << '[' << (E.getPosition() - 1)
+                     << "] to empty set; continue\n");
+        continue;
+      }
+      DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
+                   << " In " << Ctx->getAnalysisResult() << ": transformed "
+                   << E.getAnalysisResult() << '[' << (E.getPosition() - 1)
+                   << "] to " << AR << '\n');
       return Ctx->pushWork(AR);
     }
 

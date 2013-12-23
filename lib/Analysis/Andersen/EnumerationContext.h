@@ -47,6 +47,8 @@ public:
 
   int getNextDepth() const { return getDepth() + 1; }
 
+  AnalysisResult *getAnalysisResult() const { return AR; }
+
   EnumerationResult pushWork(AnalysisResult *Child);
 };
 
