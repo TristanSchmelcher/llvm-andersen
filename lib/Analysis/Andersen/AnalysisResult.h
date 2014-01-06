@@ -18,11 +18,36 @@
 #include "GraphNode.h"
 #include "llvm/ADT/SetVector.h"
 
+#include <string>
+
 namespace llvm {
 namespace andersen_internal {
 
+class AlgorithmId;
+class AnalysisResult;
+class Data;
 class ValueInfo;
 typedef SetVector<ValueInfo *> ValueInfoSetVector;
+
+class AnalysisResultId {
+#ifndef NDEBUG
+  // For building a human-readable name for this object.
+  const AlgorithmId *AlgoId;
+  ValueInfo *Input;
+#endif
+
+public:
+  AnalysisResultId(const AlgorithmId *AlgoId, ValueInfo *Input)
+#ifndef NDEBUG
+    : AlgoId(AlgoId), Input(Input)
+#endif
+    {}
+
+  static AnalysisResultId emptySetId() { return AnalysisResultId(0, 0); }
+
+  std::string buildNodeLabel(const Data &Data, const AnalysisResult *Owner)
+      const;
+};
 
 class AnalysisResult : public GraphNode {
   friend class EnumerationContext;
@@ -32,9 +57,10 @@ class AnalysisResult : public GraphNode {
   int EnumerationDepth;
   ValueInfoSetVector Set;
   AnalysisResultWorkList Work;
+  AnalysisResultId Id;
 
 public:
-  AnalysisResult();
+  AnalysisResult(AnalysisResultId Id);
   virtual ~AnalysisResult();
 
   bool addValueInfo(ValueInfo *VI) { return Set.insert(VI); }

@@ -21,7 +21,8 @@ namespace andersen_internal {
 Data::Data(ValueInfo *ExternallyLinkableRegions,
            ValueInfo *ExternallyAccessibleRegions)
   : ExternallyLinkableRegions(ExternallyLinkableRegions),
-    ExternallyAccessibleRegions(ExternallyAccessibleRegions) {}
+    ExternallyAccessibleRegions(ExternallyAccessibleRegions),
+    EmptyAnalysisResult(AnalysisResultId::emptySetId()) {}
 
 Data::~Data() {}
 

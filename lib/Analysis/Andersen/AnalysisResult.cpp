@@ -13,6 +13,7 @@
 
 #include "AnalysisResult.h"
 
+#include "AlgorithmId.h"
 #include "ValueInfo.h"
 
 #include <sstream>
@@ -20,7 +21,28 @@
 namespace llvm {
 namespace andersen_internal {
 
-AnalysisResult::AnalysisResult() : EnumerationDepth(-1) {}
+inline std::string AnalysisResultId::buildNodeLabel(const Data &Data,
+    const AnalysisResult *Owner) const {
+  std::ostringstream OSS;
+#ifndef NDEBUG
+  if (!Input) {
+    // This is the special empty AR.
+    assert(!AlgoId);
+    OSS << "EmptySet";
+  } else {
+    assert(AlgoId);
+    OSS << AlgoId->getAlgorithmName() << '(' << Input->getNodeLabel(Data)
+        << ')';
+  }
+#else
+  // Use the address of the AR as a unique id.
+  OSS << Owner;
+#endif
+  return OSS.str();
+}
+
+AnalysisResult::AnalysisResult(AnalysisResultId Id)
+  : EnumerationDepth(-1), Id(Id) {}
 
 AnalysisResult::~AnalysisResult() {
   assert(!isEnumerating());
@@ -47,7 +69,7 @@ GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
 }
 
 std::string AnalysisResult::getNodeLabel(const Data &Data) const {
-  return std::string();
+  return Id.buildNodeLabel(Data, this);
 }
 
 bool AnalysisResult::isNodeHidden() const {

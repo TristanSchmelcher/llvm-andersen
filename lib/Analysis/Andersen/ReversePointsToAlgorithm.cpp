@@ -21,7 +21,7 @@ namespace andersen_internal {
 const LiteralAlgorithmId ReversePointsToAlgorithm::ID("self reverse");
 
 AnalysisResult *ReversePointsToAlgorithm::run(ValueInfo *VI) {
-  AnalysisResult *AR = new AnalysisResult();
+  AnalysisResult *AR = new AnalysisResult(AnalysisResultId(&ID, VI));
   AR->addValueInfo(VI);
   return AR;
 }

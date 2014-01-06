@@ -22,7 +22,7 @@ namespace llvm {
 namespace andersen_internal {
 
 struct LoadedValuesReversePointsToAlgorithm :
-    public InstructionAnalysisAlgorithm {
+    public InstructionAnalysisAlgorithm<LoadedValuesReversePointsToAlgorithm> {
   static const LiteralAlgorithmId ID;
 };
 

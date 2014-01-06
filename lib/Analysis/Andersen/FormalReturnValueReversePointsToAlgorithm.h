@@ -22,7 +22,8 @@ namespace llvm {
 namespace andersen_internal {
 
 struct FormalReturnValueReversePointsToAlgorithm :
-    public InstructionAnalysisAlgorithm {
+    public InstructionAnalysisAlgorithm<
+        FormalReturnValueReversePointsToAlgorithm> {
   static const LiteralAlgorithmId ID;
 };
 

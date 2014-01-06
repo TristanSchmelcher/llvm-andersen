@@ -34,7 +34,7 @@ private:
     static const TraversalAlgorithmId ID;
 
     static AnalysisResult *run(ValueInfo *VI) {
-      AnalysisResult *AR = new AnalysisResult();
+      AnalysisResult *AR = new AnalysisResult(AnalysisResultId(&ID, VI));
       AR->addWork(new TransformStep<SecondHopAlgorithm>(
           VI->getAlgorithmResult<FirstHopAlgorithm, RunPhase>()));
       return AR;

@@ -12,7 +12,6 @@ add_llvm_library(LLVMAndersen
   EnumerationContext.cpp
   FormalParametersReversePointsToAlgorithm.cpp
   FormalReturnValueReversePointsToAlgorithm.cpp
-  InstructionAnalysisAlgorithm.cpp
   InstructionAnalyzer.cpp
   LiteralAlgorithmId.cpp
   LoadedValuesReversePointsToAlgorithm.cpp

@@ -20,7 +20,8 @@
 namespace llvm {
 namespace andersen_internal {
 
-struct PointsToAlgorithm : public InstructionAnalysisAlgorithm {
+struct PointsToAlgorithm :
+    public InstructionAnalysisAlgorithm<PointsToAlgorithm> {
   static const LiteralAlgorithmId ID;
 };
 
