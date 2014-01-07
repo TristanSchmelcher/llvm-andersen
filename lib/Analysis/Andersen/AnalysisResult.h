@@ -45,11 +45,10 @@ public:
 
   static AnalysisResultId emptySetId() { return AnalysisResultId(0, 0); }
 
-  std::string buildNodeLabel(const Data &Data, const AnalysisResult *Owner)
-      const;
+  std::string buildNodeLabel(const Data &Data) const;
 };
 
-class AnalysisResult : public GraphNode {
+class AnalysisResult : private AnalysisResultId, public GraphNode {
   friend class EnumerationContext;
   friend class Enumerator;
   friend class ScopedSetEnumerating;
@@ -57,7 +56,6 @@ class AnalysisResult : public GraphNode {
   int EnumerationDepth;
   ValueInfoSetVector Set;
   AnalysisResultWorkList Work;
-  AnalysisResultId Id;
 
 public:
   AnalysisResult(AnalysisResultId Id);

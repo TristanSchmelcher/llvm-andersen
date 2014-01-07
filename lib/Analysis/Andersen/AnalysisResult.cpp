@@ -21,8 +21,7 @@
 namespace llvm {
 namespace andersen_internal {
 
-inline std::string AnalysisResultId::buildNodeLabel(const Data &Data,
-    const AnalysisResult *Owner) const {
+inline std::string AnalysisResultId::buildNodeLabel(const Data &Data) const {
   std::ostringstream OSS;
 #ifndef NDEBUG
   if (!Input) {
@@ -35,14 +34,14 @@ inline std::string AnalysisResultId::buildNodeLabel(const Data &Data,
         << ')';
   }
 #else
-  // Use the address of the AR as a unique id.
-  OSS << Owner;
+  // Use the address of this object as a unique id.
+  OSS << this;
 #endif
   return OSS.str();
 }
 
 AnalysisResult::AnalysisResult(AnalysisResultId Id)
-  : EnumerationDepth(-1), Id(Id) {}
+  : AnalysisResultId(Id), EnumerationDepth(-1) {}
 
 AnalysisResult::~AnalysisResult() {
   assert(!isEnumerating());
@@ -69,7 +68,7 @@ GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
 }
 
 std::string AnalysisResult::getNodeLabel(const Data &Data) const {
-  return Id.buildNodeLabel(Data, this);
+  return AnalysisResultId::buildNodeLabel(Data);
 }
 
 bool AnalysisResult::isNodeHidden() const {
