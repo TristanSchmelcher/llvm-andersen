@@ -18,7 +18,7 @@
 namespace llvm {
 namespace andersen_internal {
 
-const LiteralAlgorithmId ReversePointsToAlgorithm::ID("self reverse");
+const LiteralAlgorithmId ReversePointsToAlgorithm::ID("self-reverse");
 
 AnalysisResult *ReversePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult(AnalysisResultId(&ID, VI));

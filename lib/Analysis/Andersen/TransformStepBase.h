@@ -17,7 +17,7 @@
 #define TRANSFORMSTEPBASE_H
 
 #include "AnalysisResultWork.h"
-#include "llvm/Analysis/AndersenEnumerator.h"
+#include "Enumerator.h"
 
 #include <string>
 
@@ -35,12 +35,13 @@ public:
   explicit TransformStepBase(AnalysisResult *AR);
   virtual ~TransformStepBase();
   virtual GraphEdgeDeque getOutgoingEdges() const;
+  virtual std::string getNodeLabel(const Data &Data) const;
   virtual EnumerationResult enumerate(EnumerationContext *Ctx);
+  virtual void writeFormula(const Data &Data, raw_ostream &OS) const;
 
 protected:
-  static std::string buildTransformStepName(const AlgorithmId& Id);
-
   virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) = 0;
+  virtual const AlgorithmId *getAlgorithmId() const = 0;
 };
 
 }

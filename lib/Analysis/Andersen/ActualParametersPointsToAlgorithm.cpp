@@ -16,7 +16,7 @@
 namespace llvm {
 namespace andersen_internal {
 
-const LiteralAlgorithmId ActualParametersPointsToAlgorithm::ID("actual params");
+const LiteralAlgorithmId ActualParametersPointsToAlgorithm::ID("actual-params");
 
 }
 }

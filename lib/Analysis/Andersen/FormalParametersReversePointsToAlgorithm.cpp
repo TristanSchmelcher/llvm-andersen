@@ -18,7 +18,7 @@ namespace llvm {
 namespace andersen_internal {
 
 const LiteralAlgorithmId FormalParametersReversePointsToAlgorithm::ID(
-    "formal params reverse");
+    "formal-params-reverse");
 
 }
 }

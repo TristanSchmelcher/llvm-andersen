@@ -21,6 +21,7 @@
 
 namespace llvm {
 
+class raw_ostream;
 class Value;
 
 }
@@ -56,6 +57,8 @@ public:
   virtual GraphEdgeDeque getOutgoingEdges() const;
   virtual std::string getNodeLabel(const Data &Data) const;
   virtual bool isNodeHidden() const;
+
+  void writeEquations(const Data &Data, raw_ostream &OS) const;
 
   template<typename AlgorithmTy, Phase CurrentPhase>
   AnalysisResult *getAlgorithmResult() {

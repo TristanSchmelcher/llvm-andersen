@@ -27,7 +27,8 @@ TraversalAlgorithmId::~TraversalAlgorithmId() {}
 
 std::string TraversalAlgorithmId::getAlgorithmName() const {
   std::ostringstream OSS;
-  OSS << SrcId->getAlgorithmName() << ':' << DstId->getAlgorithmName();
+  // Using "o" to mean mathematical composition.
+  OSS << DstId->getAlgorithmName() << " o " << SrcId->getAlgorithmName();
   return OSS.str();
 }
 

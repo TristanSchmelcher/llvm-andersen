@@ -15,6 +15,7 @@
 
 #include "AlgorithmId.h"
 #include "ValueInfo.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <sstream>
 
@@ -45,6 +46,37 @@ AnalysisResult::AnalysisResult(AnalysisResultId Id)
 
 AnalysisResult::~AnalysisResult() {
   assert(!isEnumerating());
+}
+
+void AnalysisResult::writeEquation(const Data &Data, raw_ostream &OS) const {
+  OS << getNodeLabel(Data) << " = ";
+  bool first = true;
+  if (!Set.empty()) {
+    OS << '{';
+    ValueInfoSetVector::const_iterator i = Set.begin(), End = Set.end();
+    do {
+      if (!first) {
+        OS << ", ";
+      }
+      first = false;
+      OS << (*i)->getNodeLabel(Data);
+    } while (++i != End);
+    OS << '}';
+  }
+  for (AnalysisResultWorkList::const_iterator i = Work.begin(),
+                                              End = Work.end();
+       i != End; ++i) {
+    if (!first) {
+      OS << " U ";
+    }
+    first = false;
+    i->writeFormula(Data, OS);
+  }
+  if (first) {
+    // Empty.
+    OS << "{}";
+  }
+  OS << '\n';
 }
 
 GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {

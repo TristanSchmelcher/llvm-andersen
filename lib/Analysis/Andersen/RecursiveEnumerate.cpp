@@ -33,6 +33,10 @@ EnumerationResult RecursiveEnumerate::enumerate(EnumerationContext *Ctx) {
   return E.enumerate(Ctx->getNextDepth(), Ctx->getLastTransformDepth());
 }
 
+void RecursiveEnumerate::writeFormula(const Data &Data, raw_ostream &OS) const {
+  E.writeFormula(Data, OS);
+}
+
 GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   Result.push_back(E.toGraphEdge());

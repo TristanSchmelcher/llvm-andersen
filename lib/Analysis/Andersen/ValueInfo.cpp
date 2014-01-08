@@ -20,6 +20,7 @@
 #include "ValuePrinter.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <sstream>
 
@@ -64,6 +65,13 @@ std::string ValueInfo::getNodeLabel(const Data &Data) const {
 
 bool ValueInfo::isNodeHidden() const {
   return false;
+}
+
+void ValueInfo::writeEquations(const Data &Data, raw_ostream &OS) const {
+  for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
+       ++i) {
+    i->second->writeEquation(Data, OS);
+  }
 }
 
 AnalysisResult *ValueInfo::getOrCreateAlgorithmResult(const AlgorithmId *Id,

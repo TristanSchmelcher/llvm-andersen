@@ -148,24 +148,7 @@ void AndersenPass::getAnalysisUsage(AnalysisUsage &AU) const {
 
 void AndersenPass::print(raw_ostream &OS, const Module *M) const {
   assert(Data);
-  if (!NonLazy) {
-    OS << "Nothing to print. Re-run with -andersen-non-lazy to see points-to"
-          " analysis results.\n";
-    return;
-  }
-  for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin();
-       i != Data->ValueInfos.end(); ++i) {
-    const ValueInfoSetVector *PointsToSet =
-        getPointsToSet(getHandleToPointsToSet(i->first));
-    OS << "Points-to set for " << ValuePrinter::prettyPrintValue(i->first)
-       << ":\n";
-    if (PointsToSet) {
-      for (ValueInfoSetVector::const_iterator i = PointsToSet->begin();
-           i != PointsToSet->end(); ++i) {
-        OS << "  " << prettyPrintValueOrExternal((*i)->getValue()) << "\n";
-      }
-    }
-  }
+  Data->writeEquations(OS);
 }
 
 }

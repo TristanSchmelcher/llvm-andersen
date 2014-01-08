@@ -32,8 +32,8 @@ class TransformStep : public TransformStepBase {
 public:
   explicit TransformStep(AnalysisResult *AR) : TransformStepBase(AR) {}
 
-  virtual std::string getNodeLabel(const Data &Data) const {
-    return buildTransformStepName(AlgorithmTy::ID);
+  virtual const AlgorithmId *getAlgorithmId() const {
+    return &AlgorithmTy::ID;
   }
 
 protected:

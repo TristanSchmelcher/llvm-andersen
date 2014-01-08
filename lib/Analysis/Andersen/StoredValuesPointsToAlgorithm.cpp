@@ -16,7 +16,7 @@
 namespace llvm {
 namespace andersen_internal {
 
-const LiteralAlgorithmId StoredValuesPointsToAlgorithm::ID("stored values");
+const LiteralAlgorithmId StoredValuesPointsToAlgorithm::ID("stored-values");
 
 }
 }

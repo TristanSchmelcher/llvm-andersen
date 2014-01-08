@@ -18,27 +18,25 @@
 #include <cstddef>
 
 namespace llvm {
+
+class AndersenEnumerator;
+
+}
+
+namespace llvm {
 namespace andersen_internal {
 
 class AnalysisResult;
-class EnumerationResult;
-class GraphEdge;
 class ValueInfo;
 
-class Enumerator {
+class EnumeratorState {
+  friend class ::llvm::AndersenEnumerator;
+  friend class Enumerator;
+
   AnalysisResult *const AR;
   size_t i;
 
-public:
-  explicit Enumerator(AnalysisResult *AR, size_t i = 0);
-
-  EnumerationResult enumerate(int Depth, int LastTransformDepth);
-
-  GraphEdge toGraphEdge() const;
-
-  AnalysisResult *getAnalysisResult() const { return AR; }
-
-  size_t getPosition() const { return i; }
+  explicit EnumeratorState(AnalysisResult *AR, size_t i = 0);
 };
 
 }
@@ -47,11 +45,11 @@ public:
 namespace llvm {
 
 class AndersenEnumerator {
-  andersen_internal::Enumerator E;
+  andersen_internal::EnumeratorState ES;
 
 public:
   explicit AndersenEnumerator(
-      andersen_internal::AnalysisResult *AR, size_t i = 0) : E(AR, i) {}
+      andersen_internal::AnalysisResult *AR, size_t i = 0) : ES(AR, i) {}
 
   // Get next VI or null if done.
   andersen_internal::ValueInfo *enumerate();

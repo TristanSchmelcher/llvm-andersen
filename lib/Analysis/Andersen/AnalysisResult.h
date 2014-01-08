@@ -21,6 +21,12 @@
 #include <string>
 
 namespace llvm {
+
+class raw_ostream;
+
+}
+
+namespace llvm {
 namespace andersen_internal {
 
 class AlgorithmId;
@@ -70,6 +76,8 @@ public:
   const ValueInfoSetVector &getSetContentsSoFar() const { return Set; }
 
   bool isDone() const { return Work.empty(); }
+
+  void writeEquation(const Data &Data, raw_ostream &OS) const;
 
   virtual GraphEdgeDeque getOutgoingEdges() const;
   virtual std::string getNodeLabel(const Data &Data) const;

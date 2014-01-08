@@ -15,7 +15,7 @@
 #define RECURSIVEENUMERATE_H
 
 #include "AnalysisResultWork.h"
-#include "llvm/Analysis/AndersenEnumerator.h"
+#include "Enumerator.h"
 
 namespace llvm {
 namespace andersen_internal {
@@ -29,6 +29,7 @@ public:
   RecursiveEnumerate(AnalysisResult *AR);
   ~RecursiveEnumerate();
   virtual EnumerationResult enumerate(EnumerationContext *Ctx);
+  virtual void writeFormula(const Data &Data, raw_ostream &OS) const;
   virtual GraphEdgeDeque getOutgoingEdges() const;
   virtual std::string getNodeLabel(const Data &Data) const;
 };

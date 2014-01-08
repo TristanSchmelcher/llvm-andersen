@@ -23,6 +23,7 @@
 namespace llvm {
 
 class Function;
+class raw_ostream;
 class Value;
 
 }
@@ -60,9 +61,15 @@ public:
   virtual std::string getNodeLabel(const Data &Data) const;
   virtual bool isNodeHidden() const;
 
+  void writeEquations(raw_ostream &OS) const;
+
 private:
   Data(ValueInfo *ExternallyLinkableRegions,
        ValueInfo *ExternallyAccessibleRegions);
+
+  typedef void (*ValueInfoVisitorFn)(void *, ValueInfo *);
+
+  void visitValueInfos(ValueInfoVisitorFn visitor, void *Arg) const;
 };
 
 }

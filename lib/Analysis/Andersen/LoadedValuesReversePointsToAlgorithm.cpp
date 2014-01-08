@@ -17,7 +17,7 @@ namespace llvm {
 namespace andersen_internal {
 
 const LiteralAlgorithmId LoadedValuesReversePointsToAlgorithm::ID(
-    "loaded values reverse");
+    "loaded-values-reverse");
 
 }
 }

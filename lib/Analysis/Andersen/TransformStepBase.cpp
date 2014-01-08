@@ -71,15 +71,21 @@ EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
   }
 }
 
+void TransformStepBase::writeFormula(const Data &Data, raw_ostream &OS) const {
+  OS << getAlgorithmId()->getAlgorithmName() << '(';
+  E.writeFormula(Data, OS);
+  OS << ')';
+}
+
 GraphEdgeDeque TransformStepBase::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   Result.push_back(E.toGraphEdge());
   return Result;
 }
 
-std::string TransformStepBase::buildTransformStepName(const AlgorithmId& Id) {
+std::string TransformStepBase::getNodeLabel(const Data &Data) const {
   std::ostringstream OSS;
-  OSS << "Transform(" << Id.getAlgorithmName() << ')';
+  OSS << "Transform(" << getAlgorithmId()->getAlgorithmName() << ')';
   return OSS.str();
 }
 

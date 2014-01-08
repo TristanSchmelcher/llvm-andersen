@@ -17,7 +17,7 @@ namespace llvm {
 namespace andersen_internal {
 
 const LiteralAlgorithmId ActualReturnValuePointsToAlgorithm::ID(
-    "actual return value");
+    "actual-return-value");
 
 }
 }
