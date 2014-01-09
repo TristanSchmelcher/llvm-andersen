@@ -375,6 +375,7 @@ private:
     } else if (const Argument *A = dyn_cast<Argument>(V)) {
       VI = analyzeArgument(A);
     } else if (const Instruction *I = dyn_cast<Instruction>(V)) {
+      (void)I;
       // Since we visit BBs in control-flow order, this can only happen if a
       // reachable BB has a PHI node with an incoming value from an unreachable
       // BB. Since the instruction cannot possibly execute, we can pretend that

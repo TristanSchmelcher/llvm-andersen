@@ -21,8 +21,8 @@
 namespace llvm {
 namespace andersen_internal {
 
+class DebugInfo;
 class GraphNode;
-class Data;
 
 struct GraphEdge {
   GraphEdge() : Dst(0) {}
@@ -38,7 +38,7 @@ typedef std::deque<GraphEdge> GraphEdgeDeque;
 class GraphNode {
 public:
   virtual GraphEdgeDeque getOutgoingEdges() const = 0;
-  virtual std::string getNodeLabel(const Data &Data) const = 0;
+  virtual std::string getNodeLabel(const DebugInfo &DI) const = 0;
   virtual bool isNodeHidden() const = 0;
 
 protected:

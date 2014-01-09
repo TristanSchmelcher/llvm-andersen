@@ -20,23 +20,27 @@ namespace andersen_internal {
 
 namespace {
 
-struct WriteEquationsArg {
-  WriteEquationsArg(const Data *D, raw_ostream *OS) : D(D), OS(OS) {}
-
-  const Data *D;
-  raw_ostream *OS;
-};
-
-
-void writeEquationsVisitor(void *Arg, ValueInfo *VI) {
-  WriteEquationsArg *WEA = static_cast<WriteEquationsArg *>(Arg);
-  VI->writeEquations(*WEA->D, *WEA->OS);
-}
-
 void getOutgoingEdgesVisitor(void *Arg, ValueInfo *VI) {
   GraphEdgeDeque *Result = static_cast<GraphEdgeDeque *>(Arg);
   // No edge label needed because the edges will not be printed.
   Result->push_back(GraphEdge(VI, std::string()));
+}
+
+struct WriteEquationsArg {
+  WriteEquationsArg(const DebugInfo *DI, raw_ostream *OS) : DI(DI), OS(OS) {}
+
+  const DebugInfo *DI;
+  raw_ostream *OS;
+};
+
+void fillDebugInfoVisitor(void *Arg, ValueInfo *VI) {
+  DebugInfoFiller *DIF = static_cast<DebugInfoFiller *>(Arg);
+  VI->fillDebugInfo(DIF);
+}
+
+void writeEquationsVisitor(void *Arg, ValueInfo *VI) {
+  WriteEquationsArg *WEA = static_cast<WriteEquationsArg *>(Arg);
+  VI->writeEquations(*WEA->DI, *WEA->OS);
 }
 
 }
@@ -44,8 +48,7 @@ void getOutgoingEdgesVisitor(void *Arg, ValueInfo *VI) {
 Data::Data(ValueInfo *ExternallyLinkableRegions,
            ValueInfo *ExternallyAccessibleRegions)
   : ExternallyLinkableRegions(ExternallyLinkableRegions),
-    ExternallyAccessibleRegions(ExternallyAccessibleRegions),
-    EmptyAnalysisResult(AnalysisResultId::emptySetId()) {}
+    ExternallyAccessibleRegions(ExternallyAccessibleRegions) {}
 
 Data::~Data() {}
 
@@ -55,7 +58,7 @@ GraphEdgeDeque Data::getOutgoingEdges() const {
   return Result;
 }
 
-std::string Data::getNodeLabel(const Data &Data) const {
+std::string Data::getNodeLabel(const DebugInfo &DI) const {
   llvm_unreachable("Data node should not be emitted in the graph");
   return std::string();
 }
@@ -64,8 +67,12 @@ bool Data::isNodeHidden() const {
   return true;
 }
 
-void Data::writeEquations(raw_ostream &OS) const {
-  WriteEquationsArg WEA(this, &OS);
+void Data::fillDebugInfo(DebugInfoFiller *DIF) const {
+  visitValueInfos(&fillDebugInfoVisitor, static_cast<void *>(DIF));
+}
+
+void Data::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
+  WriteEquationsArg WEA(&DI, &OS);
   visitValueInfos(&writeEquationsVisitor, static_cast<void *>(&WEA));
 }
 
@@ -79,7 +86,11 @@ void Data::visitValueInfos(ValueInfoVisitorFn visitor, void *Arg) const {
   for (ValueInfoMap::const_iterator i = GlobalRegionInfos.begin(),
                                     End = GlobalRegionInfos.end();
        i != End; ++i) {
-    (*visitor)(Arg, i->second.getPtr());
+    ValueInfoMap::const_iterator j = ValueInfos.find(i->first);
+    assert(j != ValueInfos.end());
+    if (i->second.getPtr() != j->second.getPtr()) {
+      (*visitor)(Arg, i->second.getPtr());
+    }
   }
   (*visitor)(Arg, ExternallyLinkableRegions.getPtr());
   (*visitor)(Arg, ExternallyAccessibleRegions.getPtr());

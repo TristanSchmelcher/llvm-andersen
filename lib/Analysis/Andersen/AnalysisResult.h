@@ -29,32 +29,11 @@ class raw_ostream;
 namespace llvm {
 namespace andersen_internal {
 
-class AlgorithmId;
-class AnalysisResult;
-class Data;
+class DebugInfo;
 class ValueInfo;
 typedef SetVector<ValueInfo *> ValueInfoSetVector;
 
-class AnalysisResultId {
-#ifndef NDEBUG
-  // For building a human-readable name for this object.
-  const AlgorithmId *AlgoId;
-  ValueInfo *Input;
-#endif
-
-public:
-  AnalysisResultId(const AlgorithmId *AlgoId, ValueInfo *Input)
-#ifndef NDEBUG
-    : AlgoId(AlgoId), Input(Input)
-#endif
-    {}
-
-  static AnalysisResultId emptySetId() { return AnalysisResultId(0, 0); }
-
-  std::string buildNodeLabel(const Data &Data) const;
-};
-
-class AnalysisResult : private AnalysisResultId, public GraphNode {
+class AnalysisResult : public GraphNode {
   friend class EnumerationContext;
   friend class Enumerator;
   friend class ScopedSetEnumerating;
@@ -64,7 +43,7 @@ class AnalysisResult : private AnalysisResultId, public GraphNode {
   AnalysisResultWorkList Work;
 
 public:
-  AnalysisResult(AnalysisResultId Id);
+  AnalysisResult();
   virtual ~AnalysisResult();
 
   bool addValueInfo(ValueInfo *VI) { return Set.insert(VI); }
@@ -77,10 +56,10 @@ public:
 
   bool isDone() const { return Work.empty(); }
 
-  void writeEquation(const Data &Data, raw_ostream &OS) const;
+  void writeEquation(const DebugInfo &DI, raw_ostream &OS) const;
 
   virtual GraphEdgeDeque getOutgoingEdges() const;
-  virtual std::string getNodeLabel(const Data &Data) const;
+  virtual std::string getNodeLabel(const DebugInfo &DI) const;
   virtual bool isNodeHidden() const;
 
 private:

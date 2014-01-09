@@ -15,9 +15,8 @@
 
 #include "AlgorithmId.h"
 #include "AnalysisResult.h"
-#include "Data.h"
-#include "RecursiveEnumerate.h"
-#include "ValuePrinter.h"
+#include "DebugInfo.h"
+#include "RecursiveEnumerate.h" 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -48,29 +47,25 @@ GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
   return Result;
 }
 
-std::string ValueInfo::getNodeLabel(const Data &Data) const {
-  if (getValue()) {
-    static const size_t MaxPrintedSize = 16;
-    return ValuePrinter::prettyPrintValue(getValue(), MaxPrintedSize);
-  } else if (this == Data.ExternallyLinkableRegions.getPtr()) {
-    return "ExternallyLinkableRegions";
-  } else if (this == Data.ExternallyAccessibleRegions.getPtr()) {
-    return "ExternallyAccessibleRegions";
-  } else {
-    std::ostringstream OSS;
-    OSS << "Anonymous" << this;
-    return OSS.str();
-  }
+std::string ValueInfo::getNodeLabel(const DebugInfo &DI) const {
+  return DI.getValueInfoName(this);
 }
 
 bool ValueInfo::isNodeHidden() const {
   return false;
 }
 
-void ValueInfo::writeEquations(const Data &Data, raw_ostream &OS) const {
+void ValueInfo::fillDebugInfo(DebugInfoFiller *DIF) const {
   for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
        ++i) {
-    i->second->writeEquation(Data, OS);
+    DIF->fill(i->second, this, i->first);
+  }
+}
+
+void ValueInfo::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
+  for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
+       ++i) {
+    i->second->writeEquation(DI, OS);
   }
 }
 

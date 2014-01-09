@@ -13,7 +13,7 @@
 
 #include "AnalysisResult.h"
 
-#include "AlgorithmId.h"
+#include "DebugInfo.h"
 #include "ValueInfo.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -22,34 +22,14 @@
 namespace llvm {
 namespace andersen_internal {
 
-inline std::string AnalysisResultId::buildNodeLabel(const Data &Data) const {
-  std::ostringstream OSS;
-#ifndef NDEBUG
-  if (!Input) {
-    // This is the special empty AR.
-    assert(!AlgoId);
-    OSS << "EmptySet";
-  } else {
-    assert(AlgoId);
-    OSS << AlgoId->getAlgorithmName() << '(' << Input->getNodeLabel(Data)
-        << ')';
-  }
-#else
-  // Use the address of this object as a unique id.
-  OSS << this;
-#endif
-  return OSS.str();
-}
-
-AnalysisResult::AnalysisResult(AnalysisResultId Id)
-  : AnalysisResultId(Id), EnumerationDepth(-1) {}
+AnalysisResult::AnalysisResult() : EnumerationDepth(-1) {}
 
 AnalysisResult::~AnalysisResult() {
   assert(!isEnumerating());
 }
 
-void AnalysisResult::writeEquation(const Data &Data, raw_ostream &OS) const {
-  OS << getNodeLabel(Data) << " = ";
+void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
+  OS << DI.getAnalysisResultName(this) << " = ";
   bool first = true;
   if (!Set.empty()) {
     OS << '{';
@@ -59,7 +39,7 @@ void AnalysisResult::writeEquation(const Data &Data, raw_ostream &OS) const {
         OS << ", ";
       }
       first = false;
-      OS << (*i)->getNodeLabel(Data);
+      OS << DI.getValueInfoName(*i);
     } while (++i != End);
     OS << '}';
   }
@@ -70,7 +50,7 @@ void AnalysisResult::writeEquation(const Data &Data, raw_ostream &OS) const {
       OS << " U ";
     }
     first = false;
-    i->writeFormula(Data, OS);
+    i->writeFormula(DI, OS);
   }
   if (first) {
     // Empty.
@@ -99,8 +79,8 @@ GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
   return Result;
 }
 
-std::string AnalysisResult::getNodeLabel(const Data &Data) const {
-  return AnalysisResultId::buildNodeLabel(Data);
+std::string AnalysisResult::getNodeLabel(const DebugInfo &DI) const {
+  return DI.getAnalysisResultName(this);
 }
 
 bool AnalysisResult::isNodeHidden() const {

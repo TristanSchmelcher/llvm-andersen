@@ -15,7 +15,7 @@
 #include "Enumerator.h"
 
 #include "AnalysisResult.h"
-#include "Data.h"
+#include "DebugInfo.h"
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
 #include "GraphNode.h"
@@ -160,8 +160,8 @@ GraphEdge Enumerator::toGraphEdge() const {
   return GraphEdge(AR, OSS.str());
 }
 
-void Enumerator::writeFormula(const Data &Data, raw_ostream &OS) const {
-  OS << AR->getNodeLabel(Data) << '[' << i << ":]";
+void Enumerator::writeFormula(const DebugInfo &DI, raw_ostream &OS) const {
+  OS << DI.getAnalysisResultName(AR) << '[' << i << ":]";
 }
 
 }

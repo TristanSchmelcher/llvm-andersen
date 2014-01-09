@@ -31,6 +31,7 @@ namespace andersen_internal {
 
 class AlgorithmId;
 class AnalysisResult;
+class DebugInfoFiller;
 
 class ValueInfo : private RefCountedBase<ValueInfo>, public GraphNode {
   friend struct IntrusiveRefCntPtrInfo<ValueInfo>;
@@ -55,10 +56,11 @@ public:
   }
 
   virtual GraphEdgeDeque getOutgoingEdges() const;
-  virtual std::string getNodeLabel(const Data &Data) const;
+  virtual std::string getNodeLabel(const DebugInfo &DI) const;
   virtual bool isNodeHidden() const;
 
-  void writeEquations(const Data &Data, raw_ostream &OS) const;
+  void fillDebugInfo(DebugInfoFiller *DIF) const;
+  void writeEquations(const DebugInfo &DI, raw_ostream &OS) const;
 
   template<typename AlgorithmTy, Phase CurrentPhase>
   AnalysisResult *getAlgorithmResult() {

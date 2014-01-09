@@ -9,10 +9,12 @@ add_llvm_library(LLVMAndersen
   AndersenGraphViewer.cpp
   AndersenPass.cpp
   Data.cpp
+  DebugInfo.cpp
   EnumerationContext.cpp
   Enumerator.cpp
   FormalParametersReversePointsToAlgorithm.cpp
   FormalReturnValueReversePointsToAlgorithm.cpp
+  InstructionAnalysisAlgorithm.cpp
   InstructionAnalyzer.cpp
   LiteralAlgorithmId.cpp
   LoadedValuesReversePointsToAlgorithm.cpp
@@ -24,7 +26,6 @@ add_llvm_library(LLVMAndersen
   TransformStepBase.cpp
   TraversalAlgorithmId.cpp
   ValueInfo.cpp
-  ValuePrinter.cpp
   )
 
 add_dependencies(LLVMAndersen intrinsics_gen)

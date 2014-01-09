@@ -16,10 +16,10 @@
 
 #include "AnalysisResult.h"
 #include "Data.h"
+#include "DebugInfo.h"
 #include "InstructionAnalyzer.h"
 #include "Phase.h"
 #include "PointsToAlgorithm.h"
-#include "ValuePrinter.h"
 #include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/CommandLine.h"
@@ -32,15 +32,6 @@ namespace {
 
 cl::opt<bool> NonLazy("andersen-non-lazy",
                       cl::desc("Perform Andersen analysis non-lazily"));
-
-std::string prettyPrintValueOrExternal(const Value *V) {
-  if (V) {
-    return ValuePrinter::prettyPrintValue(V);
-  } else {
-    // Placeholder for externally-defined regions.
-    return "EXTERNAL";
-  }
-}
 
 AndersenEnumerator enumerateRemaining(AnalysisResult *AR) {
   return AndersenEnumerator(AR, AR->getSetContentsSoFar().size());
@@ -148,7 +139,8 @@ void AndersenPass::getAnalysisUsage(AnalysisUsage &AU) const {
 
 void AndersenPass::print(raw_ostream &OS, const Module *M) const {
   assert(Data);
-  Data->writeEquations(OS);
+  DebugInfo DI(Data);
+  Data->writeEquations(DI, OS);
 }
 
 }

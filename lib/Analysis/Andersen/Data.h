@@ -31,6 +31,9 @@ class Value;
 namespace llvm {
 namespace andersen_internal {
 
+class DebugInfo;
+class DebugInfoFiller;
+
 // TODO: Should this be a ValueMap?
 typedef DenseMap<const Value *, ValueInfo::Ref> ValueInfoMap;
 typedef std::vector<ValueInfo::Ref> ValueInfoVector;
@@ -58,10 +61,11 @@ public:
   virtual ~Data();
 
   virtual GraphEdgeDeque getOutgoingEdges() const;
-  virtual std::string getNodeLabel(const Data &Data) const;
+  virtual std::string getNodeLabel(const DebugInfo &DI) const;
   virtual bool isNodeHidden() const;
 
-  void writeEquations(raw_ostream &OS) const;
+  void fillDebugInfo(DebugInfoFiller *DIF) const;
+  void writeEquations(const DebugInfo &DI, raw_ostream &OS) const;
 
 private:
   Data(ValueInfo *ExternallyLinkableRegions,

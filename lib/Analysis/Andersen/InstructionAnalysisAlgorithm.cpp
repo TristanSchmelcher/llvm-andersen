@@ -1,4 +1,4 @@
-//===- ReversePointsToAlgorithm.cpp - reverse points-to -------------------===//
+//===- InstructionAnalysisAlgorithm.cpp -----------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,23 +7,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the type for the reverse points-to algorithm.
+// This file defines a base type for algorithms that operate exclusively by
+// hooking into the instruction analyzer.
 //
 //===----------------------------------------------------------------------===//
 
-#include "ReversePointsToAlgorithm.h"
+#include "InstructionAnalysisAlgorithm.h"
 
 #include "AnalysisResult.h"
 
 namespace llvm {
 namespace andersen_internal {
 
-const LiteralAlgorithmId ReversePointsToAlgorithm::ID("self-reverse");
-
-AnalysisResult *ReversePointsToAlgorithm::run(ValueInfo *VI) {
-  AnalysisResult *AR = new AnalysisResult();
-  AR->addValueInfo(VI);
-  return AR;
+AnalysisResult *InstructionAnalysisAlgorithm::run(ValueInfo *VI) {
+  return new AnalysisResult();
 }
 
 }

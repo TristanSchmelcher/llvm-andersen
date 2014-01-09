@@ -1,4 +1,4 @@
-//===- ValuePrinter.cpp - value printing helper routine -------------------===//
+//===- DebugInfo.cpp - global information for debugging output --------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a helper method for printing Values.
+// This file defines a type for global debugging information.
 //
 //===----------------------------------------------------------------------===//
 
-#include "ValuePrinter.h"
+#include "DebugInfo.h"
 
+#include "AlgorithmId.h"
+#include "Data.h"
+#include "ValueInfo.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_os_ostream.h"
 
@@ -50,10 +53,7 @@ std::string getPrintedValue(const Value *V) {
   return OSS.str();
 }
 
-}
-
-std::string ValuePrinter::prettyPrintValue(const Value *V,
-                                           size_t MaxPrintedSize) {
+std::string prettyPrintValue(const Value *V, size_t MaxPrintedSize) {
   assert(V);
   std::ostringstream OSS;
   {
@@ -74,6 +74,36 @@ std::string ValuePrinter::prettyPrintValue(const Value *V,
   if (V->hasName()) {
     OSS << " (" << V->getName().str() << ')';
   }
+  return OSS.str();
+}
+
+}
+
+DebugInfo::DebugInfo(const Data *D) : D(D) {
+  D->fillDebugInfo(static_cast<DebugInfoFiller *>(this));
+}
+
+std::string DebugInfo::getValueInfoName(const ValueInfo *VI) const {
+  if (VI->getValue()) {
+    static const size_t MaxPrintedSize = 16;
+    return prettyPrintValue(VI->getValue(), MaxPrintedSize);
+  } else if (VI == D->ExternallyLinkableRegions.getPtr()) {
+    return "ExternallyLinkableRegions";
+  } else if (VI == D->ExternallyAccessibleRegions.getPtr()) {
+    return "ExternallyAccessibleRegions";
+  } else {
+    std::ostringstream OSS;
+    OSS << "Anonymous" << VI;
+    return OSS.str();
+  }
+}
+
+std::string DebugInfo::getAnalysisResultName(const AnalysisResult *AR) const {
+  AnalysisResultInfoMap::const_iterator i = ARIM.find(AR);
+  assert(i != ARIM.end());
+  std::ostringstream OSS;
+  OSS << i->second.second->getAlgorithmName() << '('
+      << getValueInfoName(i->second.first) << ')';
   return OSS.str();
 }
 

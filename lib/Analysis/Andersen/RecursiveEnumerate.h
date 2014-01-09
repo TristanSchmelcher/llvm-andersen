@@ -29,9 +29,9 @@ public:
   RecursiveEnumerate(AnalysisResult *AR);
   ~RecursiveEnumerate();
   virtual EnumerationResult enumerate(EnumerationContext *Ctx);
-  virtual void writeFormula(const Data &Data, raw_ostream &OS) const;
+  virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const;
   virtual GraphEdgeDeque getOutgoingEdges() const;
-  virtual std::string getNodeLabel(const Data &Data) const;
+  virtual std::string getNodeLabel(const DebugInfo &DI) const;
 };
 
 }

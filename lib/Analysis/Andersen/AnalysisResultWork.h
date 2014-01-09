@@ -27,7 +27,7 @@ class raw_ostream;
 namespace llvm {
 namespace andersen_internal {
 
-class Data;
+class DebugInfo;
 class EnumerationContext;
 class EnumerationResult;
 
@@ -40,7 +40,7 @@ public:
   virtual bool isNodeHidden() const;
 
   virtual EnumerationResult enumerate(EnumerationContext *Ctx) = 0;
-  virtual void writeFormula(const Data &Data, raw_ostream &OS) const = 0;
+  virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const = 0;
 };
 
 typedef iplist<AnalysisResultWork> AnalysisResultWorkList;

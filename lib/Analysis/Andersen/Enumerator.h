@@ -25,7 +25,7 @@ class raw_ostream;
 namespace llvm {
 namespace andersen_internal {
 
-class Data;
+class DebugInfo;
 class EnumerationResult;
 class GraphEdge;
 
@@ -44,7 +44,7 @@ public:
 
   EnumerationResult enumerate(int Depth, int LastTransformDepth);
   GraphEdge toGraphEdge() const;
-  void writeFormula(const Data &Data, raw_ostream &OS) const;
+  void writeFormula(const DebugInfo &DI, raw_ostream &OS) const;
 
   AnalysisResult *getAnalysisResult() const { return AR; }
 

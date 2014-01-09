@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Data.h"
+#include "DebugInfo.h"
 #include "GraphNode.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/Analysis/AndersenPass.h"
@@ -82,9 +83,9 @@ std::string getGraphTitle(const Module *M) {
 }
 
 template<>
-struct GraphTraits<Data> {
+struct GraphTraits<DebugInfo> {
   typedef const GraphNode NodeType;
-  typedef df_iterator<Data> nodes_iterator;
+  typedef df_iterator<DebugInfo> nodes_iterator;
   typedef NodeForwardIterator ChildIteratorType;
 
   static ChildIteratorType child_begin(NodeType *Node) {
@@ -95,27 +96,27 @@ struct GraphTraits<Data> {
     return ChildIteratorType();
   }
 
-  static NodeType *getEntryNode(const Data &Data) {
-    return &Data;
+  static NodeType *getEntryNode(const DebugInfo &DI) {
+    return DI.getData();
   }
 
-  static nodes_iterator nodes_begin(const Data &Data) {
-    return df_begin(Data);
+  static nodes_iterator nodes_begin(const DebugInfo &DI) {
+    return df_begin(DI);
   }
 
-  static nodes_iterator nodes_end(const Data &Data) {
-    return df_end(Data);
+  static nodes_iterator nodes_end(const DebugInfo &DI) {
+    return df_end(DI);
   }
 };
 
 template<>
-class DOTGraphTraits<Data> : public DefaultDOTGraphTraits {
+class DOTGraphTraits<DebugInfo> : public DefaultDOTGraphTraits {
 public:
   DOTGraphTraits(bool simple = false) : DefaultDOTGraphTraits(simple) {}
 
   std::string getNodeLabel(const GraphNode *Node,
-                           const Data &Data) {
-    return Node->getNodeLabel(Data);
+                           const DebugInfo &DI) {
+    return Node->getNodeLabel(DI);
   }
 
   static std::string getEdgeSourceLabel(const GraphNode *Node,
@@ -129,7 +130,7 @@ public:
 };
 
 void viewGraph(const Data *Data, const Module *M) {
-  ViewGraph(*Data, "AndersenPass", false, getGraphTitle(M));
+  ViewGraph(DebugInfo(Data), "AndersenPass", false, getGraphTitle(M));
 }
 
 void printGraph(const Data *Data, const Module *M) {
@@ -140,7 +141,7 @@ void printGraph(const Data *Data, const Module *M) {
   raw_fd_ostream File(Filename, ErrorInfo);
 
   if (ErrorInfo.empty())
-    WriteGraph(File, *Data, false, getGraphTitle(M));
+    WriteGraph(File, DebugInfo(Data), false, getGraphTitle(M));
   else
     errs() << "  error opening file for writing!";
   errs() << "\n";

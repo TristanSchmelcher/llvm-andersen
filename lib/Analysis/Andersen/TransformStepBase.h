@@ -35,9 +35,9 @@ public:
   explicit TransformStepBase(AnalysisResult *AR);
   virtual ~TransformStepBase();
   virtual GraphEdgeDeque getOutgoingEdges() const;
-  virtual std::string getNodeLabel(const Data &Data) const;
+  virtual std::string getNodeLabel(const DebugInfo &DI) const;
   virtual EnumerationResult enumerate(EnumerationContext *Ctx);
-  virtual void writeFormula(const Data &Data, raw_ostream &OS) const;
+  virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const;
 
 protected:
   virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) = 0;

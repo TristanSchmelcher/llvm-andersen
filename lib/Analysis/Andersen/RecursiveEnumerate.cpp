@@ -33,8 +33,9 @@ EnumerationResult RecursiveEnumerate::enumerate(EnumerationContext *Ctx) {
   return E.enumerate(Ctx->getNextDepth(), Ctx->getLastTransformDepth());
 }
 
-void RecursiveEnumerate::writeFormula(const Data &Data, raw_ostream &OS) const {
-  E.writeFormula(Data, OS);
+void RecursiveEnumerate::writeFormula(const DebugInfo &DI,
+    raw_ostream &OS) const {
+  E.writeFormula(DI, OS);
 }
 
 GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {
@@ -43,7 +44,7 @@ GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {
   return Result;
 }
 
-std::string RecursiveEnumerate::getNodeLabel(const Data &Data) const {
+std::string RecursiveEnumerate::getNodeLabel(const DebugInfo &DI) const {
   return "Recurse";
 }
 
