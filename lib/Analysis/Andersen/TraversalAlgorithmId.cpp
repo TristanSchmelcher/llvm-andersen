@@ -14,6 +14,8 @@
 
 #include "TraversalAlgorithmId.h"
 
+#include "llvm/Support/raw_ostream.h"
+
 #include <sstream>
 
 namespace llvm {
@@ -25,11 +27,11 @@ TraversalAlgorithmId::TraversalAlgorithmId(
 
 TraversalAlgorithmId::~TraversalAlgorithmId() {}
 
-std::string TraversalAlgorithmId::getAlgorithmName() const {
-  std::ostringstream OSS;
+void TraversalAlgorithmId::printAlgorithmName(raw_ostream &OS) const {
+  DstId->printAlgorithmName(OS);
   // Using "o" to mean mathematical composition.
-  OSS << DstId->getAlgorithmName() << " o " << SrcId->getAlgorithmName();
-  return OSS.str();
+  OS << " o ";
+  SrcId->printAlgorithmName(OS);
 }
 
 }

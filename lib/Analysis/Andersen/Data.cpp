@@ -13,7 +13,9 @@
 
 #include "Data.h"
 
+#include "DebugInfo.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
 namespace andersen_internal {
@@ -58,9 +60,8 @@ GraphEdgeDeque Data::getOutgoingEdges() const {
   return Result;
 }
 
-std::string Data::getNodeLabel(const DebugInfo &DI) const {
+void Data::printNodeLabel(const DebugInfo &DI, raw_ostream &OS) const {
   llvm_unreachable("Data node should not be emitted in the graph");
-  return std::string();
 }
 
 bool Data::isNodeHidden() const {
@@ -72,8 +73,20 @@ void Data::fillDebugInfo(DebugInfoFiller *DIF) const {
 }
 
 void Data::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
-  WriteEquationsArg WEA(&DI, &OS);
-  visitValueInfos(&writeEquationsVisitor, static_cast<void *>(&WEA));
+  {
+    WriteEquationsArg WEA(&DI, &OS);
+    visitValueInfos(&writeEquationsVisitor, static_cast<void *>(&WEA));
+  }
+  // Also print all the equivalences.
+  for (ValueInfoMap::const_iterator i = ValueInfos.begin(),
+                                    End = ValueInfos.end();
+       i != End; ++i) {
+    if (!i->second.getPtr() || i->first == i->second->getValue()) continue;
+    DI.printValueInfoName(i->second.getPtr(), OS);
+    OS << " <=> ";
+    DebugInfo::printValueName(i->first, OS);
+    OS << '\n';
+  }
 }
 
 void Data::visitValueInfos(ValueInfoVisitorFn visitor, void *Arg) const {

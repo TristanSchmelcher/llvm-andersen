@@ -14,6 +14,8 @@
 
 #include "LiteralAlgorithmId.h"
 
+#include "llvm/Support/raw_ostream.h"
+
 namespace llvm {
 namespace andersen_internal {
 
@@ -21,8 +23,8 @@ LiteralAlgorithmId::LiteralAlgorithmId(const char *Name) : Name(Name) {}
 
 LiteralAlgorithmId::~LiteralAlgorithmId() {}
 
-std::string LiteralAlgorithmId::getAlgorithmName() const {
-  return Name;
+void LiteralAlgorithmId::printAlgorithmName(raw_ostream &OS) const {
+  OS << Name;
 }
 
 }

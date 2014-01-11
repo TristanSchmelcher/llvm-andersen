@@ -161,7 +161,8 @@ GraphEdge Enumerator::toGraphEdge() const {
 }
 
 void Enumerator::writeFormula(const DebugInfo &DI, raw_ostream &OS) const {
-  OS << DI.getAnalysisResultName(AR) << '[' << i << ":]";
+  DI.printAnalysisResultName(AR, OS);
+  OS << '[' << i << ":]";
 }
 
 }

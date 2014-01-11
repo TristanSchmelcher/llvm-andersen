@@ -20,6 +20,13 @@
 #include <utility>
 
 namespace llvm {
+
+class raw_ostream;
+class Value;
+
+}
+
+namespace llvm {
 namespace andersen_internal {
 
 class AlgorithmId;
@@ -53,9 +60,11 @@ public:
 
   const Data *getData() const { return D; }
 
-  std::string getValueInfoName(const ValueInfo *VI) const;
+  static void printValueName(const Value *V, raw_ostream &OS);
 
-  std::string getAnalysisResultName(const AnalysisResult *AR) const;
+  void printValueInfoName(const ValueInfo *VI, raw_ostream &OS) const;
+
+  void printAnalysisResultName(const AnalysisResult *AR, raw_ostream &OS) const;
 };
 
 }

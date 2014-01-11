@@ -29,7 +29,8 @@ AnalysisResult::~AnalysisResult() {
 }
 
 void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
-  OS << DI.getAnalysisResultName(this) << " = ";
+  DI.printAnalysisResultName(this, OS);
+  OS << " = ";
   bool first = true;
   if (!Set.empty()) {
     OS << '{';
@@ -39,7 +40,7 @@ void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
         OS << ", ";
       }
       first = false;
-      OS << DI.getValueInfoName(*i);
+      DI.printValueInfoName(*i, OS);
     } while (++i != End);
     OS << '}';
   }
@@ -79,8 +80,8 @@ GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
   return Result;
 }
 
-std::string AnalysisResult::getNodeLabel(const DebugInfo &DI) const {
-  return DI.getAnalysisResultName(this);
+void AnalysisResult::printNodeLabel(const DebugInfo &DI, raw_ostream &OS) const {
+  DI.printAnalysisResultName(this, OS);
 }
 
 bool AnalysisResult::isNodeHidden() const {

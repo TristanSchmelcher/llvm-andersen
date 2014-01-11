@@ -73,7 +73,8 @@ EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
 
 void TransformStepBase::writeFormula(const DebugInfo &DI,
     raw_ostream &OS) const {
-  OS << getAlgorithmId()->getAlgorithmName() << '(';
+  getAlgorithmId()->printAlgorithmName(OS);
+  OS << '(';
   E.writeFormula(DI, OS);
   OS << ')';
 }
@@ -84,10 +85,11 @@ GraphEdgeDeque TransformStepBase::getOutgoingEdges() const {
   return Result;
 }
 
-std::string TransformStepBase::getNodeLabel(const DebugInfo &DI) const {
-  std::ostringstream OSS;
-  OSS << "Transform(" << getAlgorithmId()->getAlgorithmName() << ')';
-  return OSS.str();
+void TransformStepBase::printNodeLabel(const DebugInfo &DI,
+    raw_ostream &OS) const {
+  OS << "Transform(";
+  getAlgorithmId()->printAlgorithmName(OS);
+  OS << ')';
 }
 
 }

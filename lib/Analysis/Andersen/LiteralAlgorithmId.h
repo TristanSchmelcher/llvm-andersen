@@ -24,7 +24,7 @@ class LiteralAlgorithmId : public AlgorithmId {
 public:
   LiteralAlgorithmId(const char *Name);
   virtual ~LiteralAlgorithmId();
-  virtual std::string getAlgorithmName() const;
+  virtual void printAlgorithmName(raw_ostream &OS) const;
 
 private:
   const char *const Name;

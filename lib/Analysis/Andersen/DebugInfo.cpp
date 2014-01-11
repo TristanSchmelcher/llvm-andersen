@@ -53,9 +53,15 @@ std::string getPrintedValue(const Value *V) {
   return OSS.str();
 }
 
-std::string prettyPrintValue(const Value *V, size_t MaxPrintedSize) {
-  assert(V);
-  std::ostringstream OSS;
+}
+
+DebugInfo::DebugInfo(const Data *D) : D(D) {
+  D->fillDebugInfo(static_cast<DebugInfoFiller *>(this));
+}
+
+void DebugInfo::printValueName(const Value *V, raw_ostream &OS) {
+  OS << V << ':';
+  static const size_t MaxPrintedSize = 16;
   {
     std::string PrintedValue(getPrintedValue(V));
     size_t n = PrintedValue.find('\n');
@@ -66,45 +72,36 @@ std::string prettyPrintValue(const Value *V, size_t MaxPrintedSize) {
     if (PrintedValue.size() > MaxPrintedSize) {
       PrintedValue.erase(MaxPrintedSize);
       rtrim(PrintedValue);
-      OSS << PrintedValue << " ...";
+      OS << PrintedValue << " ...";
     } else {
-      OSS << PrintedValue;
+      OS << PrintedValue;
     }
   }
   if (V->hasName()) {
-    OSS << " (" << V->getName().str() << ')';
+    OS << " (" << V->getName().str() << ')';
   }
-  return OSS.str();
 }
 
-}
-
-DebugInfo::DebugInfo(const Data *D) : D(D) {
-  D->fillDebugInfo(static_cast<DebugInfoFiller *>(this));
-}
-
-std::string DebugInfo::getValueInfoName(const ValueInfo *VI) const {
-  if (VI->getValue()) {
-    static const size_t MaxPrintedSize = 16;
-    return prettyPrintValue(VI->getValue(), MaxPrintedSize);
+void DebugInfo::printValueInfoName(const ValueInfo *VI, raw_ostream &OS) const {
+  if (const Value *V = VI->getValue()) {
+    printValueName(V, OS);
   } else if (VI == D->ExternallyLinkableRegions.getPtr()) {
-    return "ExternallyLinkableRegions";
+    OS << "ExternallyLinkableRegions";
   } else if (VI == D->ExternallyAccessibleRegions.getPtr()) {
-    return "ExternallyAccessibleRegions";
+    OS << "ExternallyAccessibleRegions";
   } else {
-    std::ostringstream OSS;
-    OSS << "Anonymous" << VI;
-    return OSS.str();
+    OS << "Anonymous" << VI;
   }
 }
 
-std::string DebugInfo::getAnalysisResultName(const AnalysisResult *AR) const {
+void DebugInfo::printAnalysisResultName(const AnalysisResult *AR,
+                                        raw_ostream &OS) const {
   AnalysisResultInfoMap::const_iterator i = ARIM.find(AR);
   assert(i != ARIM.end());
-  std::ostringstream OSS;
-  OSS << i->second.second->getAlgorithmName() << '('
-      << getValueInfoName(i->second.first) << ')';
-  return OSS.str();
+  i->second.second->printAlgorithmName(OS);
+  OS << '(';
+  printValueInfoName(i->second.first, OS);
+  OS << ')';
 }
 
 }

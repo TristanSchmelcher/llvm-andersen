@@ -20,6 +20,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/raw_os_ostream.h"
 
 #include <sstream>
 
@@ -41,14 +42,19 @@ GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
     const AlgorithmId *Id = i->first;
     AnalysisResult *AR = i->second;
     std::ostringstream OSS;
-    OSS << "PointsTo(" << Id->getAlgorithmName() << ')';
+    OSS << "PointsTo(";
+    {
+      raw_os_ostream OS(OSS);
+      Id->printAlgorithmName(OS);
+    }
+    OSS << ')';
     Result.push_back(GraphEdge(AR, OSS.str()));
   }
   return Result;
 }
 
-std::string ValueInfo::getNodeLabel(const DebugInfo &DI) const {
-  return DI.getValueInfoName(this);
+void ValueInfo::printNodeLabel(const DebugInfo &DI, raw_ostream &OS) const {
+  DI.printValueInfoName(this, OS);
 }
 
 bool ValueInfo::isNodeHidden() const {

@@ -19,6 +19,12 @@
 #include <deque>
 
 namespace llvm {
+
+class raw_ostream;
+
+}
+
+namespace llvm {
 namespace andersen_internal {
 
 class DebugInfo;
@@ -38,7 +44,7 @@ typedef std::deque<GraphEdge> GraphEdgeDeque;
 class GraphNode {
 public:
   virtual GraphEdgeDeque getOutgoingEdges() const = 0;
-  virtual std::string getNodeLabel(const DebugInfo &DI) const = 0;
+  virtual void printNodeLabel(const DebugInfo &DI, raw_ostream &OS) const = 0;
   virtual bool isNodeHidden() const = 0;
 
 protected:

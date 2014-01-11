@@ -20,6 +20,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/GraphWriter.h"
+#include "llvm/Support/raw_os_ostream.h"
 
 #include <sstream>
 #include <string>
@@ -114,9 +115,13 @@ class DOTGraphTraits<DebugInfo> : public DefaultDOTGraphTraits {
 public:
   DOTGraphTraits(bool simple = false) : DefaultDOTGraphTraits(simple) {}
 
-  std::string getNodeLabel(const GraphNode *Node,
-                           const DebugInfo &DI) {
-    return Node->getNodeLabel(DI);
+  std::string getNodeLabel(const GraphNode *Node, const DebugInfo &DI) {
+    std::ostringstream OSS;
+    {
+      raw_os_ostream OS(OSS);
+      Node->printNodeLabel(DI, OS);
+    }
+    return OSS.str();
   }
 
   static std::string getEdgeSourceLabel(const GraphNode *Node,

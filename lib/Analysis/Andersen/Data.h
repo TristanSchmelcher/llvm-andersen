@@ -61,7 +61,7 @@ public:
   virtual ~Data();
 
   virtual GraphEdgeDeque getOutgoingEdges() const;
-  virtual std::string getNodeLabel(const DebugInfo &DI) const;
+  virtual void printNodeLabel(const DebugInfo &DI, raw_ostream &OS) const;
   virtual bool isNodeHidden() const;
 
   void fillDebugInfo(DebugInfoFiller *DIF) const;

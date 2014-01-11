@@ -14,14 +14,19 @@
 #ifndef ALGORITHMID_H
 #define ALGORITHMID_H
 
-#include <string>
+namespace llvm {
+
+class raw_ostream;
+
+}
+
 
 namespace llvm {
 namespace andersen_internal {
 
 class AlgorithmId {
 public:
-  virtual std::string getAlgorithmName() const = 0;
+  virtual void printAlgorithmName(raw_ostream &OS) const = 0;
 
 protected:
   ~AlgorithmId() {}

@@ -44,8 +44,9 @@ GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {
   return Result;
 }
 
-std::string RecursiveEnumerate::getNodeLabel(const DebugInfo &DI) const {
-  return "Recurse";
+void RecursiveEnumerate::printNodeLabel(const DebugInfo &DI,
+                                        raw_ostream &OS) const {
+  OS << "Recurse";
 }
 
 }

@@ -27,7 +27,7 @@ public:
   TraversalAlgorithmId(const AlgorithmId *SrcId, const AlgorithmId *DstId);
   ~TraversalAlgorithmId();
 
-  virtual std::string getAlgorithmName() const;
+  virtual void printAlgorithmName(raw_ostream &OS) const;
 
 private:
   const AlgorithmId *const SrcId;
