@@ -19,6 +19,8 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 
+#include <cassert>
+
 namespace llvm {
 
 class raw_ostream;

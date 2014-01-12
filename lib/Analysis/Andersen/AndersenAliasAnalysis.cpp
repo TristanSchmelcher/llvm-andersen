@@ -23,6 +23,8 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Pass.h"
 
+#include <cassert>
+
 namespace llvm {
 namespace {
 

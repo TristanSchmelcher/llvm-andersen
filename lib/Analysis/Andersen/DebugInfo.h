@@ -16,6 +16,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 
+#include <cassert>
 #include <string>
 #include <utility>
 

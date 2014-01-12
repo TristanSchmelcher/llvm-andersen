@@ -25,6 +25,8 @@
 #include "llvm/InstVisitor.h"
 #include "llvm/Pass.h"
 
+#include <cassert>
+
 namespace llvm {
 namespace andersen_internal {
 

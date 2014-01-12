@@ -23,6 +23,9 @@
 #include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <cassert>
 
 namespace llvm {
 
@@ -35,6 +38,11 @@ cl::opt<bool> NonLazy("andersen-non-lazy",
 
 AndersenEnumerator enumerateRemaining(AnalysisResult *AR) {
   return AndersenEnumerator(AR, AR->getSetContentsSoFar().size());
+}
+
+void writeEquations(const Data *Data, raw_ostream &OS) {
+  DebugInfo DI(Data);
+  Data->writeEquations(DI, OS);
 }
 
 }
@@ -138,11 +146,31 @@ void AndersenPass::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 void AndersenPass::print(raw_ostream &OS, const Module *M) const {
-  assert(Data);
-  DebugInfo DI(Data);
-  Data->writeEquations(DI, OS);
+  writeEquations(Data, OS);
 }
 
+}
+
+namespace llvm {
+namespace andersen_internal {
+
+// Exclusively for calling in the debugger.
+void dumpAnalysis(const Data *Data) {
+  const char *Filename = "andersen.txt";
+  errs() << "Dumping analysis to '" << Filename << "'...";
+
+  std::string ErrorInfo;
+  raw_fd_ostream File(Filename, ErrorInfo);
+
+  if (ErrorInfo.empty()) {
+    writeEquations(Data, File);
+  } else {
+    errs() << "  error opening file for writing!";
+  }
+  errs() << "\n";
+}
+
+}
 }
 
 using namespace llvm;

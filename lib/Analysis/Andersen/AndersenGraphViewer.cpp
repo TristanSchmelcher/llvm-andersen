@@ -145,10 +145,11 @@ void printGraph(const Data *Data, const Module *M) {
   std::string ErrorInfo;
   raw_fd_ostream File(Filename, ErrorInfo);
 
-  if (ErrorInfo.empty())
+  if (ErrorInfo.empty()) {
     WriteGraph(File, DebugInfo(Data), false, getGraphTitle(M));
-  else
+  } else {
     errs() << "  error opening file for writing!";
+  }
   errs() << "\n";
 }
 

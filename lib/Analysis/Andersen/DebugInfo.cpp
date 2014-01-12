@@ -56,6 +56,7 @@ std::string getPrintedValue(const Value *V) {
 }
 
 DebugInfo::DebugInfo(const Data *D) : D(D) {
+  assert(D);
   D->fillDebugInfo(static_cast<DebugInfoFiller *>(this));
 }
 

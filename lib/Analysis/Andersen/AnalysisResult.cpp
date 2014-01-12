@@ -17,6 +17,7 @@
 #include "ValueInfo.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <cassert>
 #include <sstream>
 
 namespace llvm {
