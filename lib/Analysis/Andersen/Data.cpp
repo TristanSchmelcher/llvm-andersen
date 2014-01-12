@@ -83,8 +83,12 @@ void Data::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
   for (ValueInfoMap::const_iterator i = ValueInfos.begin(),
                                     End = ValueInfos.end();
        i != End; ++i) {
-    if (!i->second.getPtr() || i->first == i->second->getValue()) continue;
-    DI.printValueInfoName(i->second.getPtr(), OS);
+    if (!i->second.getPtr()) {
+      OS << "nil";
+    } else {
+      if (i->first == i->second->getValue()) continue;  // Already handled.
+      DI.printValueInfoName(i->second.getPtr(), OS);
+    }
     OS << " <=> ";
     DebugInfo::printValueName(i->first, OS);
     OS << '\n';

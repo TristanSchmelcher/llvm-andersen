@@ -16,6 +16,7 @@
 #include "AlgorithmId.h"
 #include "Data.h"
 #include "ValueInfo.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_os_ostream.h"
 
@@ -61,21 +62,40 @@ DebugInfo::DebugInfo(const Data *D) : D(D) {
 }
 
 void DebugInfo::printValueName(const Value *V, raw_ostream &OS) {
+  // Print in a format that is both human-readable and easily analyzed by
+  // scripts.
   OS << V << ':';
   static const size_t MaxPrintedSize = 16;
   {
     std::string PrintedValue(getPrintedValue(V));
+    // Chop off extra lines.
     size_t n = PrintedValue.find('\n');
     if (n != std::string::npos) {
       PrintedValue.erase(n);
     }
     trim(PrintedValue);
+    // Truncate to a max size.
     if (PrintedValue.size() > MaxPrintedSize) {
       PrintedValue.erase(MaxPrintedSize);
       rtrim(PrintedValue);
-      OS << PrintedValue << " ...";
-    } else {
-      OS << PrintedValue;
+      PrintedValue.append(" ...");
+    }
+    if (!PrintedValue.empty()) {
+      // Output it inside quotes with embedded quotes and backslashes escaped
+      // as a C++11-like Unicode code point. This ensures that the output
+      // matches the trivial regex "[^"]*".
+      OS << " \"";
+      size_t searchpos = 0;
+      for (size_t pos;
+           (pos = PrintedValue.find_first_of("\\\"", searchpos))
+               != std::string::npos;
+           searchpos = pos + 1) {
+        OS << StringRef(PrintedValue.data() + searchpos, pos - searchpos)
+           << "\\u00" << (int)PrintedValue[pos];
+      }
+      OS << StringRef(PrintedValue.data() + searchpos,
+                      PrintedValue.size() - searchpos)
+         << '\"';
     }
   }
   if (V->hasName()) {
