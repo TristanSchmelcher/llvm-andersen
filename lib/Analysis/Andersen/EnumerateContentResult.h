@@ -27,8 +27,7 @@ class EnumerateContentResult {
 public:
   enum Type {
     COMPLETE,
-    RETRY_START,
-    RETRY_CONTINUE,
+    RETRY,
     VALUE_INFO_CONTENT,
     SUBSET_CONTENT
   };
@@ -37,7 +36,7 @@ private:
   Type type;
   union {
     void *Unused;
-    EnumerationState *RetrySource;
+    EnumerationState *RetryCancellationPoint;
     ValueInfo *ValueInfoContent;
     AnalysisResult *SubsetContent;
   };
@@ -45,10 +44,8 @@ private:
   EnumerateContentResult()
     : type(COMPLETE), Unused(0) {}
 
-  EnumerateContentResult(Type type, EnumerationState *RetrySource)
-    : type(type), RetrySource(RetrySource) {
-    assert(type == RETRY_START || type == RETRY_CONTINUE);
-  }
+  explicit EnumerateContentResult(EnumerationState *RetryCancellationPoint)
+    : type(RETRY), RetryCancellationPoint(RetryCancellationPoint) {}
 
   explicit EnumerateContentResult(ValueInfo *ValueInfoContent)
     : type(VALUE_INFO_CONTENT), ValueInfoContent(ValueInfoContent) {}
@@ -61,14 +58,9 @@ public:
     return EnumerateContentResult();
   }
 
-  static EnumerateContentResult makeRetryStartResult(
-      EnumerationState *RetrySource) {
-    return EnumerateContentResult(RETRY_START, RetrySource);
-  }
-
-  static EnumerateContentResult makeRetryContinueResult(
-      EnumerationState *RetrySource) {
-    return EnumerateContentResult(RETRY_CONTINUE, RetrySource);
+  static EnumerateContentResult makeRetryResult(
+      EnumerationState *RetryCancellationPoint) {
+    return EnumerateContentResult(RetryCancellationPoint);
   }
 
   static EnumerateContentResult makeValueInfoContentResult(
@@ -85,9 +77,9 @@ public:
     return type;
   }
 
-  EnumerationState *getRetrySource() const {
-    assert(type == RETRY_START || type == RETRY_CONTINUE);
-    return RetrySource;
+  EnumerationState *getRetryCancellationPoint() const {
+    assert(type == RETRY);
+    return RetryCancellationPoint;
   }
 
   ValueInfo *getValueInfoContent() const {

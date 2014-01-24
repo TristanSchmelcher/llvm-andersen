@@ -32,8 +32,7 @@ ValueInfo *AndersenEnumerator::enumerate() {
   case EnumerateElementsResult::COMPLETE:
     break;
 
-  case EnumerateElementsResult::RETRY_START:
-  case EnumerateElementsResult::RETRY_CONTINUE:
+  case EnumerateElementsResult::RETRY:
     llvm_unreachable("Received uncancelled retry-result");
     break;
 

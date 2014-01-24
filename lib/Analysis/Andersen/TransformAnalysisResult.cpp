@@ -40,13 +40,9 @@ EnumerateContentResult TransformAnalysisResult::enumerateContent(size_t i,
       case EnumerateElementsResult::COMPLETE:
         return EnumerateContentResult::makeCompleteResult();
 
-      case EnumerateElementsResult::RETRY_START:
-        return EnumerateContentResult::makeRetryStartResult(
-            EER.getRetrySource());
-
-      case EnumerateElementsResult::RETRY_CONTINUE:
-        return EnumerateContentResult::makeRetryContinueResult(
-            EER.getRetrySource());
+      case EnumerateElementsResult::RETRY:
+        return EnumerateContentResult::makeRetryResult(
+            EER.getRetryCancellationPoint());
 
       case EnumerateElementsResult::ELEMENT:
         ++j;

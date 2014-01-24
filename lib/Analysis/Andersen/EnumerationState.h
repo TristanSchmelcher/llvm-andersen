@@ -37,25 +37,8 @@ class EnumerationState {
     size_t j;
   };
 
-  struct RetryEntry {
-    RetryEntry(EnumerationState *ES);
-
-    int EnumerationDepth;
-    EnumerationState *ES;
-    unsigned int ExitCount;
-    ValueInfoVector::size_type ElementsSize;
-  };
-
-  // Orders by decreasing depth.
-  struct RetryEntryComparator {
-    bool operator()(const RetryEntry &E1, const RetryEntry &E2) const;
-  };
-
-  typedef std::set<RetryEntry, RetryEntryComparator> RetryState;
-
   int EnumerationDepth;
   unsigned int ExitCount;
-  RetryState RS;
   ValueInfoVector Elements;
   std::set<AnalysisResult *> Subsets;
   std::deque<ContentEnumerator> ContentEnumerators;
@@ -71,8 +54,6 @@ public:
 
 private:
   void addSubset(AnalysisResult *AR);
-
-  bool haveCachedRetryResult();
 
   bool isEnumerating() const { return EnumerationDepth >= 0; }
 };

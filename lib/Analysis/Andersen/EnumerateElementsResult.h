@@ -26,8 +26,7 @@ class EnumerateElementsResult {
 public:
   enum Type {
     COMPLETE,
-    RETRY_START,
-    RETRY_CONTINUE,
+    RETRY,
     ELEMENT
   };
 
@@ -35,17 +34,15 @@ private:
   Type type;
   union {
     void *Unused;
-    EnumerationState *RetrySource;
+    EnumerationState *RetryCancellationPoint;
     ValueInfo *Element;
   };
 
   EnumerateElementsResult()
     : type(COMPLETE), Unused(0) {}
 
-  EnumerateElementsResult(Type type, EnumerationState *RetrySource)
-    : type(type), RetrySource(RetrySource) {
-    assert(type == RETRY_START || type == RETRY_CONTINUE);
-  }
+  explicit EnumerateElementsResult(EnumerationState *RetryCancellationPoint)
+    : type(RETRY), RetryCancellationPoint(RetryCancellationPoint) {}
 
   explicit EnumerateElementsResult(ValueInfo *Element)
     : type(ELEMENT), Element(Element) {}
@@ -55,14 +52,9 @@ public:
     return EnumerateElementsResult();
   }
 
-  static EnumerateElementsResult makeRetryStartResult(
-      EnumerationState *RetrySource) {
-    return EnumerateElementsResult(RETRY_START, RetrySource);
-  }
-
-  static EnumerateElementsResult makeRetryContinueResult(
-      EnumerationState *RetrySource) {
-    return EnumerateElementsResult(RETRY_CONTINUE, RetrySource);
+  static EnumerateElementsResult makeRetryResult(
+      EnumerationState *RetryCancellationPoint) {
+    return EnumerateElementsResult(RetryCancellationPoint);
   }
 
   static EnumerateElementsResult makeElementResult(ValueInfo *Element) {
@@ -73,9 +65,9 @@ public:
     return type;
   }
 
-  EnumerationState *getRetrySource() const {
-    assert(type == RETRY_START || type == RETRY_CONTINUE);
-    return RetrySource;
+  EnumerationState *getRetryCancellationPoint() const {
+    assert(type == RETRY);
+    return RetryCancellationPoint;
   }
 
   ValueInfo *getElement() const {

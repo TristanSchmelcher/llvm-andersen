@@ -43,59 +43,9 @@ inline EnumerationState::ContentEnumerator::ContentEnumerator(
     AnalysisResult *AR)
   : AR(AR), j(0) {}
 
-inline EnumerationState::RetryEntry::RetryEntry(EnumerationState *ES)
-  : EnumerationDepth(ES->EnumerationDepth), ES(ES), ExitCount(ES->ExitCount),
-    ElementsSize(ES->Elements.size()) {
-  assert(ES->isEnumerating());
-}
-
-inline bool EnumerationState::RetryEntryComparator::operator()(
-    const RetryEntry &E1, const RetryEntry &E2) const {
-  assert((E1.EnumerationDepth != E2.EnumerationDepth) ||
-         (E1.ES == E2.ES && E1.ExitCount == E2.ExitCount));
-  return E1.EnumerationDepth > E2.EnumerationDepth;
-}
-
 EnumerationState::EnumerationState(AnalysisResult *AR)
   : EnumerationDepth(-1), ExitCount(0) {
   addSubset(AR);
-}
-
-inline bool EnumerationState::haveCachedRetryResult() {
-  if (RS.empty()) {
-    // No cached retry.
-    return false;
-  }
-
-  // Last enumeration attempt returned retry. See if the state is unchanged.
-  RetryState::const_iterator i;
-  for (i = RS.begin(); i != RS.end(); ++i) {
-    const RetryEntry &RE(*i);
-    if (RE.ExitCount == RE.ES->ExitCount) {
-      // The corresponding enumerateElements stack frame has not yet
-      // unwound, so this and everything after is in the same state.
-      break;
-    }
-    if (!RE.ES->isEnumerating() ||
-        RE.ElementsSize != RE.ES->Elements.size()) {
-      // The retry state for this has changed, so we need to enumerate it.
-      RS.clear();
-      return false;
-    }
-    // Otherwise the stack has unwound but enumeration has since re-entered this
-    // and no new elements were enumerated in the meantime.
-  }
-
-  // Remove and re-add all the modified things.
-  std::vector<EnumerationState *> modified;
-  for (RetryState::const_iterator j = RS.begin(); j != i; ++j) {
-    const RetryEntry &RE(*i);
-    modified.push_back(RE.ES);
-  }
-  RS.erase(RS.begin(), i);
-  RS.insert(modified.begin(), modified.end());
-
-  return true;
 }
 
 EnumerateElementsResult EnumerationState::enumerateElements(size_t i,
@@ -106,18 +56,18 @@ EnumerateElementsResult EnumerationState::enumerateElements(size_t i,
   }
   if (!isDone()) {
     if (isEnumerating()) {
-      return EnumerateElementsResult::makeRetryStartResult(this);
-    }
-    if (haveCachedRetryResult()) {
-      return EnumerateElementsResult::makeRetryContinueResult(this);
+      return EnumerateElementsResult::makeRetryResult(this);
     }
     ScopedEnumerateContext Enumerating(this, Depth++);
+    EnumerationState *RetryCancellationPoint = 0;
     AnalysisResult *FirstRetrySource = 0;
     do {
       ContentEnumerator &CE(ContentEnumerators.front());
       if (CE.AR == FirstRetrySource) {
         // We've looped around and not found any new elements.
-        if (RS.empty()) {
+        assert(RetryCancellationPoint);
+        assert(RetryCancellationPoint->isEnumerating());
+        if (this == RetryCancellationPoint) {
           // We have self-contained reference cycles and this iteration found
           // no new items. Therefore we're done. Cancel the retry state.
           ContentEnumerators.clear();
@@ -125,7 +75,8 @@ EnumerateElementsResult EnumerationState::enumerateElements(size_t i,
         } else {
           // We have non-self-contained reference cycles. Must retry
           // enumeration later.
-          return EnumerateElementsResult::makeRetryContinueResult(this);
+          return EnumerateElementsResult::makeRetryResult(
+              RetryCancellationPoint);
         }
       }
 
@@ -135,34 +86,24 @@ EnumerateElementsResult EnumerationState::enumerateElements(size_t i,
         ContentEnumerators.pop_front();
         break;
 
-      case EnumerateContentResult::RETRY_START: {
+      case EnumerateContentResult::RETRY: {
+        EnumerationState *NewRetryCancellationPoint =
+            ECR.getRetryCancellationPoint();
+        assert(NewRetryCancellationPoint->isEnumerating());
+        assert(NewRetryCancellationPoint->EnumerationDepth <= EnumerationDepth);
+        // Overall retry cancellation point is the one with the least depth.
         if (!FirstRetrySource) {
+          assert(!RetryCancellationPoint);
           FirstRetrySource = CE.AR;
-        }
-        EnumerationState *RetryPoint = ECR.getRetrySource();
-        assert(RetryPoint->isEnumerating());
-        if (RetryPoint != this) {
-          RS.insert(RetryPoint);
-        }
-        // Skip it and move it to the back.
-        ContentEnumerators.push_back(CE);
-        ContentEnumerators.pop_front();
-        break;
-      }
-
-      case EnumerateContentResult::RETRY_CONTINUE: {
-        if (!FirstRetrySource) {
-          FirstRetrySource = CE.AR;
-        }
-        const RetryState &NewRS(ECR.getRetrySource()->RS);
-        for (RetryState::const_iterator i = NewRS.begin(); i != NewRS.end();
-             ++i) {
-          const RetryEntry &RE(*i);
-          if (RE.ES != this) {
-            RS.insert(RE);
+          RetryCancellationPoint = NewRetryCancellationPoint;
+        } else {
+          assert(RetryCancellationPoint);
+          assert(RetryCancellationPoint->isEnumerating());
+          if (NewRetryCancellationPoint->EnumerationDepth <
+              RetryCancellationPoint->EnumerationDepth) {
+            RetryCancellationPoint = NewRetryCancellationPoint;
           }
         }
-        // Skip it and move it to the back.
         ContentEnumerators.push_back(CE);
         ContentEnumerators.pop_front();
         break;
