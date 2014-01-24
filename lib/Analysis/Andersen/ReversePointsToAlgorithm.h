@@ -14,6 +14,7 @@
 #ifndef REVERSEPOINTSTOALGORITHM_H
 #define REVERSEPOINTSTOALGORITHM_H
 
+#include "InstructionAnalysisResult.h"
 #include "IsNotNecessarilyEmptyIfMissingProperty.h"
 #include "LiteralAlgorithmId.h"
 
@@ -28,6 +29,8 @@ class ValueInfo;
 // points-to set.
 struct ReversePointsToAlgorithm :
     public IsNotNecessarilyEmptyIfMissingProperty {
+  typedef InstructionAnalysisResult ResultTy;
+
   static const LiteralAlgorithmId ID;
 
   static AnalysisResult *run(ValueInfo *VI);

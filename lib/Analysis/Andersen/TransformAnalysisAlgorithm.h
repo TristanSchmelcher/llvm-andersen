@@ -1,4 +1,4 @@
-//===- TraversalAlgorithm.h -----------------------------------------------===//
+//===- TransformAnalysisAlgorithm.h ---------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,66 +12,80 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TRAVERSALALGORITHM_H
-#define TRAVERSALALGORITHM_H
+#ifndef TRANSFORMANALYSISALGORITHM_H
+#define TRANSFORMANALYSISALGORITHM_H
 
-#include "AnalysisResult.h"
 #include "IsNotNecessarilyEmptyIfMissingProperty.h"
 #include "Phase.h"
-#include "TransformStep.h"
 #include "TraversalAlgorithmId.h"
+#include "TransformAnalysisResult.h"
 #include "ValueInfo.h"
 
 namespace llvm {
 namespace andersen_internal {
 
-struct TraversalBase {
-private:
+class TransformAnalysisBase {
+  template<typename AlgorithmTy>
+  class Result : public TransformAnalysisResult {
+  public:
+    explicit Result(InstructionAnalysisResult *IAR)
+      : TransformAnalysisResult(IAR) {}
+
+    virtual const AlgorithmId *getAlgorithmId() const {
+      return &AlgorithmTy::ID;
+    }
+
+  private:
+    virtual AnalysisResult *analyzeElement(ValueInfo *VI) const {
+      return VI->getAlgorithmResult<AlgorithmTy, ENUMERATION_PHASE>();
+    }
+  };
+
   template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
            Phase RunPhase>
-  struct TraversalAlgorithm :
+  struct TransformAnalysisAlgorithm :
       public IsNotNecessarilyEmptyIfMissingProperty {
+    typedef AnalysisResult ResultTy;
+
     static const TraversalAlgorithmId ID;
 
     static AnalysisResult *run(ValueInfo *VI) {
-      AnalysisResult *AR = new AnalysisResult();
-      AR->addWork(new TransformStep<SecondHopAlgorithm>(
-          VI->getAlgorithmResult<FirstHopAlgorithm, RunPhase>()));
-      return AR;
+      return new Result<SecondHopAlgorithm>(
+          VI->getAlgorithmResult<FirstHopAlgorithm, RunPhase>());
     }
   };
 
   template<typename FirstHopAlgorithm, typename SecondHopAlgorithm>
-  friend struct TwoHopTraversal;
+  friend struct TwoFunctionTransform;
 
   template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
            typename ThirdHopAlgorithm>
-  friend struct ThreeHopTraversal;
+  friend struct ThreeFunctionTransform;
 };
 
 template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
          Phase RunPhase>
-const TraversalAlgorithmId TraversalBase::TraversalAlgorithm<
+const TraversalAlgorithmId TransformAnalysisBase::TransformAnalysisAlgorithm<
     FirstHopAlgorithm,
     SecondHopAlgorithm,
     RunPhase>::ID(&FirstHopAlgorithm::ID,
                   &SecondHopAlgorithm::ID);
 
 template<typename FirstHopAlgorithm, typename SecondHopAlgorithm>
-struct TwoHopTraversal : private TraversalBase {
-  typedef TraversalAlgorithm<FirstHopAlgorithm,
-                             SecondHopAlgorithm,
-                             INSTRUCTION_ANALYSIS_PHASE> Algorithm;
+struct TwoFunctionTransform : private TransformAnalysisBase {
+  typedef TransformAnalysisAlgorithm<FirstHopAlgorithm,
+                                     SecondHopAlgorithm,
+                                     INSTRUCTION_ANALYSIS_PHASE> Algorithm;
 };
 
 template<typename FirstHopAlgorithm, typename SecondHopAlgorithm,
          typename ThirdHopAlgorithm>
-struct ThreeHopTraversal : private TraversalBase {
-  typedef TraversalAlgorithm<
+struct ThreeFunctionTransform : private TransformAnalysisBase {
+  typedef TransformAnalysisAlgorithm<
       FirstHopAlgorithm,
-      TraversalAlgorithm<SecondHopAlgorithm,
-                         ThirdHopAlgorithm,
-                         ENUMERATION_PHASE>,
+      TransformAnalysisAlgorithm<SecondHopAlgorithm,
+                                 ThirdHopAlgorithm,
+                                 ENUMERATION_PHASE>,
       INSTRUCTION_ANALYSIS_PHASE> Algorithm;
 };
 

@@ -55,8 +55,6 @@ public:
   const ValueInfo::Ref ExternallyAccessibleRegions;
   // VIs not associated with any Value (e.g., generated for intrinsics).
   ValueInfoVector AnonymousValueInfos;
-  // A special always-empty AR for use with getPointsToSet.
-  AnalysisResult EmptyAnalysisResult;
 
   virtual ~Data();
 

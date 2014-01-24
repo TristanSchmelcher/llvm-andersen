@@ -75,6 +75,7 @@ void Data::fillDebugInfo(DebugInfoFiller *DIF) const {
 }
 
 void Data::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
+/*
   {
     WriteEquationsArg WEA(&DI, &OS);
     visitValueInfos(&writeEquationsVisitor, static_cast<void *>(&WEA));
@@ -93,6 +94,7 @@ void Data::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
     DebugInfo::printValueName(i->first, OS);
     OS << '\n';
   }
+*/
 }
 
 void Data::visitValueInfos(ValueInfoVisitorFn visitor, void *Arg) const {

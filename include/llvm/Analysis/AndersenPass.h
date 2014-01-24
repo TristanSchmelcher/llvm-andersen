@@ -15,13 +15,14 @@
 #ifndef LLVM_ANALYSIS_ANDERSENPASS_H
 #define LLVM_ANALYSIS_ANDERSENPASS_H
 
-#include "llvm/ADT/SetVector.h"
 #include "llvm/Pass.h"
+
+#include <vector>
 
 namespace llvm {
 namespace andersen_internal {
 
-class AnalysisResult;
+class EnumerationState;
 class Data;
 class ValueInfo;
 
@@ -32,9 +33,8 @@ namespace llvm {
 
 class AndersenEnumerator;
 class Value;
-// Same as andersen_internal::ValueInfoSetVector.
-typedef SetVector<andersen_internal::ValueInfo *> PointsToSet;
-typedef andersen_internal::AnalysisResult *AndersenHandle;
+typedef std::vector<andersen_internal::ValueInfo *> PointsToSet;
+typedef andersen_internal::EnumerationState *AndersenHandle;
 
 /// AndersenPass - An LLVM pass which implements Andersen's algorithm for
 /// points-to analysis with some modifications for lazy evaluation.

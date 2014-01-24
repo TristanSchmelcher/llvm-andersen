@@ -14,15 +14,17 @@
 
 #include "llvm/Analysis/AndersenPass.h"
 
-#include "AnalysisResult.h"
 #include "Data.h"
 #include "DebugInfo.h"
+#include "EnumerationState.h"
+#include "InstructionAnalysisResult.h"
 #include "InstructionAnalyzer.h"
 #include "Phase.h"
 #include "PointsToAlgorithm.h"
 #include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
@@ -36,13 +38,8 @@ namespace {
 cl::opt<bool> NonLazy("andersen-non-lazy",
                       cl::desc("Perform Andersen analysis non-lazily"));
 
-AndersenEnumerator enumerateRemaining(AnalysisResult *AR) {
-  return AndersenEnumerator(AR, AR->getSetContentsSoFar().size());
-}
-
-void writeEquations(const Data *Data, raw_ostream &OS) {
-  DebugInfo DI(Data);
-  Data->writeEquations(DI, OS);
+AndersenEnumerator enumerateRemaining(EnumerationState *ES) {
+  return AndersenEnumerator(ES, ES->getElementsSoFar().size());
 }
 
 }
@@ -68,59 +65,55 @@ AndersenHandle AndersenPass::getHandleToPointsToSet(const Value *V) const {
     // We determined this points to nothing at instruction analysis time.
     return 0;
   }
-  return VI->getAlgorithmResult<PointsToAlgorithm, ENUMERATION_PHASE>();
+  InstructionAnalysisResult *IAR = VI->getAlgorithmResult<PointsToAlgorithm,
+      ENUMERATION_PHASE>();
+  if (!IAR) {
+    // Ditto.
+    return 0;
+  }
+  return IAR->getEnumerationState();
 }
 
 const PointsToSet *AndersenPass::getPointsToSet(AndersenHandle AH) const {
-  AnalysisResult *AR = AH;
-  if (!AR) {
+  EnumerationState *ES = AH;
+  if (!ES) {
     // We determined this points to nothing at instruction analysis time.
     return 0;
   }
   // Else it could point to something. Finish any deferred work.
-  if (!AR->isDone()) {
-    for (AndersenEnumerator AE(enumerateRemaining(AR)); AE.enumerate(); );
-    assert(AR->isDone());
-  }
-  if (AR->getSetContentsSoFar().empty()) {
+  for (AndersenEnumerator AE(enumerateRemaining(ES)); AE.enumerate(); );
+  assert(ES->isDone());
+  if (ES->getElementsSoFar().empty()) {
     // Doesn't point to anything after all. Return null for consistency.
     return 0;
   }
-  return &AR->getSetContentsSoFar();
+  return &ES->getElementsSoFar();
 }
 
 bool AndersenPass::isPointsToSetEmpty(AndersenHandle AH) const {
-  AnalysisResult *AR = AH;
-  return !AR || AndersenEnumerator(AR).enumerate() != 0;
+  EnumerationState *ES = AH;
+  return AndersenEnumerator(ES).enumerate() != 0;
 }
 
 AndersenEnumerator AndersenPass::enumeratePointsToSet(AndersenHandle AH) const {
-  AnalysisResult *AR = AH;
-  if (!AR) {
-    // We determined this points to nothing at instruction analysis time.
-    return AndersenEnumerator(&Data->EmptyAnalysisResult);
-  }
-  return AndersenEnumerator(AR);
+  EnumerationState *ES = AH;
+  return AndersenEnumerator(ES);
 }
 
 const PointsToSet *AndersenPass::getPointsToSetContentsSoFar(AndersenHandle AH)
     const {
-  AnalysisResult *AR = AH;
-  if (!AR) {
+  EnumerationState *ES = AH;
+  if (!ES) {
     // We determined this points to nothing at instruction analysis time.
     return 0;
   }
-  return &AR->getSetContentsSoFar();
+  return &ES->getElementsSoFar();
 }
 
 AndersenEnumerator AndersenPass::enumeratePointsToSetContentsRemaining(
     AndersenHandle AH) const {
-  AnalysisResult *AR = AH;
-  if (!AR) {
-    // We determined this points to nothing at instruction analysis time.
-    return AndersenEnumerator(&Data->EmptyAnalysisResult);
-  }
-  return enumerateRemaining(AR);
+  EnumerationState *ES = AH;
+  return enumerateRemaining(ES);
 }
 
 bool AndersenPass::runOnModule(Module &M) {
@@ -129,6 +122,7 @@ bool AndersenPass::runOnModule(Module &M) {
   if (NonLazy) {
     for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin();
          i != Data->ValueInfos.end(); ++i) {
+      DEBUG_WITH_TYPE("andersen-order", dbgs() << i->first << '\n');
       getPointsToSet(getHandleToPointsToSet(i->first));
     }
   }
@@ -146,7 +140,7 @@ void AndersenPass::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 void AndersenPass::print(raw_ostream &OS, const Module *M) const {
-  writeEquations(Data, OS);
+  //writeEquations(Data, OS);
 }
 
 }
@@ -163,7 +157,7 @@ void dumpAnalysis(const Data *Data) {
   raw_fd_ostream File(Filename, ErrorInfo);
 
   if (ErrorInfo.empty()) {
-    writeEquations(Data, File);
+    //writeEquations(Data, File);
   } else {
     errs() << "  error opening file for writing!";
   }

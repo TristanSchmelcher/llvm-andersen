@@ -13,7 +13,7 @@
 
 #include "ReversePointsToAlgorithm.h"
 
-#include "AnalysisResult.h"
+#include "InstructionAnalysisResult.h"
 
 namespace llvm {
 namespace andersen_internal {
@@ -21,9 +21,9 @@ namespace andersen_internal {
 const LiteralAlgorithmId ReversePointsToAlgorithm::ID("self-reverse");
 
 AnalysisResult *ReversePointsToAlgorithm::run(ValueInfo *VI) {
-  AnalysisResult *AR = new AnalysisResult();
-  AR->addValueInfo(VI);
-  return AR;
+  InstructionAnalysisResult *IAR = new InstructionAnalysisResult();
+  IAR->setValueInfoContent(VI);
+  return IAR;
 }
 
 }

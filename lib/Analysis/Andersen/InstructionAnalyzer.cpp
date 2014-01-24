@@ -14,8 +14,8 @@
 #include "InstructionAnalyzer.h"
 
 #include "Data.h"
-#include "RelationHandler.h"
 #include "PointsToAlgorithm.h"
+#include "RelationHandler.h"
 #include "RelationType.h"
 #include "ValueInfo.h"
 #include "llvm/ADT/SmallVector.h"
@@ -312,7 +312,7 @@ private:
 
   static ValueInfo *makeRegion(ValueInfo *VI) {
     VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()
-        ->addValueInfo(VI);
+        ->setValueInfoContent(VI);
     return VI;
   }
 

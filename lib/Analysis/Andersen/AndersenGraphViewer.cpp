@@ -30,7 +30,7 @@ namespace llvm {
 using namespace andersen_internal;
 
 namespace {
-
+/*
 class NodeForwardIterator {
   GraphEdgeDeque RemainingEdges;
 
@@ -80,9 +80,11 @@ std::string getGraphTitle(const Module *M) {
   }
   return OSS.str();
 }
+*/
 
 }
 
+/*
 template<>
 struct GraphTraits<DebugInfo> {
   typedef const GraphNode NodeType;
@@ -151,7 +153,7 @@ void printGraph(const Data *Data, const Module *M) {
     errs() << "  error opening file for writing!";
   }
   errs() << "\n";
-}
+}*/
 
 class AndersenGraphPass : public ModulePass {
 public:
@@ -185,7 +187,7 @@ public:
 
 protected:
   virtual void process(const Data *Data, const Module &M) {
-    viewGraph(Data, &M);
+    //viewGraph(Data, &M);
   }
 };
 
@@ -201,7 +203,7 @@ public:
 
 protected:
   virtual void process(const Data *Data, const Module &M) {
-    printGraph(Data, &M);
+    //printGraph(Data, &M);
   }
 };
 

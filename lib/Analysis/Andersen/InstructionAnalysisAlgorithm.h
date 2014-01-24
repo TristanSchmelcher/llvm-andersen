@@ -15,6 +15,7 @@
 #ifndef INSTRUCTIONANALYSISALGORITHM_H
 #define INSTRUCTIONANALYSISALGORITHM_H
 
+#include "InstructionAnalysisResult.h"
 #include "IsEmptyIfMissingInEnumerationPhaseProperty.h"
 
 namespace llvm {
@@ -25,6 +26,8 @@ class ValueInfo;
 
 struct InstructionAnalysisAlgorithm :
     public IsEmptyIfMissingInEnumerationPhaseProperty {
+  typedef InstructionAnalysisResult ResultTy;
+
   static AnalysisResult *run(ValueInfo *VI);
 };
 

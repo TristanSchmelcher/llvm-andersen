@@ -86,9 +86,10 @@ AndersenAliasAnalysis::alias(const Location &LocA,
                              const Location &LocB) {
   AndersenHandle A = AP->getHandleToPointsToSet(LocA.Ptr);
   AndersenHandle B = AP->getHandleToPointsToSet(LocB.Ptr);
+/*
   if (AP->isPointsToSetEmpty(A) || AP->isPointsToSetEmpty(B)) {
     // If either points to nothing, then we can skip the rest.
-    return NoAlias;
+    //return NoAlias;
   }
   // TODO: What is the optimal enumeration strategy?
   const PointsToSet *PointsToSetA = AP->getPointsToSet(A);
@@ -104,6 +105,7 @@ AndersenAliasAnalysis::alias(const Location &LocA,
     }
   }
   // No overlap in the points-to sets, so cannot alias.
+*/
   return NoAlias;
 }
 

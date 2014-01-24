@@ -16,7 +16,7 @@
 #include "AlgorithmId.h"
 #include "AnalysisResult.h"
 #include "DebugInfo.h"
-#include "RecursiveEnumerate.h" 
+#include "InstructionAnalysisResult.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -37,6 +37,7 @@ ValueInfo::~ValueInfo() {
 
 GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
   GraphEdgeDeque Result;
+/*
   for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
        ++i) {
     const AlgorithmId *Id = i->first;
@@ -50,6 +51,7 @@ GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
     OSS << ')';
     Result.push_back(GraphEdge(AR, OSS.str()));
   }
+*/
   return Result;
 }
 
@@ -71,7 +73,7 @@ void ValueInfo::fillDebugInfo(DebugInfoFiller *DIF) const {
 void ValueInfo::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
   for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
        ++i) {
-    i->second->writeEquation(DI, OS);
+    //i->second->writeEquation(DI, OS);
   }
 }
 
@@ -97,8 +99,8 @@ AnalysisResult *ValueInfo::getAlgorithmResultOrNull(const AlgorithmId *Id)
 void ValueInfo::addInstructionAnalysisWorkInternal(const AlgorithmId *Id1,
     AlgorithmFn Fn1, ValueInfo *that, const AlgorithmId *Id2,
     AlgorithmFn Fn2) {
-  getOrCreateAlgorithmResult(Id1, Fn1)->addWork(
-      new RecursiveEnumerate(that->getOrCreateAlgorithmResult(Id2, Fn2)));
+  static_cast<InstructionAnalysisResult *>(getOrCreateAlgorithmResult(Id1, Fn1))
+      ->addSubset(that->getOrCreateAlgorithmResult(Id2, Fn2));
 }
 
 }

@@ -2,19 +2,17 @@ add_llvm_library(LLVMAndersen
   ActualParametersPointsToAlgorithm.cpp
   ActualReturnValuePointsToAlgorithm.cpp
   AliasAnalysis.cpp
-  AnalysisResult.cpp
-  AnalysisResultWork.cpp
   Andersen.cpp
   AndersenEnumerator.cpp
   AndersenGraphViewer.cpp
   AndersenPass.cpp
   Data.cpp
   DebugInfo.cpp
-  EnumerationContext.cpp
-  Enumerator.cpp
+  EnumerationState.cpp
   FormalParametersReversePointsToAlgorithm.cpp
   FormalReturnValueReversePointsToAlgorithm.cpp
   InstructionAnalysisAlgorithm.cpp
+  InstructionAnalysisResult.cpp
   InstructionAnalyzer.cpp
   LiteralAlgorithmId.cpp
   LoadedValuesReversePointsToAlgorithm.cpp
@@ -23,7 +21,7 @@ add_llvm_library(LLVMAndersen
   RelationHandler.cpp
   ReversePointsToAlgorithm.cpp
   StoredValuesPointsToAlgorithm.cpp
-  TransformStepBase.cpp
+  TransformAnalysisResult.cpp
   TraversalAlgorithmId.cpp
   ValueInfo.cpp
   )

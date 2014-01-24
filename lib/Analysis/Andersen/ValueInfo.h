@@ -65,10 +65,11 @@ public:
   void writeEquations(const DebugInfo &DI, raw_ostream &OS) const;
 
   template<typename AlgorithmTy, Phase CurrentPhase>
-  AnalysisResult *getAlgorithmResult() {
-    return GetAlgorithmResultHelper<
-        AlgorithmTy::template IsEmptyIfMissing<CurrentPhase>::value>
-            ::template getAlgorithmResult<AlgorithmTy>(this);
+  typename AlgorithmTy::ResultTy *getAlgorithmResult() {
+    return static_cast<typename AlgorithmTy::ResultTy *>(
+        GetAlgorithmResultHelper<
+            AlgorithmTy::template IsEmptyIfMissing<CurrentPhase>::value>
+               ::template getAlgorithmResult<AlgorithmTy>(this));
   }
 
   template<typename AlgorithmTy1, typename AlgorithmTy2>

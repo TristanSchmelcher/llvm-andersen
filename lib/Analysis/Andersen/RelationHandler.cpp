@@ -22,7 +22,7 @@
 #include "PointsToAlgorithm.h"
 #include "ReversePointsToAlgorithm.h"
 #include "StoredValuesPointsToAlgorithm.h"
-#include "TraversalAlgorithm.h"
+#include "TransformAnalysisAlgorithm.h"
 #include "ValueInfo.h"
 
 #include <cassert>
@@ -117,8 +117,8 @@ inline void ForAlgorithm<PointsToAlgorithm>
     ::handleRelation<ARGUMENT_FROM_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
   Src->addInstructionAnalysisWork<
       PointsToAlgorithm,
-      TwoHopTraversal<ReversePointsToAlgorithm,
-                      ActualParametersPointsToAlgorithm>::Algorithm>(Dst);
+      TwoFunctionTransform<ReversePointsToAlgorithm,
+                           ActualParametersPointsToAlgorithm>::Algorithm>(Dst);
 }
 
 template<>
@@ -133,9 +133,9 @@ inline void ForAlgorithm<PointsToAlgorithm>
     ::handleRelation<LOADED_FROM>(ValueInfo *Src, ValueInfo *Dst) {
   Src->addInstructionAnalysisWork<
       PointsToAlgorithm,
-      ThreeHopTraversal<PointsToAlgorithm,
-                        ReversePointsToAlgorithm,
-                        StoredValuesPointsToAlgorithm>::Algorithm>(Dst);
+      ThreeFunctionTransform<PointsToAlgorithm,
+                             ReversePointsToAlgorithm,
+                             StoredValuesPointsToAlgorithm>::Algorithm>(Dst);
 }
 
 template<>
@@ -143,8 +143,8 @@ inline void ForAlgorithm<PointsToAlgorithm>
     ::handleRelation<RETURNED_FROM_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
   Src->addInstructionAnalysisWork<
       PointsToAlgorithm,
-      TwoHopTraversal<PointsToAlgorithm,
-                      ActualReturnValuePointsToAlgorithm>::Algorithm>(Dst);
+      TwoFunctionTransform<PointsToAlgorithm,
+                           ActualReturnValuePointsToAlgorithm>::Algorithm>(Dst);
 }
 
 // ReversePointsToAlgorithm
@@ -159,9 +159,9 @@ inline void ForAlgorithm<ReversePointsToAlgorithm>
     ::handleRelation<ARGUMENT_TO_CALLEE>(ValueInfo *Src, ValueInfo *Dst) {
   Src->addInstructionAnalysisWork<
       ReversePointsToAlgorithm,
-      TwoHopTraversal<PointsToAlgorithm,
-                      FormalParametersReversePointsToAlgorithm>::Algorithm>(
-          Dst);
+      TwoFunctionTransform<
+          PointsToAlgorithm,
+          FormalParametersReversePointsToAlgorithm>::Algorithm>(Dst);
 }
 
 template<>
@@ -176,7 +176,7 @@ inline void ForAlgorithm<ReversePointsToAlgorithm>
     ::handleRelation<RETURNED_TO_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
   Src->addInstructionAnalysisWork<
       ReversePointsToAlgorithm,
-      TwoHopTraversal<
+      TwoFunctionTransform<
           ReversePointsToAlgorithm,
           FormalReturnValueReversePointsToAlgorithm>::Algorithm>(Dst);
 }
@@ -186,7 +186,7 @@ inline void ForAlgorithm<ReversePointsToAlgorithm>
     ::handleRelation<STORED_TO>(ValueInfo *Src, ValueInfo *Dst) {
   Src->addInstructionAnalysisWork<
       ReversePointsToAlgorithm,
-      ThreeHopTraversal<
+      ThreeFunctionTransform<
           PointsToAlgorithm,
           ReversePointsToAlgorithm,
           LoadedValuesReversePointsToAlgorithm>::Algorithm>(Dst);

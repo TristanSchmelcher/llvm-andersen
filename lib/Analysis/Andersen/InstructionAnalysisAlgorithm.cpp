@@ -14,13 +14,13 @@
 
 #include "InstructionAnalysisAlgorithm.h"
 
-#include "AnalysisResult.h"
+#include "InstructionAnalysisResult.h"
 
 namespace llvm {
 namespace andersen_internal {
 
 AnalysisResult *InstructionAnalysisAlgorithm::run(ValueInfo *VI) {
-  return new AnalysisResult();
+  return new InstructionAnalysisResult();
 }
 
 }
