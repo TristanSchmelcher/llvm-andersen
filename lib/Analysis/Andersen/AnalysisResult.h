@@ -17,14 +17,24 @@
 #include <cstddef>
 
 namespace llvm {
+
+class raw_ostream;
+
+}
+
+namespace llvm {
 namespace andersen_internal {
 
+class DebugInfo;
+class DebugInfoFiller;
 class EnumerateContentResult;
 
 class AnalysisResult {
 public:
   virtual ~AnalysisResult() {}
   virtual EnumerateContentResult enumerateContent(size_t i, int Depth) = 0;
+  virtual void fillDebugInfo(DebugInfoFiller *DIF) const = 0;
+  virtual void writeEquation(const DebugInfo &DI, raw_ostream &OS) const = 0;
 };
 
 }

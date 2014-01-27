@@ -14,9 +14,11 @@
 #include "EnumerationState.h"
 
 #include "AnalysisResult.h"
+#include "DebugInfo.h"
 #include "EnumerateContentResult.h"
 #include "EnumerateElementsResult.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
 namespace andersen_internal {
@@ -128,6 +130,54 @@ EnumerateElementsResult EnumerationState::enumerateElements(size_t i,
     } while (!isDone());
   }
   return EnumerateElementsResult::makeCompleteResult();
+}
+
+void EnumerationState::writeEquation(const DebugInfo &DI,
+    raw_ostream &OS) const {
+  OS << ExitCount << " hits: ";
+  DI.printEnumerationStateName(this, OS);
+  OS << " = ";
+  bool first = true;
+  if (!Elements.empty()) {
+    OS << '{';
+    for (ValueInfoVector::const_iterator i = Elements.begin();
+         i != Elements.end(); ++i) {
+      if (!first) {
+        OS << ", ";
+      }
+      first = false;
+      DI.printValueInfoName(*i, OS);
+    }
+    OS << '}';
+  }
+  if (!isDone()) {
+    if (!first) {
+      OS << " U ";
+    }
+    OS << "enumerate(remaining={";
+    first = true;
+    for (std::deque<ContentEnumerator>::const_iterator i =
+             ContentEnumerators.begin(); i != ContentEnumerators.end(); ++i) {
+      if (!first) {
+        OS << ", ";
+      }
+      first = false;
+      DI.printAnalysisResultName(i->AR, OS);
+      OS << '[' << i->j << ":]";
+    }
+    OS << "}, visited={";
+    first = true;
+    for (std::set<AnalysisResult *>::const_iterator i = Subsets.begin();
+         i != Subsets.end(); ++i) {
+      if (!first) {
+        OS << ", ";
+      }
+      first = false;
+      DI.printAnalysisResultName(*i, OS);
+    }
+    OS << '}';
+  }
+  OS << '\n';
 }
 
 void EnumerationState::addSubset(AnalysisResult *AR) {

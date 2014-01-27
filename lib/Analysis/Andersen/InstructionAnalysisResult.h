@@ -35,6 +35,8 @@ public:
   InstructionAnalysisResult();
   virtual ~InstructionAnalysisResult();
   virtual EnumerateContentResult enumerateContent(size_t i, int Depth);
+  virtual void fillDebugInfo(DebugInfoFiller *DIF) const;
+  virtual void writeEquation(const DebugInfo &DI, raw_ostream &OS) const;
 
   // For INSTRUCTION_ANALYSIS_PHASE only.
   void setValueInfoContent(ValueInfo *VI) {

@@ -67,13 +67,14 @@ void ValueInfo::fillDebugInfo(DebugInfoFiller *DIF) const {
   for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
        ++i) {
     DIF->fill(i->second, this, i->first);
+    i->second->fillDebugInfo(DIF);
   }
 }
 
 void ValueInfo::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
   for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
        ++i) {
-    //i->second->writeEquation(DI, OS);
+    i->second->writeEquation(DI, OS);
   }
 }
 

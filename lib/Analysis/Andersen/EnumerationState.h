@@ -19,9 +19,16 @@
 #include <vector>
 
 namespace llvm {
+
+class raw_ostream;
+
+}
+
+namespace llvm {
 namespace andersen_internal {
 
 class AnalysisResult;
+class DebugInfo;
 class EnumerateElementsResult;
 class ValueInfo;
 
@@ -47,6 +54,8 @@ public:
   EnumerationState(AnalysisResult *AR);
 
   EnumerateElementsResult enumerateElements(size_t i, int Depth);
+
+  void writeEquation(const DebugInfo &DI, raw_ostream &OS) const;
 
   const std::vector<ValueInfo *> &getElementsSoFar() const { return Elements; }
 

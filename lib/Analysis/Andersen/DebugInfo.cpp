@@ -125,5 +125,15 @@ void DebugInfo::printAnalysisResultName(const AnalysisResult *AR,
   OS << ')';
 }
 
+void DebugInfo::printEnumerationStateName(const EnumerationState *ES,
+                                          raw_ostream &OS) const {
+  EnumerationStateInfoMap::const_iterator i = ESIM.find(ES);
+  assert(i != ESIM.end());
+  const AnalysisResult *AR = i->second;
+  OS << "enumeration(";
+  printAnalysisResultName(AR, OS);
+  OS << ')';
+}
+
 }
 }

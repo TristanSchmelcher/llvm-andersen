@@ -42,6 +42,11 @@ AndersenEnumerator enumerateRemaining(EnumerationState *ES) {
   return AndersenEnumerator(ES, ES->getElementsSoFar().size());
 }
 
+void writeEquations(const Data *Data, raw_ostream &OS) {
+  DebugInfo DI(Data);
+  Data->writeEquations(DI, OS);
+}
+
 }
 
 char AndersenPass::ID = 0;
@@ -140,7 +145,7 @@ void AndersenPass::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 void AndersenPass::print(raw_ostream &OS, const Module *M) const {
-  //writeEquations(Data, OS);
+  writeEquations(Data, OS);
 }
 
 }
@@ -157,7 +162,7 @@ void dumpAnalysis(const Data *Data) {
   raw_fd_ostream File(Filename, ErrorInfo);
 
   if (ErrorInfo.empty()) {
-    //writeEquations(Data, File);
+    writeEquations(Data, File);
   } else {
     errs() << "  error opening file for writing!";
   }

@@ -31,13 +31,13 @@ class TransformAnalysisBase {
     explicit Result(InstructionAnalysisResult *IAR)
       : TransformAnalysisResult(IAR) {}
 
-    virtual const AlgorithmId *getAlgorithmId() const {
-      return &AlgorithmTy::ID;
-    }
-
   private:
     virtual AnalysisResult *analyzeElement(ValueInfo *VI) const {
       return VI->getAlgorithmResult<AlgorithmTy, ENUMERATION_PHASE>();
+    }
+
+    virtual const AlgorithmId *getAlgorithmId() const {
+      return &AlgorithmTy::ID;
     }
   };
 

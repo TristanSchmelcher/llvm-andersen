@@ -33,6 +33,7 @@ namespace andersen_internal {
 class AlgorithmId;
 class AnalysisResult;
 class Data;
+class EnumerationState;
 class ValueInfo;
 
 class DebugInfoFiller {
@@ -42,12 +43,21 @@ protected:
   typedef DenseMap<const AnalysisResult *, AnalysisResultInfo>
       AnalysisResultInfoMap;
   AnalysisResultInfoMap ARIM;
+  typedef DenseMap<const EnumerationState *, const AnalysisResult *>
+      EnumerationStateInfoMap;
+  EnumerationStateInfoMap ESIM;
 
 public:
   void fill(const AnalysisResult *AR, const ValueInfo *VI,
             const AlgorithmId *Id) {
     bool inserted = ARIM.insert(
         std::make_pair(AR, AnalysisResultInfo(VI, Id))).second;
+    (void)inserted;
+    assert(inserted);
+  }
+
+  void fill(const EnumerationState *ES, const AnalysisResult *AR) {
+    bool inserted = ESIM.insert(std::make_pair(ES, AR)).second;
     (void)inserted;
     assert(inserted);
   }
@@ -66,6 +76,8 @@ public:
   void printValueInfoName(const ValueInfo *VI, raw_ostream &OS) const;
 
   void printAnalysisResultName(const AnalysisResult *AR, raw_ostream &OS) const;
+
+  void printEnumerationStateName(const EnumerationState *ES, raw_ostream &OS) const;
 };
 
 }

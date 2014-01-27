@@ -13,8 +13,10 @@
 
 #include "InstructionAnalysisResult.h"
 
+#include "DebugInfo.h"
 #include "EnumerateContentResult.h"
 #include "EnumerationState.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
 namespace andersen_internal {
@@ -40,9 +42,46 @@ EnumerateContentResult InstructionAnalysisResult::enumerateContent(size_t i,
   return EnumerateContentResult::makeSubsetContentResult(SubsetsContent[i]);
 }
 
+void InstructionAnalysisResult::fillDebugInfo(DebugInfoFiller *DIF) const {
+  EnumerationState *Ptr = ES.get();
+  if (Ptr) {
+    DIF->fill(Ptr, this);
+  }
+}
+
+void InstructionAnalysisResult::writeEquation(const DebugInfo &DI,
+    raw_ostream &OS) const {
+  DI.printAnalysisResultName(this, OS);
+  OS << " = ";
+  bool first = true;
+  if (ValueInfoContent) {
+    OS << '{';
+    DI.printValueInfoName(ValueInfoContent, OS);
+    OS << '}';
+    first = false;
+  }
+  for (std::vector<AnalysisResult *>::const_iterator i = SubsetsContent.begin();
+       i != SubsetsContent.end(); ++i) {
+    if (!first) {
+      OS << " U ";
+    }
+    first = false;
+    DI.printAnalysisResultName(*i, OS);
+  }
+  if (first) {
+    // Empty.
+    OS << "{}";
+  }
+  OS << '\n';
+  EnumerationState *Ret = ES.get();
+  if (Ret) {
+    Ret->writeEquation(DI, OS);
+  }  
+}
+
 EnumerationState *InstructionAnalysisResult::getEnumerationState() {
-  EnumerationState *Ret;
-  if (!(Ret = ES.get())) {
+  EnumerationState *Ret = ES.get();
+  if (!Ret) {
     Ret = new EnumerationState(this);
     ES.reset(Ret);
   }

@@ -21,6 +21,7 @@
 namespace llvm {
 namespace andersen_internal {
 
+class AlgorithmId;
 class EnumerationState;
 class InstructionAnalysisResult;
 class ValueInfo;
@@ -34,9 +35,12 @@ public:
   TransformAnalysisResult(InstructionAnalysisResult *IAR);
   virtual ~TransformAnalysisResult();
   virtual EnumerateContentResult enumerateContent(size_t i, int Depth);
+  virtual void fillDebugInfo(DebugInfoFiller *DIF) const;
+  virtual void writeEquation(const DebugInfo &DI, raw_ostream &OS) const;
 
 private:
   virtual AnalysisResult *analyzeElement(ValueInfo *VI) const = 0;
+  virtual const AlgorithmId *getAlgorithmId() const = 0;
 };
 
 }
