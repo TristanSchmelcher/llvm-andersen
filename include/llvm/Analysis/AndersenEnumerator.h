@@ -18,26 +18,10 @@
 #include <cstddef>
 
 namespace llvm {
-
-class AndersenEnumerator;
-
-}
-
-namespace llvm {
 namespace andersen_internal {
 
 class AnalysisResult;
 class ValueInfo;
-
-class EnumeratorState {
-  friend class ::llvm::AndersenEnumerator;
-  friend class Enumerator;
-
-  AnalysisResult *AR;
-  size_t i;
-
-  explicit EnumeratorState(AnalysisResult *AR, size_t i = 0);
-};
 
 }
 }
@@ -45,11 +29,12 @@ class EnumeratorState {
 namespace llvm {
 
 class AndersenEnumerator {
-  andersen_internal::EnumeratorState ES;
+  andersen_internal::AnalysisResult *AR;
+  size_t i;
 
 public:
   explicit AndersenEnumerator(
-      andersen_internal::AnalysisResult *AR, size_t i = 0) : ES(AR, i) {}
+      andersen_internal::AnalysisResult *AR, size_t i = 0) : AR(AR), i(i) {}
 
   // Get next VI or null if done.
   andersen_internal::ValueInfo *enumerate();

@@ -14,7 +14,7 @@
 #ifndef ENUMERATOR_H
 #define ENUMERATOR_H
 
-#include "llvm/Analysis/AndersenEnumerator.h"
+#include <cstddef>
 
 namespace llvm {
 
@@ -25,22 +25,17 @@ class raw_ostream;
 namespace llvm {
 namespace andersen_internal {
 
+class AnalysisResult;
 class DebugInfo;
 class EnumerationResult;
 class GraphEdge;
 
-class Enumerator : private EnumeratorState {
-  // Must not have any fields.
-public:
-  explicit Enumerator(AnalysisResult *AR, size_t i = 0)
-    : EnumeratorState(AR, i) {}
+class Enumerator {
+  AnalysisResult *AR;
+  size_t i;
 
-  static Enumerator &forState(EnumeratorState &ES) {
-    // Since Enumerator has no data other than what it inherits from
-    // EnumeratorState, the downcast is safe. This trick lets us avoid declaring
-    // the internal Enumerator methods in a public header.
-    return static_cast<Enumerator &>(ES);
-  }
+public:
+  explicit Enumerator(AnalysisResult *AR, size_t i = 0) : AR(AR), i(i) {}
 
   EnumerationResult enumerate(int Depth, int LastTransformDepth);
   GraphEdge toGraphEdge() const;

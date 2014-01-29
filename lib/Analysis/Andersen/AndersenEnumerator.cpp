@@ -17,7 +17,6 @@
 
 #include "AnalysisResult.h"
 #include "EnumerationResult.h"
-#include "Enumerator.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -25,25 +24,12 @@
 #include <cassert>
 
 namespace llvm {
-namespace andersen_internal {
-
-EnumeratorState::EnumeratorState(AnalysisResult *AR, size_t i) : AR(AR), i(i) {
-  assert(AR);
-  assert(i <= AR->getSetContentsSoFar().size());
-}
-
-}
-}
-
-namespace llvm {
 
 using namespace andersen_internal;
 
 ValueInfo *AndersenEnumerator::enumerate() {
-  Enumerator &E(Enumerator::forState(ES));
-  DEBUG(dbgs() << "Begin " << E.getAnalysisResult() << '[' << E.getPosition()
-               << "]\n");
-  EnumerationResult ER(E.enumerate(0, -1));
+  DEBUG(dbgs() << "Begin " << AR << '[' << i << "]\n");
+  EnumerationResult ER(AR->enumerate(0, -1, i));
   switch (ER.getResultType()) {
   case EnumerationResult::NEXT_VALUE:
     DEBUG(dbgs() << "Result: " << ER.getNextValue() << '\n'); 

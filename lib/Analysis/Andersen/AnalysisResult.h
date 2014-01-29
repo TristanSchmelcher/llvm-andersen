@@ -31,12 +31,12 @@ namespace llvm {
 namespace andersen_internal {
 
 class DebugInfo;
+class EnumerationResult;
 class ValueInfo;
 typedef SetVector<ValueInfo *> ValueInfoSetVector;
 
 class AnalysisResult : public GraphNode {
   friend class EnumerationContext;
-  friend class Enumerator;
   friend class ScopedSetEnumerating;
 
   int EnumerationDepth;
@@ -53,6 +53,7 @@ public:
   // Prepare for possibly adding "Subset" to the work list as a
   // RecursiveEnumerate. Returns true if it should be added, else false.
   bool prepareForSubset(AnalysisResult *Subset);
+  EnumerationResult enumerate(int Depth, int LastTransformDepth, size_t &i);
   void writeEquation(const DebugInfo &DI, raw_ostream &OS) const;
 
   // INSTRUCTION_ANALYSIS_PHASE only.

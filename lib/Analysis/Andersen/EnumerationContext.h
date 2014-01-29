@@ -33,7 +33,7 @@ class ScopedSetEnumerating {
 };
 
 class EnumerationContext : private ScopedSetEnumerating {
-  friend class Enumerator;
+  friend class AnalysisResult;
 
   const int Depth;
   const int LastTransformDepth;
