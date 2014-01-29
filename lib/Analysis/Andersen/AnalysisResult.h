@@ -17,7 +17,7 @@
 #include "AnalysisResultWork.h"
 #include "GraphNode.h"
 #include "RecursiveEnumerate.h"
-#include "TransformStepBase.h"
+#include "TransformWorkBase.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 
@@ -64,7 +64,7 @@ public:
   }
 
   // INSTRUCTION_ANALYSIS_PHASE only.
-  void appendUniqueTransform(TransformStepBase *Entry) {
+  void appendUniqueTransform(TransformWorkBase *Entry) {
     Work.push_back(Entry);
   }
 

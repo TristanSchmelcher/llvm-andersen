@@ -18,7 +18,7 @@
 #include "AnalysisResult.h"
 #include "IsNotNecessarilyEmptyIfMissingProperty.h"
 #include "Phase.h"
-#include "TransformStep.h"
+#include "TransformWork.h"
 #include "TraversalAlgorithmId.h"
 #include "ValueInfo.h"
 
@@ -35,7 +35,7 @@ private:
 
     static AnalysisResult *run(ValueInfo *VI) {
       AnalysisResult *AR = new AnalysisResult();
-      AR->appendUniqueTransform(new TransformStep<SecondHopAlgorithm>(
+      AR->appendUniqueTransform(new TransformWork<SecondHopAlgorithm>(
           VI->getAlgorithmResult<FirstHopAlgorithm, RunPhase>()));
       return AR;
     }

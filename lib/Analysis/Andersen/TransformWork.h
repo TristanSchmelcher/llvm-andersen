@@ -1,4 +1,4 @@
-//===- TransformStep.h - analysis classes ---------------------------------===//
+//===- TransformWork.h - analysis classes ---------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,11 +13,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TRANSFORMSTEP_H
-#define TRANSFORMSTEP_H
+#ifndef TRANSFORMWORK_H
+#define TRANSFORMWORK_H
 
 #include "Phase.h"
-#include "TransformStepBase.h"
+#include "TransformWorkBase.h"
 #include "ValueInfo.h"
 
 #include <string>
@@ -28,9 +28,9 @@ namespace andersen_internal {
 class AnalysisResult;
 
 template<typename AlgorithmTy>
-class TransformStep : public TransformStepBase {
+class TransformWork : public TransformWorkBase {
 public:
-  explicit TransformStep(AnalysisResult *AR) : TransformStepBase(AR) {}
+  explicit TransformWork(AnalysisResult *AR) : TransformWorkBase(AR) {}
 
   virtual const AlgorithmId *getAlgorithmId() const {
     return &AlgorithmTy::ID;

@@ -1,4 +1,4 @@
-//===- TransformStepBase.cpp - analysis classes ---------------------------===//
+//===- TransformWorkBase.cpp - analysis classes ---------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "andersen"
-#include "TransformStepBase.h"
+#include "TransformWorkBase.h"
 
 #include "AlgorithmId.h"
 #include "EnumerationContext.h"
@@ -29,11 +29,11 @@
 namespace llvm {
 namespace andersen_internal {
 
-TransformStepBase::TransformStepBase(AnalysisResult *AR) : E(AR) {}
+TransformWorkBase::TransformWorkBase(AnalysisResult *AR) : E(AR) {}
 
-TransformStepBase::~TransformStepBase() {}
+TransformWorkBase::~TransformWorkBase() {}
 
-EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
+EnumerationResult TransformWorkBase::enumerate(EnumerationContext *Ctx) {
   for (;;) {
     DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
                  << " In " << Ctx->getAnalysisResult() << ": transform "
@@ -78,14 +78,14 @@ EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
   }
 }
 
-bool TransformStepBase::prepareForRewrite(AnalysisResult *RewriteTarget) const {
+bool TransformWorkBase::prepareForRewrite(AnalysisResult *RewriteTarget) const {
   // Redundant transforms in the same AnalysisResult are not possible since each
   // distinct transform step is only ever created once, so we always splice the
   // transforms.
   return true;
 }
 
-void TransformStepBase::writeFormula(const DebugInfo &DI,
+void TransformWorkBase::writeFormula(const DebugInfo &DI,
     raw_ostream &OS) const {
   getAlgorithmId()->printAlgorithmName(OS);
   OS << '(';
@@ -93,13 +93,13 @@ void TransformStepBase::writeFormula(const DebugInfo &DI,
   OS << ')';
 }
 
-GraphEdgeDeque TransformStepBase::getOutgoingEdges() const {
+GraphEdgeDeque TransformWorkBase::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   Result.push_back(E.toGraphEdge());
   return Result;
 }
 
-void TransformStepBase::printNodeLabel(const DebugInfo &DI,
+void TransformWorkBase::printNodeLabel(const DebugInfo &DI,
     raw_ostream &OS) const {
   OS << "Transform(";
   getAlgorithmId()->printAlgorithmName(OS);

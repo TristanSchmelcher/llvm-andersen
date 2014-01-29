@@ -1,4 +1,4 @@
-//===- TransformStepBase.h - analysis classes -----------------------------===//
+//===- TransformWorkBase.h - analysis classes -----------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TRANSFORMSTEPBASE_H
-#define TRANSFORMSTEPBASE_H
+#ifndef TRANSFORMWORKBASE_H
+#define TRANSFORMWORKBASE_H
 
 #include "AnalysisResultWork.h"
 #include "Enumerator.h"
@@ -28,12 +28,12 @@ class AlgorithmId;
 class AnalysisResult;
 class ValueInfo;
 
-class TransformStepBase : public AnalysisResultWork {
+class TransformWorkBase : public AnalysisResultWork {
   Enumerator E;
 
 public:
-  explicit TransformStepBase(AnalysisResult *AR);
-  virtual ~TransformStepBase();
+  explicit TransformWorkBase(AnalysisResult *AR);
+  virtual ~TransformWorkBase();
   virtual EnumerationResult enumerate(EnumerationContext *Ctx);
   virtual bool prepareForRewrite(AnalysisResult *RewriteTarget) const;
   virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const;

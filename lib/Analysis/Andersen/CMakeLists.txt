@@ -23,7 +23,7 @@ add_llvm_library(LLVMAndersen
   RelationHandler.cpp
   ReversePointsToAlgorithm.cpp
   StoredValuesPointsToAlgorithm.cpp
-  TransformStepBase.cpp
+  TransformWorkBase.cpp
   TraversalAlgorithmId.cpp
   ValueInfo.cpp
   )
