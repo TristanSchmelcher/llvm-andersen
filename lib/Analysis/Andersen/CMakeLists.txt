@@ -19,10 +19,10 @@ add_llvm_library(LLVMAndersen
   LiteralAlgorithmId.cpp
   LoadedValuesReversePointsToAlgorithm.cpp
   PointsToAlgorithm.cpp
-  RecursiveEnumerate.cpp
   RelationHandler.cpp
   ReversePointsToAlgorithm.cpp
   StoredValuesPointsToAlgorithm.cpp
+  SubsetWork.cpp
   TransformWorkBase.cpp
   TraversalAlgorithmId.cpp
   ValueInfo.cpp

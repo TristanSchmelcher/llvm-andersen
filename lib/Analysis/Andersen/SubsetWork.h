@@ -1,4 +1,4 @@
-//===- RecursiveEnumerate.h - algorithm classes ---------------------------===//
+//===- SubsetWork.h - algorithm classes -----------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares a type for recusively enumerating another AnalysisResult.
+// This file declares a type for enumerating the elements of an AnalysisResult
+// that come from a certain subset of it.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RECURSIVEENUMERATE_H
-#define RECURSIVEENUMERATE_H
+#ifndef SUBSETWORK_H
+#define SUBSETWORK_H
 
 #include "AnalysisResultWork.h"
 #include "Enumerator.h"
@@ -22,12 +23,12 @@ namespace andersen_internal {
 
 class AnalysisResult;
 
-class RecursiveEnumerate : public AnalysisResultWork {
+class SubsetWork : public AnalysisResultWork {
   Enumerator E;
 
 public:
-  RecursiveEnumerate(AnalysisResult *AR);
-  ~RecursiveEnumerate();
+  SubsetWork(AnalysisResult *AR);
+  ~SubsetWork();
   virtual EnumerationResult enumerate(EnumerationContext *Ctx);
   virtual bool prepareForRewrite(AnalysisResult *RewriteTarget) const;
   virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const;

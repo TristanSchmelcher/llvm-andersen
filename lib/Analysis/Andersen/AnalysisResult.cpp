@@ -17,7 +17,7 @@
 #include "DebugInfo.h"
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
-#include "RecursiveEnumerate.h"
+#include "SubsetWork.h"
 #include "ValueInfo.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -144,7 +144,7 @@ EnumerationResult AnalysisResult::enumerate(int Depth, int LastTransformDepth,
         RewriteTarget->Work.splice(RewriteTarget->Work.end(), Work);
         // Not using appendSubset here because it could incorrectly elide the
         // new entry.
-        Work.push_back(new RecursiveEnumerate(RewriteTarget));
+        Work.push_back(new SubsetWork(RewriteTarget));
         DEBUG(dbgs() << Depth << ':' << LastTransformDepth << " Leave " << this
                      << '[' << i << "]: rewriting " << RewriteTarget << '\n');
         return ER;

@@ -16,12 +16,12 @@
 
 #include "AnalysisResult.h"
 #include "AnalysisResultWork.h"
-#include "RecursiveEnumerate.h"
+#include "SubsetWork.h"
 
 namespace llvm {
 namespace andersen_internal {
 
-class RecursiveEnumerate;
+class SubsetWork;
 
 class ScopedSetEnumerating {
   friend class EnumerationContext;
@@ -53,21 +53,20 @@ public:
 
   bool canInline() const {
     assert(!AR->isDone());
-    // If this AR has a work list containing a sole RecursiveEnumerate and the
-    // level above is also a RecursiveEnumerate, then the inner one can be
-    // inlined into the upper one. Doing so gives up the chance to share the
-    // work done to filter out repeated VIs, but it has the advantage that
-    // redundant ARs can be erased, which is necessary when retries are
-    // involved.
+    // If this AR has a work list containing a sole SubsetWork and the level
+    // above is also a SubsetWork, then the inner one can be inlined into the
+    // upper one. Doing so gives up the chance to share the work done to filter
+    // out repeated VIs, but it has the advantage that redundant ARs can be
+    // erased, which is necessary when retries are involved.
     return getDepth() > getLastTransformDepth() + 1 &&
            ++AR->Work.begin() == AR->Work.end();
   }
 
-  RecursiveEnumerate *pushSubset(AnalysisResult *Subset) {
+  SubsetWork *pushSubset(AnalysisResult *Subset) {
     if (AR->prepareForSubset(Subset)) {
-      RecursiveEnumerate *RE = new RecursiveEnumerate(Subset);
-      Pos = AR->Work.insert(Pos, RE);
-      return RE;
+      SubsetWork *SW = new SubsetWork(Subset);
+      Pos = AR->Work.insert(Pos, SW);
+      return SW;
     } else {
       return 0;
     }

@@ -13,10 +13,6 @@
 
 #include "EnumerationContext.h"
 
-#include "AnalysisResult.h"
-#include "EnumerationResult.h"
-#include "RecursiveEnumerate.h"
-
 #include <cassert>
 
 namespace llvm {

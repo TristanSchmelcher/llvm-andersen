@@ -1,4 +1,4 @@
-//===- RecursiveEnumerate.cpp - analysis classes --------------------------===//
+//===- SubsetWork.cpp - analysis classes ----------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a type for recusively enumerating another AnalysisResult.
+// This file defines a type for enumerating the elements of an AnalysisResult
+// that come from a certain subset of it.
 //
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "andersen"
-#include "RecursiveEnumerate.h"
+#include "SubsetWork.h"
 
 #include "AnalysisResult.h"
 #include "EnumerationContext.h"
@@ -23,11 +24,11 @@
 namespace llvm {
 namespace andersen_internal {
 
-RecursiveEnumerate::RecursiveEnumerate(AnalysisResult *AR) : E(AR) {}
+SubsetWork::SubsetWork(AnalysisResult *AR) : E(AR) {}
 
-RecursiveEnumerate::~RecursiveEnumerate() {}
+SubsetWork::~SubsetWork() {}
 
-EnumerationResult RecursiveEnumerate::enumerate(EnumerationContext *Ctx) {
+EnumerationResult SubsetWork::enumerate(EnumerationContext *Ctx) {
   if (Ctx->canInline()) {
     DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
                  << " In " << Ctx->getAnalysisResult() << ": inlining "
@@ -60,26 +61,23 @@ EnumerationResult RecursiveEnumerate::enumerate(EnumerationContext *Ctx) {
   }
 }
 
-bool RecursiveEnumerate::prepareForRewrite(AnalysisResult *RewriteTarget)
-    const {
-  // If the target doesn't want this RecursiveEnumerate then delete it instead
-  // of moving it.
+bool SubsetWork::prepareForRewrite(AnalysisResult *RewriteTarget) const {
+  // If the target doesn't want this SubsetWork then delete it instead of moving
+  // it.
   return RewriteTarget->prepareForSubset(E.getAnalysisResult());
 }
 
-void RecursiveEnumerate::writeFormula(const DebugInfo &DI,
-    raw_ostream &OS) const {
+void SubsetWork::writeFormula(const DebugInfo &DI, raw_ostream &OS) const {
   E.writeFormula(DI, OS);
 }
 
-GraphEdgeDeque RecursiveEnumerate::getOutgoingEdges() const {
+GraphEdgeDeque SubsetWork::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   Result.push_back(E.toGraphEdge());
   return Result;
 }
 
-void RecursiveEnumerate::printNodeLabel(const DebugInfo &DI,
-                                        raw_ostream &OS) const {
+void SubsetWork::printNodeLabel(const DebugInfo &DI, raw_ostream &OS) const {
   OS << "Recurse";
 }
 

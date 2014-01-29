@@ -19,7 +19,7 @@
 #include "AlgorithmId.h"
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
-#include "RecursiveEnumerate.h"
+#include "SubsetWork.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -53,9 +53,9 @@ EnumerationResult TransformWorkBase::enumerate(EnumerationContext *Ctx) {
                    << " In " << Ctx->getAnalysisResult() << ": transformed "
                    << E.getAnalysisResult() << '[' << (E.getPosition() - 1)
                    << "] to " << AR << '\n');
-      RecursiveEnumerate *RE = Ctx->pushSubset(AR);
-      if (!RE) continue;
-      return RE->enumerate(Ctx);
+      SubsetWork *SW = Ctx->pushSubset(AR);
+      if (!SW) continue;
+      return SW->enumerate(Ctx);
     }
 
     case EnumerationResult::INLINE:

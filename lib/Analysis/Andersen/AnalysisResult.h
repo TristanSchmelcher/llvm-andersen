@@ -16,7 +16,7 @@
 
 #include "AnalysisResultWork.h"
 #include "GraphNode.h"
-#include "RecursiveEnumerate.h"
+#include "SubsetWork.h"
 #include "TransformWorkBase.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
@@ -51,7 +51,7 @@ public:
 
   bool addValueInfo(ValueInfo *VI);
   // Prepare for possibly adding "Subset" to the work list as a
-  // RecursiveEnumerate. Returns true if it should be added, else false.
+  // SubsetWork. Returns true if it should be added, else false.
   bool prepareForSubset(AnalysisResult *Subset);
   EnumerationResult enumerate(int Depth, int LastTransformDepth, size_t &i);
   void writeEquation(const DebugInfo &DI, raw_ostream &OS) const;
@@ -59,7 +59,7 @@ public:
   // INSTRUCTION_ANALYSIS_PHASE only.
   void appendSubset(AnalysisResult *Entry) {
     if (prepareForSubset(Entry)) {
-      Work.push_back(new RecursiveEnumerate(Entry));
+      Work.push_back(new SubsetWork(Entry));
     }
   }
 
