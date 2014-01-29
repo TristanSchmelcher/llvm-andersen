@@ -78,6 +78,13 @@ EnumerationResult Enumerator::enumerate(int Depth, int LastTransformDepth) {
       break;
     }
 
+    case EnumerationResult::INLINE:
+      DEBUG(dbgs() << Depth << ':' << LastTransformDepth << " Leave " << AR
+                   << '[' << i << "]: inlining "
+                   << ER.getInlineEnumerator()->getAnalysisResult() << '['
+                   << ER.getInlineEnumerator()->getPosition() << ":]\n");
+      return ER;
+
     case EnumerationResult::RETRY: {
       AnalysisResult *NewRetryCancellationPoint =
           ER.getRetryCancellationPoint();
@@ -106,9 +113,20 @@ EnumerationResult Enumerator::enumerate(int Depth, int LastTransformDepth) {
       Ctx.Pos = AR->Work.erase(Ctx.Pos);
       if (RewriteTarget != AR) {
         assert(RewriteTarget->EnumerationDepth < AR->EnumerationDepth);
-        RewriteTarget->Work.splice(RewriteTarget->Work.end(),
-                                   AR->Work);
-        AR->addWork(new RecursiveEnumerate(RewriteTarget));
+        // Erase any work that shouldn't be moved.
+        for (AnalysisResultWorkList::iterator j = AR->Work.begin();
+             j != AR->Work.end(); ) {
+          if (j->prepareForRewrite(RewriteTarget)) {
+            ++j;
+          } else {
+            j = AR->Work.erase(j);
+          }
+        }
+        // Splice all remaining objects to the target.
+        RewriteTarget->Work.splice(RewriteTarget->Work.end(), AR->Work);
+        // Not using appendSubset here because it could incorrectly elide the
+        // new entry.
+        AR->Work.push_back(new RecursiveEnumerate(RewriteTarget));
         DEBUG(dbgs() << Depth << ':' << LastTransformDepth << " Leave " << AR
                      << '[' << i << "]: rewriting " << RewriteTarget << '\n');
         return ER;

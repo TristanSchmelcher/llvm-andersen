@@ -35,7 +35,7 @@ private:
 
     static AnalysisResult *run(ValueInfo *VI) {
       AnalysisResult *AR = new AnalysisResult();
-      AR->addWork(new TransformStep<SecondHopAlgorithm>(
+      AR->appendUniqueTransform(new TransformStep<SecondHopAlgorithm>(
           VI->getAlgorithmResult<FirstHopAlgorithm, RunPhase>()));
       return AR;
     }

@@ -19,6 +19,7 @@
 #include "AlgorithmId.h"
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
+#include "RecursiveEnumerate.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -52,8 +53,14 @@ EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
                    << " In " << Ctx->getAnalysisResult() << ": transformed "
                    << E.getAnalysisResult() << '[' << (E.getPosition() - 1)
                    << "] to " << AR << '\n');
-      return Ctx->pushWork(AR);
+      RecursiveEnumerate *RE = Ctx->pushSubset(AR);
+      if (!RE) continue;
+      return RE->enumerate(Ctx);
     }
+
+    case EnumerationResult::INLINE:
+      llvm_unreachable("Cannot inline past a transform");
+      break;
 
     case EnumerationResult::RETRY:
     case EnumerationResult::COMPLETE:
@@ -69,6 +76,13 @@ EnumerationResult TransformStepBase::enumerate(EnumerationContext *Ctx) {
     }
     return ER;
   }
+}
+
+bool TransformStepBase::prepareForRewrite(AnalysisResult *RewriteTarget) const {
+  // Redundant transforms in the same AnalysisResult are not possible since each
+  // distinct transform step is only ever created once, so we always splice the
+  // transforms.
+  return true;
 }
 
 void TransformStepBase::writeFormula(const DebugInfo &DI,

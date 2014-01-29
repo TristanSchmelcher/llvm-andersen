@@ -29,6 +29,20 @@ AnalysisResult::~AnalysisResult() {
   assert(!isEnumerating());
 }
 
+bool AnalysisResult::addValueInfo(ValueInfo *VI) {
+  return Set.insert(VI);
+}
+
+bool AnalysisResult::prepareForSubset(AnalysisResult *Subset) {
+  if (Subset == this) {
+    // We could let it be added since it will trivially be elided, but
+    // preventing it in the first place avoids an unnecessary entry in the set.
+    return false;
+  }
+  // If we have added this subset to the work list before, don't add it again.
+  return Subsets.insert(Subset).second;
+}
+
 void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
   DI.printAnalysisResultName(this, OS);
   OS << " = ";

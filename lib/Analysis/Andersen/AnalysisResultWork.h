@@ -27,6 +27,7 @@ class raw_ostream;
 namespace llvm {
 namespace andersen_internal {
 
+class AnalysisResult;
 class DebugInfo;
 class EnumerationContext;
 class EnumerationResult;
@@ -40,6 +41,7 @@ public:
   virtual bool isNodeHidden() const;
 
   virtual EnumerationResult enumerate(EnumerationContext *Ctx) = 0;
+  virtual bool prepareForRewrite(AnalysisResult *RewriteTarget) const = 0;
   virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const = 0;
 };
 

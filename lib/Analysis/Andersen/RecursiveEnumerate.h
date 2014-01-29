@@ -29,6 +29,7 @@ public:
   RecursiveEnumerate(AnalysisResult *AR);
   ~RecursiveEnumerate();
   virtual EnumerationResult enumerate(EnumerationContext *Ctx);
+  virtual bool prepareForRewrite(AnalysisResult *RewriteTarget) const;
   virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const;
   virtual GraphEdgeDeque getOutgoingEdges() const;
   virtual void printNodeLabel(const DebugInfo &DI, raw_ostream &OS) const;

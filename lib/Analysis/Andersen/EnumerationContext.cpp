@@ -43,12 +43,5 @@ EnumerationContext::EnumerationContext(AnalysisResult *AR, int Depth,
 
 EnumerationContext::~EnumerationContext() {}
 
-EnumerationResult EnumerationContext::pushWork(AnalysisResult *Child) {
-  // If Child == AR, then it's superfluous, but in practice that doesn't happen.
-  RecursiveEnumerate *RE = new RecursiveEnumerate(Child);
-  Pos = AR->Work.insert(Pos, RE);
-  return RE->enumerate(this);
-}
-
 }
 }

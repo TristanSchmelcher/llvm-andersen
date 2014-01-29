@@ -20,12 +20,14 @@ namespace llvm {
 namespace andersen_internal {
 
 class AnalysisResult;
+class Enumerator;
 class ValueInfo;
 
 class EnumerationResult {
 public:
   enum Type {
     NEXT_VALUE,
+    INLINE,
     RETRY,
     REWRITE,
     COMPLETE
@@ -35,12 +37,16 @@ private:
   Type type;
   union {
     ValueInfo *NextValue;
+    Enumerator *InlineEnumerator;
     AnalysisResult *AR;
     void *Unused;
   };
 
   explicit EnumerationResult(ValueInfo *NextValue)
     : type(NEXT_VALUE), NextValue(NextValue) {}
+
+  explicit EnumerationResult(Enumerator *InlineEnumerator)
+    : type(INLINE), InlineEnumerator(InlineEnumerator) {}
 
   EnumerationResult(Type type, AnalysisResult *AR)
     : type(type), AR(AR) {
@@ -53,6 +59,10 @@ private:
 public:
   static EnumerationResult makeNextValueResult(ValueInfo *NextValue) {
     return EnumerationResult(NextValue);
+  }
+
+  static EnumerationResult makeInlineResult(Enumerator *InlineEnumerator) {
+    return EnumerationResult(InlineEnumerator);
   }
 
   static EnumerationResult makeRetryResult(
@@ -76,6 +86,11 @@ public:
   ValueInfo *getNextValue() const {
     assert(type == NEXT_VALUE);
     return NextValue;
+  }
+
+  Enumerator *getInlineEnumerator() const {
+    assert(type == INLINE);
+    return InlineEnumerator;
   }
 
   AnalysisResult *getRetryCancellationPoint() const {

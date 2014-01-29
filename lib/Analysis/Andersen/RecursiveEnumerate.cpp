@@ -14,6 +14,7 @@
 #define DEBUG_TYPE "andersen"
 #include "RecursiveEnumerate.h"
 
+#include "AnalysisResult.h"
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
 #include "llvm/Support/Debug.h"
@@ -27,10 +28,43 @@ RecursiveEnumerate::RecursiveEnumerate(AnalysisResult *AR) : E(AR) {}
 RecursiveEnumerate::~RecursiveEnumerate() {}
 
 EnumerationResult RecursiveEnumerate::enumerate(EnumerationContext *Ctx) {
+  if (Ctx->canInline()) {
+    DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
+                 << " In " << Ctx->getAnalysisResult() << ": inlining "
+                 << E.getAnalysisResult() << '[' << E.getPosition() << ":]\n");
+    return EnumerationResult::makeInlineResult(&E);
+  }
   DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
                << " In " << Ctx->getAnalysisResult() << ": recurse to "
                << E.getAnalysisResult() << '[' << E.getPosition() << "]\n");
-  return E.enumerate(Ctx->getNextDepth(), Ctx->getLastTransformDepth());
+  for (;;) {
+    EnumerationResult ER(E.enumerate(Ctx->getNextDepth(),
+                                     Ctx->getLastTransformDepth()));
+    if (ER.getResultType() != EnumerationResult::INLINE) {
+      return ER;
+    }
+
+    const Enumerator &NewE(*ER.getInlineEnumerator());
+    if (!Ctx->getAnalysisResult()->prepareForSubset(NewE.getAnalysisResult())) {
+      DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
+                   << " In " << Ctx->getAnalysisResult()
+                   << ": optimized away inline of " << NewE.getAnalysisResult()
+                   << '[' << NewE.getPosition() << ":]\n");
+      return EnumerationResult::makeCompleteResult();
+    }
+    E = NewE;
+    DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
+                 << " In " << Ctx->getAnalysisResult() << ": inlined "
+                 << NewE.getAnalysisResult() << '[' << NewE.getPosition()
+                 << ":]\n");
+  }
+}
+
+bool RecursiveEnumerate::prepareForRewrite(AnalysisResult *RewriteTarget)
+    const {
+  // If the target doesn't want this RecursiveEnumerate then delete it instead
+  // of moving it.
+  return RewriteTarget->prepareForSubset(E.getAnalysisResult());
 }
 
 void RecursiveEnumerate::writeFormula(const DebugInfo &DI,

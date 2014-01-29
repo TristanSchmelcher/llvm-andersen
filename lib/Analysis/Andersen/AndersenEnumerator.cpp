@@ -49,6 +49,10 @@ ValueInfo *AndersenEnumerator::enumerate() {
     DEBUG(dbgs() << "Result: " << ER.getNextValue() << '\n'); 
     return ER.getNextValue();
 
+  case EnumerationResult::INLINE:
+    llvm_unreachable("Received spurious inline-result");
+    break;
+
   case EnumerationResult::RETRY:
     llvm_unreachable("Received uncancelled retry-result");
     break;

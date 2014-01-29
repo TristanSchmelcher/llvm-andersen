@@ -33,7 +33,7 @@ class EnumeratorState {
   friend class ::llvm::AndersenEnumerator;
   friend class Enumerator;
 
-  AnalysisResult *const AR;
+  AnalysisResult *AR;
   size_t i;
 
   explicit EnumeratorState(AnalysisResult *AR, size_t i = 0);

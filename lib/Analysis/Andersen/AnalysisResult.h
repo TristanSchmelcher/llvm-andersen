@@ -16,9 +16,10 @@
 
 #include "AnalysisResultWork.h"
 #include "GraphNode.h"
+#include "RecursiveEnumerate.h"
+#include "TransformStepBase.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
-
-#include <string>
 
 namespace llvm {
 
@@ -41,22 +42,34 @@ class AnalysisResult : public GraphNode {
   int EnumerationDepth;
   ValueInfoSetVector Set;
   AnalysisResultWorkList Work;
+  typedef DenseSet<AnalysisResult *> AnalysisResultSet;
+  AnalysisResultSet Subsets;
 
 public:
   AnalysisResult();
   virtual ~AnalysisResult();
 
-  bool addValueInfo(ValueInfo *VI) { return Set.insert(VI); }
+  bool addValueInfo(ValueInfo *VI);
+  // Prepare for possibly adding "Subset" to the work list as a
+  // RecursiveEnumerate. Returns true if it should be added, else false.
+  bool prepareForSubset(AnalysisResult *Subset);
+  void writeEquation(const DebugInfo &DI, raw_ostream &OS) const;
 
-  // If WorkEntry is a RecursiveEnumerate whose target is "this", then it's
-  // superfluous, but in practice that doesn't happen.
-  void addWork(AnalysisResultWork *Entry) { Work.push_back(Entry); }
+  // INSTRUCTION_ANALYSIS_PHASE only.
+  void appendSubset(AnalysisResult *Entry) {
+    if (prepareForSubset(Entry)) {
+      Work.push_back(new RecursiveEnumerate(Entry));
+    }
+  }
+
+  // INSTRUCTION_ANALYSIS_PHASE only.
+  void appendUniqueTransform(TransformStepBase *Entry) {
+    Work.push_back(Entry);
+  }
 
   const ValueInfoSetVector &getSetContentsSoFar() const { return Set; }
 
   bool isDone() const { return Work.empty(); }
-
-  void writeEquation(const DebugInfo &DI, raw_ostream &OS) const;
 
   virtual GraphEdgeDeque getOutgoingEdges() const;
   virtual void printNodeLabel(const DebugInfo &DI, raw_ostream &OS) const;
