@@ -10,7 +10,6 @@ add_llvm_library(LLVMAndersen
   AndersenPass.cpp
   Data.cpp
   DebugInfo.cpp
-  EnumerationContext.cpp
   Enumerator.cpp
   FormalParametersReversePointsToAlgorithm.cpp
   FormalReturnValueReversePointsToAlgorithm.cpp

@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares a type for the context of an analysis result enumeration.
+// This file defines a type for the context of an analysis result enumeration.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,15 +21,21 @@
 namespace llvm {
 namespace andersen_internal {
 
-class SubsetWork;
-
 class ScopedSetEnumerating {
   friend class EnumerationContext;
 
   AnalysisResult *const AR;
 
-  ScopedSetEnumerating(AnalysisResult *AR, int Depth);
-  ~ScopedSetEnumerating();
+  ScopedSetEnumerating(AnalysisResult *AR, int Depth) : AR(AR) {
+    assert(!AR->isEnumerating());
+    assert(Depth >= 0);
+    AR->EnumerationDepth = Depth;
+  }
+
+  ~ScopedSetEnumerating() {
+    assert(AR->isEnumerating());
+    AR->EnumerationDepth = -1;
+  }
 };
 
 class EnumerationContext : private ScopedSetEnumerating {
@@ -39,8 +45,11 @@ class EnumerationContext : private ScopedSetEnumerating {
   const int LastTransformDepth;
   AnalysisResultWorkList::iterator Pos;
 
-  EnumerationContext(AnalysisResult *AR, int Depth, int LastTransformDepth);
-  ~EnumerationContext();
+  EnumerationContext(AnalysisResult *AR, int Depth, int LastTransformDepth)
+    : ScopedSetEnumerating(AR, Depth),
+      Depth(Depth),
+      LastTransformDepth(LastTransformDepth),
+      Pos(AR->Work.begin()) {}
 
 public:
   int getDepth() const { return Depth; }
