@@ -49,8 +49,6 @@ class ValueInfo : private RefCountedBase<ValueInfo>, public GraphNode {
 public:
   typedef IntrusiveRefCntPtr<ValueInfo> Ref;
 
-  static ValueInfo *const Nil;
-
   ValueInfo(const Value *V);
 
   const Value *getValue() const {

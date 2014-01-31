@@ -26,8 +26,6 @@
 namespace llvm {
 namespace andersen_internal {
 
-ValueInfo *const ValueInfo::Nil = 0;
-
 ValueInfo::ValueInfo(const Value *V) : V(V) {}
 
 ValueInfo::~ValueInfo() {
@@ -36,8 +34,8 @@ ValueInfo::~ValueInfo() {
 
 GraphEdgeDeque ValueInfo::getOutgoingEdges() const {
   GraphEdgeDeque Result;
-  for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
-       ++i) {
+  for (ResultsMapTy::const_iterator i = Results.begin(), End = Results.end();
+       i != End; ++i) {
     const AlgorithmId *Id = i->first;
     AnalysisResult *AR = i->second;
     std::ostringstream OSS;
@@ -61,15 +59,15 @@ bool ValueInfo::isNodeHidden() const {
 }
 
 void ValueInfo::fillDebugInfo(DebugInfoFiller *DIF) const {
-  for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
-       ++i) {
+  for (ResultsMapTy::const_iterator i = Results.begin(), End = Results.end();
+       i != Results.end(); ++i) {
     DIF->fill(i->second, this, i->first);
   }
 }
 
 void ValueInfo::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
-  for (ResultsMapTy::const_iterator i = Results.begin(); i != Results.end();
-       ++i) {
+  for (ResultsMapTy::const_iterator i = Results.begin(), End = Results.end();
+       i != Results.end(); ++i) {
     i->second->writeEquation(DI, OS);
   }
 }

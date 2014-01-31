@@ -85,8 +85,8 @@ bool TransformWorkBase::prepareForRewrite(AnalysisResult *RewriteTarget) const {
   return true;
 }
 
-void TransformWorkBase::writeFormula(const DebugInfo &DI,
-    raw_ostream &OS) const {
+void TransformWorkBase::writeFormula(const DebugInfo &DI, raw_ostream &OS)
+    const {
   getAlgorithmId()->printAlgorithmName(OS);
   OS << '(';
   E.writeFormula(DI, OS);
@@ -99,8 +99,8 @@ GraphEdgeDeque TransformWorkBase::getOutgoingEdges() const {
   return Result;
 }
 
-void TransformWorkBase::printNodeLabel(const DebugInfo &DI,
-    raw_ostream &OS) const {
+void TransformWorkBase::printNodeLabel(const DebugInfo &DI, raw_ostream &OS)
+    const {
   OS << "Transform(";
   getAlgorithmId()->printAlgorithmName(OS);
   OS << ')';

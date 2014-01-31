@@ -290,12 +290,13 @@ private:
       visit(i->getBlock());
     }
     // Process all the PHI nodes.
-    for (PHINodeWorkVector::const_iterator i = PHINodeWork.begin();
-         i != PHINodeWork.end(); ++i) {
+    for (PHINodeWorkVector::const_iterator i = PHINodeWork.begin(),
+                                           End = PHINodeWork.end();
+         i != End; ++i) {
       const PHINode *PHI = i->first;
       ValueInfo *PHIAnalysis = i->second;
-      for (PHINode::const_op_iterator i = PHI->op_begin(); i != PHI->op_end();
-           ++i) {
+      for (PHINode::const_op_iterator i = PHI->op_begin(), End = PHI->op_end();
+           i != End; ++i) {
         ValueInfo *OperandAnalysis = analyzeValue(*i);
         if (OperandAnalysis) {
           RelationHandler::handleRelation<DEPENDS_ON>(PHIAnalysis,
@@ -340,7 +341,7 @@ private:
   }
 
   ValueInfo *cacheNil(const Value *V) {
-    return cache(V, ValueInfo::Nil);
+    return cache(V, 0);
   }
 
   ValueInfo *getGlobalRegionInfo(const GlobalValue *G) {
@@ -407,7 +408,7 @@ private:
         assert(isa<GlobalVariable>(G) || isa<Function>(G));
         VI = analyzeGlobalRegion(G);
       }
-      if (VI != ValueInfo::Nil && !G->hasLocalLinkage()) {
+      if (VI && !G->hasLocalLinkage()) {
         RelationHandler::handleRelation<DEPENDS_ON>(
             D->ExternallyLinkableRegions.getPtr(), VI);
       }
@@ -474,9 +475,10 @@ private:
   ValueInfo *analyzeUser(const User *U) {
     typedef SmallVector<ValueInfo *, 3> ValueInfoVector;
     ValueInfoVector Set;
-    for (User::const_op_iterator i = U->op_begin(); i != U->op_end(); ++i) {
+    for (User::const_op_iterator i = U->op_begin(), End = U->op_end(); i != End;
+         ++i) {
       ValueInfo *VI = analyzeValue(*i);
-      if (VI != ValueInfo::Nil) {
+      if (VI) {
         Set.push_back(VI);
       }
     }
@@ -490,8 +492,8 @@ private:
       break;
     default:
       Result = cacheNewValueInfo(U);
-      for (ValueInfoVector::const_iterator i = Set.begin(); i != Set.end();
-           ++i) {
+      for (ValueInfoVector::const_iterator i = Set.begin(), End = Set.end();
+           i != Set.end(); ++i) {
         RelationHandler::handleRelation<DEPENDS_ON>(Result, *i);
       }
       break;

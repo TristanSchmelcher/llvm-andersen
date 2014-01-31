@@ -127,8 +127,9 @@ bool AndersenPass::runOnModule(Module &M) {
   assert(!Data);
   Data = InstructionAnalyzer::run(this, M);
   if (NonLazy) {
-    for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin();
-         i != Data->ValueInfos.end(); ++i) {
+    for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin(),
+                                      End = Data->ValueInfos.end();
+         i != End; ++i) {
       getPointsToSet(getHandleToPointsToSet(i->first));
     }
   }
