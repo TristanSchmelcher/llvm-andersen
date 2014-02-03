@@ -1,4 +1,4 @@
-//===- ActualParametersPointsToAlgorithm.h --------------------------------===//
+//===- ReferencedValuesPointsToAlgorithm.h --------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the type for the actual parameters points-to algorithm.
+// This file declares the type for the referenced values points-to algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ACTUALPARAMETERSPOINTSTOALGORITHM_H
-#define ACTUALPARAMETERSPOINTSTOALGORITHM_H
+#ifndef REFERENCEDVALUESPOINTSTOALGORITHM_H
+#define REFERENCEDVALUESPOINTSTOALGORITHM_H
 
 #include "InstructionAnalysisAlgorithm.h"
 #include "LiteralAlgorithmId.h"
@@ -20,7 +20,7 @@
 namespace llvm {
 namespace andersen_internal {
 
-struct ActualParametersPointsToAlgorithm : public InstructionAnalysisAlgorithm {
+struct ReferencedValuesPointsToAlgorithm : public InstructionAnalysisAlgorithm {
   static const LiteralAlgorithmId ID;
 };
 

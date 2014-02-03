@@ -32,9 +32,10 @@ namespace llvm {
 
 class AndersenEnumerator;
 class Value;
+typedef andersen_internal::ValueInfo *AndersenValueHandle;
 // Same as andersen_internal::ValueInfoSetVector.
-typedef SetVector<andersen_internal::ValueInfo *> PointsToSet;
-typedef andersen_internal::AnalysisResult *AndersenHandle;
+typedef SetVector<AndersenValueHandle> RegionSet;
+typedef andersen_internal::AnalysisResult *AndersenSetHandle;
 
 /// AndersenPass - An LLVM pass which implements Andersen's algorithm for
 /// points-to analysis with some modifications for lazy evaluation.
@@ -46,33 +47,47 @@ public:
   static char ID; // Pass identification, replacement for typeid
   AndersenPass();
 
-  // Get an opaque handle to the points-to set of V which can be used for the
-  // other methods.
-  AndersenHandle getHandleToPointsToSet(const Value *V) const;
+  // Get an opaque handle to the Andersen information for a given Value.
+  AndersenValueHandle getHandleToValue(const Value *V) const;
 
-  // Get the points-to set of V, or null if V cannot point to anything. If the
-  // points-to set has not yet been fully computed, this method computes it.
-  // The elements should be treated as opaque ids for abstract memory regions in
-  // the program.
-  const PointsToSet *getPointsToSet(AndersenHandle AH) const;
+  // Get an opaque handle to the set of regions that may be pointed-to by a
+  // given value.
+  static AndersenSetHandle getHandleToPointsToSet(AndersenValueHandle VH);
 
-  // Equivalent to getPointsToSet(AH).empty(), but does not force computation of
-  // the whole set.
-  bool isPointsToSetEmpty(AndersenHandle AH) const;
+  // Get an opaque handle to the set of regions that may be read by a call to
+  // a given function pointer.
+  static AndersenSetHandle getHandleToFunctionPointerReadSet(
+      AndersenValueHandle VH);
 
-  // Get an enumerator for the points-to set of V which computes the set
-  // lazily. This is more efficient than getPointsToSet() if the full set may
-  // not be needed.
-  AndersenEnumerator enumeratePointsToSet(AndersenHandle AH) const;
+  // Get an opaque handle to the set of regions that may be written by a call to
+  // a given function pointer.
+  static AndersenSetHandle getHandleToFunctionPointerWriteSet(
+      AndersenValueHandle VH);
 
-  // Get the contents of the points-to set of V that have so far been
-  // computed, or null if V cannot point to anything.
-  const PointsToSet *getPointsToSetContentsSoFar(AndersenHandle AH) const;
+  // Determine whether the set-intersection of two set handles is empty.
+  static bool isSetIntersectionEmpty(AndersenSetHandle SH1,
+      AndersenSetHandle SH2);
 
-  // Get an enumerator for any remaining contents of the points-to set of V
-  // which have not yet been computed.
-  AndersenEnumerator enumeratePointsToSetContentsRemaining(AndersenHandle AH)
-      const;
+  // Get the complete set for the given set handle, or null if empty. If the set
+  // has not yet been fully computed, this method computes it. The elements
+  // should be treated as opaque ids for abstract memory regions in the program.
+  static const RegionSet *getSet(AndersenSetHandle SH);
+
+  // Equivalent to getSet(SH).empty(), but does not force computation of the
+  // whole set.
+  static bool isSetEmpty(AndersenSetHandle SH);
+
+  // Get an enumerator for the given set handle which computes the set lazily.
+  // This is more efficient than getSet() if the full set may not be needed.
+  static AndersenEnumerator enumerateSet(AndersenSetHandle SH);
+
+  // Get the contents of the given set handle that have so far been computed, or
+  // null if it is already known to be empty.
+  static const RegionSet *getSetContentsSoFar(AndersenSetHandle SH);
+
+  // Get an enumerator for any remaining contents of the given set handle which
+  // have not yet been computed.
+  static AndersenEnumerator enumerateSetContentsRemaining(AndersenSetHandle SH);
 
 private:
   virtual bool runOnModule(Module &M);

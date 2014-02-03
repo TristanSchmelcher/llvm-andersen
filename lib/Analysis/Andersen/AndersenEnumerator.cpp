@@ -28,6 +28,10 @@ namespace llvm {
 using namespace andersen_internal;
 
 ValueInfo *AndersenEnumerator::enumerate() {
+  if (!AR) {
+    // Empty set.
+    return 0;
+  }
   DEBUG(dbgs() << "Begin " << AR << '[' << i << "]\n");
   EnumerationResult ER(AR->enumerate(0, -1, i));
   switch (ER.getResultType()) {

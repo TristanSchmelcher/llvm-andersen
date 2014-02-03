@@ -18,6 +18,7 @@
 #include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/AndersenPass.h"
 #include "llvm/Analysis/Passes.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/Casting.h"
@@ -65,6 +66,7 @@ private:
                                      const Location &Loc);
   virtual ModRefResult getModRefInfo(ImmutableCallSite CS1,
                                      ImmutableCallSite CS2);
+  ModRefBehavior getFunctionPointerModRefBehavior(const Value *F);
 };
 
 char AndersenAliasAnalysis::ID = 0;
@@ -84,34 +86,23 @@ bool AndersenAliasAnalysis::runOnModule(Module &M) {
 AliasAnalysis::AliasResult
 AndersenAliasAnalysis::alias(const Location &LocA,
                              const Location &LocB) {
-  AndersenHandle A = AP->getHandleToPointsToSet(LocA.Ptr);
-  AndersenHandle B = AP->getHandleToPointsToSet(LocB.Ptr);
-  if (AP->isPointsToSetEmpty(A) || AP->isPointsToSetEmpty(B)) {
-    // If either points to nothing, then we can skip the rest.
+  AndersenSetHandle A = AP->getHandleToPointsToSet(
+      AP->getHandleToValue(LocA.Ptr));
+  AndersenSetHandle B = AP->getHandleToPointsToSet(
+      AP->getHandleToValue(LocB.Ptr));
+  if (AP->isSetIntersectionEmpty(A, B)) {
     return NoAlias;
+  } else {
+    return AliasAnalysis::alias(LocA, LocB);
   }
-  // TODO: What is the optimal enumeration strategy?
-  const PointsToSet *PointsToSetA = AP->getPointsToSet(A);
-  assert(PointsToSetA);
-  for (AndersenEnumerator AE(AP->enumeratePointsToSet(B));; ) {
-    ValueInfo *Next = AE.enumerate();
-    if (!Next) break;
-    if (PointsToSetA->count(Next)) {
-      // TODO: We may be able to eliminate some MayAlias results by calling
-      // through to the base AA with the Value(s) related to A and B's
-      // dependency on Next.
-      return AliasAnalysis::alias(LocA, LocB);
-    }
-  }
-  // No overlap in the points-to sets, so cannot alias.
-  return NoAlias;
 }
 
 bool AndersenAliasAnalysis::pointsToConstantMemory(const Location &Loc,
                                                    bool OrLocal) {
-  AndersenHandle L = AP->getHandleToPointsToSet(Loc.Ptr);
+  AndersenSetHandle L = AP->getHandleToPointsToSet(
+      AP->getHandleToValue(Loc.Ptr));
   // This is loosely based on the BasicAliasAnalysis implementation.
-  for (AndersenEnumerator AE(AP->enumeratePointsToSet(L));; ) {
+  for (AndersenEnumerator AE(AP->enumerateSet(L));; ) {
     ValueInfo *Next = AE.enumerate();
     if (!Next) break;
     const Value *V = Next->getValue();
@@ -157,33 +148,86 @@ void AndersenAliasAnalysis::addEscapingUse(Use &U) {
 AliasAnalysis::ModRefResult
 AndersenAliasAnalysis::getModRefInfo(ImmutableCallSite CS,
                                      const Location &Loc) {
-  // TODO
-  // Note: the base class implementation does more than just forward. Ideally
-  // it should expose an accessor for the next AliasAnalysis in the chain.
-  return AliasAnalysis::getModRefInfo(CS, Loc);
+  ModRefResult Result = NoModRef;
+  AndersenValueHandle F = AP->getHandleToValue(CS.getCalledValue());
+  AndersenSetHandle Reads = AP->getHandleToFunctionPointerReadSet(F);
+  AndersenSetHandle Writes = AP->getHandleToFunctionPointerWriteSet(F);
+  AndersenSetHandle Location = AP->getHandleToPointsToSet(
+      AP->getHandleToValue(Loc.Ptr));
+  if (!AP->isSetIntersectionEmpty(Reads, Location)) {
+    Result = ModRefResult(Result | Ref);
+  }
+  if (!AP->isSetIntersectionEmpty(Writes, Location)) {
+    Result = ModRefResult(Result | Mod);
+  }
+  if (Result != NoModRef) {
+    Result = ModRefResult(Result & AliasAnalysis::getModRefInfo(CS, Loc));
+  }
+  return Result;
 }
 
 AliasAnalysis::ModRefResult
 AndersenAliasAnalysis::getModRefInfo(ImmutableCallSite CS1,
                                      ImmutableCallSite CS2) {
-  // TODO
-  // Note: the base class implementation does more than just forward. Ideally
-  // it should expose an accessor for the next AliasAnalysis in the chain.
-  return AliasAnalysis::getModRefInfo(CS1, CS2);
+  // From the documentation, the semantics of this call are:
+  // - NoModRef if neither call writes to memory read or written by the other.
+  // - Ref if CS1 reads memory written by CS2.
+  // - Mod if CS1 writes to memory read or written by CS2.
+  // - ModRef if CS1 might read or write memory written to by CS2.
+  ModRefResult Result = NoModRef;
+  AndersenValueHandle F1 = AP->getHandleToValue(CS1.getCalledValue());
+  AndersenValueHandle F2 = AP->getHandleToValue(CS2.getCalledValue());
+  AndersenSetHandle Reads1 = AP->getHandleToFunctionPointerReadSet(F1);
+  AndersenSetHandle Writes1 = AP->getHandleToFunctionPointerWriteSet(F1);
+  AndersenSetHandle Writes2 = AP->getHandleToFunctionPointerWriteSet(F2);
+  // Fetch of Reads2 is delayed since it may not be needed.
+  if (!AP->isSetIntersectionEmpty(Reads1, Writes2)) {
+    Result = ModRefResult(Result | Ref);
+  }
+  if (!AP->isSetIntersectionEmpty(Writes1, Writes2) ||
+      !AP->isSetIntersectionEmpty(
+          Writes1,
+          // Reads2
+          AP->getHandleToFunctionPointerReadSet(F2))) {
+    Result = ModRefResult(Result | Mod);
+  }
+  if (Result != NoModRef) {
+    Result = ModRefResult(Result & AliasAnalysis::getModRefInfo(CS1, CS2));
+  }
+  return Result;
 }
 
 AliasAnalysis::ModRefBehavior
 AndersenAliasAnalysis::getModRefBehavior(ImmutableCallSite CS) {
-  // TODO
-  // Note: the base class implementation does more than just forward. Ideally
-  // it should expose an accessor for the next AliasAnalysis in the chain.
-  return AliasAnalysis::getModRefBehavior(CS);
+  ModRefBehavior Result = getFunctionPointerModRefBehavior(CS.getCalledValue());
+  if (Result != DoesNotAccessMemory) {
+    Result = ModRefBehavior(Result & AliasAnalysis::getModRefBehavior(CS));
+  }
+  return Result;
 }
 
 AliasAnalysis::ModRefBehavior
 AndersenAliasAnalysis::getModRefBehavior(const Function *F) {
-  // TODO
-  return AliasAnalysis::getModRefBehavior(F);
+  ModRefBehavior Result = getFunctionPointerModRefBehavior(F);
+  if (Result != DoesNotAccessMemory) {
+    Result = ModRefBehavior(Result & AliasAnalysis::getModRefBehavior(F));
+  }
+  return Result;
+}
+
+AliasAnalysis::ModRefBehavior
+AndersenAliasAnalysis::getFunctionPointerModRefBehavior(const Value *F) {
+  ModRefBehavior Result = DoesNotAccessMemory;
+  AndersenValueHandle VH = AP->getHandleToValue(F);
+  AndersenSetHandle Reads = AP->getHandleToFunctionPointerReadSet(VH);
+  AndersenSetHandle Writes = AP->getHandleToFunctionPointerWriteSet(VH);
+  if (!AP->isSetEmpty(Reads)) {
+    Result = ModRefBehavior(Result | Anywhere | Ref);
+  }
+  if (!AP->isSetEmpty(Writes)) {
+    Result = ModRefBehavior(Result | Anywhere | Mod);
+  }
+  return Result;
 }
 
 }

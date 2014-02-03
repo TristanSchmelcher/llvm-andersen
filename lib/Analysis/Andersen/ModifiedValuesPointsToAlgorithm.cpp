@@ -1,4 +1,4 @@
-//===- RelationType.h - relation classes ----------------------------------===//
+//===- ModifiedValuesPointsToAlgorithm.cpp --------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,30 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares an enum for relation types.
+// This file defines the type for the modified values points-to algorithm.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RELATIONTYPE_H
-#define RELATIONTYPE_H
+#include "ModifiedValuesPointsToAlgorithm.h"
 
 namespace llvm {
 namespace andersen_internal {
 
-enum RelationType {
-  ARGUMENT_FROM_CALLER,
-  ARGUMENT_TO_CALLEE,
-  DEPENDS_ON,
-  LOADED_FROM,
-  RETURNED_FROM_CALLEE,
-  RETURNED_TO_CALLER,
-  STORED_TO,
-  CALLS,
-  READS_FROM,
-  WRITES_TO
-};
+const LiteralAlgorithmId ModifiedValuesPointsToAlgorithm::ID(
+    "modified-values");
 
 }
 }
-
-#endif

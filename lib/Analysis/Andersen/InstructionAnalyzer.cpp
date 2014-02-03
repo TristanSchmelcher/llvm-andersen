@@ -37,6 +37,7 @@ class InstructionAnalyzer::Visitor
   ModulePass *const MP;
   PHINodeWorkVector PHINodeWork;
   Function *CurrentFunction;
+  ValueInfo *CurrentFunctionRegion;
 
 public:
   Data *const D;
@@ -67,9 +68,8 @@ public:
     }
     ValueInfo *ReturnedValueInfo = analyzeValue(ReturnValue);
     if (ReturnedValueInfo) {
-      ValueInfo *FunctionValueInfo = getGlobalRegionInfo(CurrentFunction);
       RelationHandler::handleRelation<RETURNED_TO_CALLER>(ReturnedValueInfo,
-          FunctionValueInfo);
+          CurrentFunctionRegion);
     }
   }
 
@@ -81,21 +81,17 @@ public:
     ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
     if (AddressAnalysis) {
       ValueInfo *LoadedValueInfo = cacheNewValueInfo(&I);
-      RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
-          AddressAnalysis);
+      processLoad(LoadedValueInfo, AddressAnalysis);
     } else {
       cacheNil(&I);
     }
-    // TODO: Record that the current function may load this address.
   }
 
   void visitStoreInst(StoreInst &I) {
     ValueInfo *AddressAnalysis = analyzeValue(I.getPointerOperand());
     ValueInfo *StoredValueInfo = analyzeValue(I.getValueOperand());
-    if (AddressAnalysis && StoredValueInfo) {
-      RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
-          AddressAnalysis);
-      // TODO: Record that the current function may store this address.
+    if (AddressAnalysis) {
+      processStore(StoredValueInfo, AddressAnalysis);
     }
   }
 
@@ -154,7 +150,8 @@ public:
         cacheNil(CS.getInstruction());
       }
     }
-    // TODO: Record that the current function may call this function.
+    RelationHandler::handleRelation<CALLS>(CurrentFunctionRegion,
+        CalledValueInfo);
   }
 
   void visitVAStartInst(VAStartInst &I) {
@@ -165,13 +162,13 @@ public:
     // aliasing them too.
     ValueInfo *ArgumentsVI = createAnonymousValueInfo();
     RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentsVI,
-        getGlobalRegionInfo(CurrentFunction));
+        CurrentFunctionRegion);
     ValueInfo *VAListVI = analyzeValue(I.getArgList());
     if (VAListVI) {
       // Pretend that va_start stores the va_list address to itself.
-      RelationHandler::handleRelation<STORED_TO>(VAListVI, VAListVI);
+      processStore(VAListVI, VAListVI);
       // Pretend that va_start stores the arguments to the va_list.
-      RelationHandler::handleRelation<STORED_TO>(ArgumentsVI, VAListVI);
+      processStore(ArgumentsVI, VAListVI);
     }
   }
 
@@ -185,14 +182,20 @@ public:
     // va_list (and any other va_lists from which it was copied).
     ValueInfo *SrcVI = analyzeValue(I.getSrc());
     ValueInfo *DestVI = analyzeValue(I.getDest());
-    if (SrcVI && DestVI) {
+    // If only one of these is true then the operation is unsound, but we try to
+    // model it anyway.
+    if (DestVI || SrcVI) {
       // Pretend that va_copy copies the va_list contents.
       ValueInfo *ContentsVI = createAnonymousValueInfo();
-      RelationHandler::handleRelation<LOADED_FROM>(ContentsVI, SrcVI);
-      RelationHandler::handleRelation<STORED_TO>(ContentsVI, DestVI);
-      // Pretend that it also writes the destination va_list's address to
-      // itself.
-      RelationHandler::handleRelation<STORED_TO>(DestVI, DestVI);
+      if (SrcVI) {
+        processLoad(ContentsVI, SrcVI);
+      }
+      if (DestVI) {
+        processStore(ContentsVI, DestVI);
+        // Pretend that it also writes the destination va_list's address to
+        // itself.
+        processStore(DestVI, DestVI);
+      }
     }
   }
 
@@ -204,7 +207,7 @@ public:
       ValueInfo *VAArgVI = cacheNewValueInfo(&I);
       // Pretend that va_arg just reads from the va_list, returning either an
       // argument or the va_list itself.
-      RelationHandler::handleRelation<LOADED_FROM>(VAArgVI, VAListVI);
+      processLoad(VAArgVI, VAListVI);
     } else {
       cacheNil(&I);
     }
@@ -223,8 +226,8 @@ public:
     // Equivalent to a write.
     ValueInfo *DestVI = analyzeValue(I.getRawDest());
     ValueInfo *ValueVI = analyzeValue(I.getValue());
-    if (DestVI && ValueVI) {
-      RelationHandler::handleRelation<STORED_TO>(ValueVI, DestVI);
+    if (DestVI) {
+      processStore(ValueVI, DestVI);
     }
   }
 
@@ -261,7 +264,11 @@ private:
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+    RelationHandler::handleRelation<CALLS>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RelationHandler::handleRelation<LOADED_FROM>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+    RelationHandler::handleRelation<READS_FROM>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RelationHandler::handleRelation<RETURNED_FROM_CALLEE>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
@@ -269,14 +276,34 @@ private:
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RelationHandler::handleRelation<STORED_TO>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(
+    RelationHandler::handleRelation<WRITES_TO>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
 
     return new Data(ExternallyLinkableRegions, ExternallyAccessibleRegions);
   }
 
+  void processLoad(ValueInfo *LoadedValueInfo, ValueInfo *AddressAnalysis) {
+    assert(AddressAnalysis);
+    assert(LoadedValueInfo);
+    RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
+        AddressAnalysis);
+    RelationHandler::handleRelation<READS_FROM>(CurrentFunctionRegion,
+        AddressAnalysis);
+  }
+
+  void processStore(ValueInfo *StoredValueInfo, ValueInfo *AddressAnalysis) {
+    assert(AddressAnalysis);
+    if (StoredValueInfo) {
+      RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
+          AddressAnalysis);
+    }
+    RelationHandler::handleRelation<WRITES_TO>(CurrentFunctionRegion,
+        AddressAnalysis); 
+  }
+
   void processFunction(Function &F) {
     CurrentFunction = &F;
+    CurrentFunctionRegion = getGlobalRegionInfo(&F);
     for (Function::arg_iterator i = F.arg_begin(), End = F.arg_end(); i != End;
          ++i) {
       analyzeValue(&*i);
@@ -466,9 +493,8 @@ private:
 
   ValueInfo *analyzeArgument(const Argument *A) {
     ValueInfo *ArgumentValueInfo = cacheNewValueInfo(A);
-    ValueInfo *FunctionValueInfo = getGlobalRegionInfo(CurrentFunction);
     RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentValueInfo,
-        FunctionValueInfo);
+        CurrentFunctionRegion);
     return ArgumentValueInfo;
   }
 
@@ -493,7 +519,7 @@ private:
     default:
       Result = cacheNewValueInfo(U);
       for (ValueInfoVector::const_iterator i = Set.begin(), End = Set.end();
-           i != Set.end(); ++i) {
+           i != End; ++i) {
         RelationHandler::handleRelation<DEPENDS_ON>(Result, *i);
       }
       break;
@@ -507,26 +533,27 @@ private:
     ValueInfo *StoredValueInfo = analyzeValue(ValOperand);
     if (AddressAnalysis) {
       ValueInfo *LoadedValueInfo = cacheNewValueInfo(&I);
-      RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
-          AddressAnalysis);
-      if (StoredValueInfo) {
-        RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
-            AddressAnalysis);
-      }
+      processLoad(LoadedValueInfo, AddressAnalysis);
+      processStore(StoredValueInfo, AddressAnalysis);
     } else {
       cacheNil(&I);
     }
-    // TODO: Record that the current function may load and store this address.
   }
 
   void visitMemTransferInst(MemTransferInst &I) {
     // Equivalent to a load and store.
     ValueInfo *DestVI = analyzeValue(I.getRawDest());
     ValueInfo *SrcVI = analyzeValue(I.getRawSource());
-    if (DestVI && SrcVI) {
+    // If only one of these is true then the operation is unsound, but we try to
+    // model it anyway.
+    if (DestVI || SrcVI) {
       ValueInfo *LoadVI = createAnonymousValueInfo();
-      RelationHandler::handleRelation<LOADED_FROM>(LoadVI, SrcVI);
-      RelationHandler::handleRelation<STORED_TO>(LoadVI, DestVI);
+      if (SrcVI) {
+        processLoad(LoadVI, SrcVI);
+      }
+      if (DestVI) {
+        processStore(LoadVI, DestVI);
+      }
     }
   }
 };

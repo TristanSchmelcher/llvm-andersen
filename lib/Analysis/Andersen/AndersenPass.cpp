@@ -19,7 +19,10 @@
 #include "DebugInfo.h"
 #include "InstructionAnalyzer.h"
 #include "Phase.h"
+#include "ModifiedValuesPointsToAlgorithm.h"
 #include "PointsToAlgorithm.h"
+#include "ReferencedValuesPointsToAlgorithm.h"
+#include "TraversalAlgorithm.h"
 #include "llvm/Analysis/AndersenEnumerator.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/CommandLine.h"
@@ -37,6 +40,7 @@ cl::opt<bool> NonLazy("andersen-non-lazy",
                       cl::desc("Perform Andersen analysis non-lazily"));
 
 AndersenEnumerator enumerateRemaining(AnalysisResult *AR) {
+  assert(AR);
   return AndersenEnumerator(AR, AR->getSetContentsSoFar().size());
 }
 
@@ -54,7 +58,7 @@ AndersenPass::AndersenPass()
   initializeAndersenPassPass(*PassRegistry::getPassRegistry());
 }
 
-AndersenHandle AndersenPass::getHandleToPointsToSet(const Value *V) const {
+AndersenValueHandle AndersenPass::getHandleToValue(const Value *V) const {
   assert(V);
   ValueInfoMap::const_iterator i = Data->ValueInfos.find(V);
   if (i == Data->ValueInfos.end()) {
@@ -63,7 +67,11 @@ AndersenHandle AndersenPass::getHandleToPointsToSet(const Value *V) const {
     // TODO: Write an assert that verifies this.
     return 0;
   }
-  ValueInfo *VI = i->second.getPtr();
+  return i->second.getPtr();
+}
+
+AndersenSetHandle AndersenPass::getHandleToPointsToSet(AndersenValueHandle VH) {
+  ValueInfo *VI = VH;
   if (!VI) {
     // We determined this points to nothing at instruction analysis time.
     return 0;
@@ -71,8 +79,55 @@ AndersenHandle AndersenPass::getHandleToPointsToSet(const Value *V) const {
   return VI->getAlgorithmResult<PointsToAlgorithm, ENUMERATION_PHASE>();
 }
 
-const PointsToSet *AndersenPass::getPointsToSet(AndersenHandle AH) const {
-  AnalysisResult *AR = AH;
+AndersenSetHandle AndersenPass::getHandleToFunctionPointerReadSet(
+    AndersenValueHandle VH) {
+  ValueInfo *VI = VH;
+  if (!VI) {
+    // We determined this points to nothing at instruction analysis time.
+    return 0;
+  }
+  return VI->getAlgorithmResult<
+      TwoHopTraversal<PointsToAlgorithm,
+                      ReferencedValuesPointsToAlgorithm>::Algorithm,
+      ENUMERATION_PHASE>();
+}
+
+AndersenSetHandle AndersenPass::getHandleToFunctionPointerWriteSet(
+    AndersenValueHandle VH) {
+  ValueInfo *VI = VH;
+  if (!VI) {
+    // We determined this points to nothing at instruction analysis time.
+    return 0;
+  }
+  return VI->getAlgorithmResult<
+      TwoHopTraversal<PointsToAlgorithm,
+                      ModifiedValuesPointsToAlgorithm>::Algorithm,
+      ENUMERATION_PHASE>();
+}
+
+bool AndersenPass::isSetIntersectionEmpty(AndersenSetHandle SH1,
+    AndersenSetHandle SH2) {
+  if (isSetEmpty(SH1) || isSetEmpty(SH2)) {
+    // If either is empty, then we can skip the rest.
+    return true;
+  }
+  // TODO: What is the optimal enumeration strategy?
+  const RegionSet *PointsToSet1 = getSet(SH1);
+  assert(PointsToSet1);
+  for (AndersenEnumerator AE2(enumerateSet(SH2));; ) {
+    ValueInfo *Next = AE2.enumerate();
+    if (!Next) {
+      break;
+    }
+    if (PointsToSet1->count(Next)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const RegionSet *AndersenPass::getSet(AndersenSetHandle SH) {
+  AnalysisResult *AR = SH;
   if (!AR) {
     // We determined this points to nothing at instruction analysis time.
     return 0;
@@ -89,23 +144,18 @@ const PointsToSet *AndersenPass::getPointsToSet(AndersenHandle AH) const {
   return &AR->getSetContentsSoFar();
 }
 
-bool AndersenPass::isPointsToSetEmpty(AndersenHandle AH) const {
-  AnalysisResult *AR = AH;
-  return !AR || AndersenEnumerator(AR).enumerate() != 0;
+bool AndersenPass::isSetEmpty(AndersenSetHandle SH) {
+  AnalysisResult *AR = SH;
+  return AndersenEnumerator(AR).enumerate() != 0;
 }
 
-AndersenEnumerator AndersenPass::enumeratePointsToSet(AndersenHandle AH) const {
-  AnalysisResult *AR = AH;
-  if (!AR) {
-    // We determined this points to nothing at instruction analysis time.
-    return AndersenEnumerator(&Data->EmptyAnalysisResult);
-  }
+AndersenEnumerator AndersenPass::enumerateSet(AndersenSetHandle SH) {
+  AnalysisResult *AR = SH;
   return AndersenEnumerator(AR);
 }
 
-const PointsToSet *AndersenPass::getPointsToSetContentsSoFar(AndersenHandle AH)
-    const {
-  AnalysisResult *AR = AH;
+const RegionSet *AndersenPass::getSetContentsSoFar(AndersenSetHandle SH) {
+  AnalysisResult *AR = SH;
   if (!AR) {
     // We determined this points to nothing at instruction analysis time.
     return 0;
@@ -113,12 +163,12 @@ const PointsToSet *AndersenPass::getPointsToSetContentsSoFar(AndersenHandle AH)
   return &AR->getSetContentsSoFar();
 }
 
-AndersenEnumerator AndersenPass::enumeratePointsToSetContentsRemaining(
-    AndersenHandle AH) const {
-  AnalysisResult *AR = AH;
+AndersenEnumerator AndersenPass::enumerateSetContentsRemaining(
+    AndersenSetHandle SH) {
+  AnalysisResult *AR = SH;
   if (!AR) {
     // We determined this points to nothing at instruction analysis time.
-    return AndersenEnumerator(&Data->EmptyAnalysisResult);
+    return AndersenEnumerator(0);
   }
   return enumerateRemaining(AR);
 }
@@ -130,7 +180,10 @@ bool AndersenPass::runOnModule(Module &M) {
     for (ValueInfoMap::const_iterator i = Data->ValueInfos.begin(),
                                       End = Data->ValueInfos.end();
          i != End; ++i) {
-      getPointsToSet(getHandleToPointsToSet(i->first));
+      AndersenValueHandle VH = getHandleToValue(i->first);
+      getSet(getHandleToPointsToSet(VH));
+      getSet(getHandleToFunctionPointerReadSet(VH));
+      getSet(getHandleToFunctionPointerWriteSet(VH));
     }
   }
   return false;
