@@ -108,10 +108,10 @@ bool AndersenAliasAnalysis::pointsToConstantMemory(const Location &Loc,
     const Value *V = Next->getValue();
     if (!V) {
       // External regions can't be guaranteed to be either const or local.
-      // TODO: We can do better for overridable GlobalVariables if we introduce
-      // a special VI for externally linkable constant regions, since it isn't
-      // legal for a global to be marked constant in some modules and
-      // non-constant in others
+      // (BasicAliasAnalysis claims that it isn't legal for a global to be
+      // marked constant in some modules and non-constant in others, but in
+      // practice it can work, so we allow it.)
+      // TODO: Add a flag to assume kindsafe linking.
       return AliasAnalysis::pointsToConstantMemory(Loc, OrLocal);
     }
 
