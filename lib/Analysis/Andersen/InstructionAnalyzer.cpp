@@ -215,6 +215,11 @@ public:
 
   void visitInstruction(Instruction &I) {
     assert(!I.mayReadOrWriteMemory() && "Unhandled memory instruction");
+    // TODO: This treats the 1-bit result of cmp instructions as aliasing the
+    // arguments, which we can't just take out because programmers can do funny
+    // things with bit manipulations. To improve on that we would need to
+    // calculate the number of bits of information that values have on each
+    // possible pointee's address.
     analyzeUser(&I);
   }
 
