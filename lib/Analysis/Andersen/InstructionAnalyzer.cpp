@@ -107,7 +107,7 @@ public:
     // return old;  
     //
     // which is just a load relation and a store relation.
-    visitAtomicMutateInst(I, I.getPointerOperand(), I.getNewValOperand());
+    processAtomicMutateInst(I, I.getPointerOperand(), I.getNewValOperand());
   }
 
   void visitAtomicRMWInst(AtomicRMWInst &I) {
@@ -121,7 +121,7 @@ public:
     //
     // From an Andersen perspective, this is the same as simply clobbering the
     // value with ValOperand, so the effect is the same as in AtomicCmpXchgInst.
-    visitAtomicMutateInst(I, I.getPointerOperand(), I.getValOperand());
+    processAtomicMutateInst(I, I.getPointerOperand(), I.getValOperand());
   }
 
   void visitPHINode(PHINode &I) {
@@ -236,12 +236,42 @@ public:
     }
   }
 
-  void visitMemCpyInst(MemCpyInst &I) {
-    visitMemTransferInst(I);
+  void visitMemTransferInst(MemTransferInst &I) {
+    // Equivalent to a load and store.
+    ValueInfo *DestVI = analyzeValue(I.getRawDest());
+    ValueInfo *SrcVI = analyzeValue(I.getRawSource());
+    // If only one of these is true then the operation is unsound, but we try to
+    // model it anyway.
+    if (DestVI || SrcVI) {
+      ValueInfo *LoadVI = createAnonymousValueInfo();
+      if (SrcVI) {
+        processLoad(LoadVI, SrcVI);
+      }
+      if (DestVI) {
+        processStore(LoadVI, DestVI);
+      }
+    }
   }
 
-  void visitMemMoveInst(MemMoveInst &I) {
-    visitMemTransferInst(I);
+  void visitIntrinsicInst(IntrinsicInst &I) {
+    // Delegate special intrinsics that were not already delegated in
+    // InstVisitor.
+    switch (I.getIntrinsicID()) {
+    case Intrinsic::not_intrinsic:
+      llvm_unreachable("IntrinsicInst not an intrinsic");
+      break;
+
+    case Intrinsic::returnaddress:
+    case Intrinsic::frameaddress:
+      processLowLevelPointerIntrinsic(I);
+      break;
+
+    default:
+      // All other intrinsics are handled by the CallSite code and treated as
+      // calls to external functions.
+      InstVisitor<InstructionAnalyzer::Visitor>::visitIntrinsicInst(I);
+      break;
+    }
   }
 
 private:
@@ -532,7 +562,7 @@ private:
     return Result;
   }
 
-  void visitAtomicMutateInst(Instruction &I, Value *PointerOperand,
+  void processAtomicMutateInst(Instruction &I, Value *PointerOperand,
       Value *ValOperand) {
     ValueInfo *AddressAnalysis = analyzeValue(PointerOperand);
     ValueInfo *StoredValueInfo = analyzeValue(ValOperand);
@@ -545,21 +575,15 @@ private:
     }
   }
 
-  void visitMemTransferInst(MemTransferInst &I) {
-    // Equivalent to a load and store.
-    ValueInfo *DestVI = analyzeValue(I.getRawDest());
-    ValueInfo *SrcVI = analyzeValue(I.getRawSource());
-    // If only one of these is true then the operation is unsound, but we try to
-    // model it anyway.
-    if (DestVI || SrcVI) {
-      ValueInfo *LoadVI = createAnonymousValueInfo();
-      if (SrcVI) {
-        processLoad(LoadVI, SrcVI);
-      }
-      if (DestVI) {
-        processStore(LoadVI, DestVI);
-      }
-    }
+  void processLowLevelPointerIntrinsic(IntrinsicInst &I) {
+    assert(I.getType()->isPointerTy());
+    // We treat the result as a new region. This means that conflicting accesses
+    // made through the result pointer may not be re-ordered relative to each
+    // other, but they may be re-ordered with respect to accesses through other
+    // pointers not based on the result. This is desirable because these
+    // low-level intrinsics are for retrieving information about the generated
+    // code, not the source-level code.
+    cacheNewRegion(&I);
   }
 };
 
