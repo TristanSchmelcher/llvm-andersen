@@ -137,6 +137,10 @@ public:
       const Value *ArgumentValue = *i;
       ValueInfo *ArgumentValueInfo = analyzeValue(ArgumentValue);
       if (CalledValueInfo && ArgumentValueInfo) {
+        // TODO: This treats all arguments' bits as being mixed together. We
+        // should treat each argument position as independent when it is known
+        // that the function pointer type matches the function definition. More
+        // generally, we should be field-sensitive when feasible.
         RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(ArgumentValueInfo,
             CalledValueInfo);
       }
@@ -220,6 +224,11 @@ public:
     // things with bit manipulations. To improve on that we would need to
     // calculate the number of bits of information that values have on each
     // possible pointee's address.
+    // Note that GEM falls through to here, so the result is treated as
+    // depending on the non-pointer arguments too. This means that, e.g.,
+    // if a and b are unrelated char pointers then &a[b - a] and b are treated
+    // as aliasing each other even though LLVM documents that the behaviour of
+    // a[b - a] is undefined.
     analyzeUser(&I);
   }
 
@@ -256,6 +265,7 @@ public:
   void visitIntrinsicInst(IntrinsicInst &I) {
     // Delegate special intrinsics that were not already delegated in
     // InstVisitor.
+    // TODO: All intrinsics need getModRef handling.
     switch (I.getIntrinsicID()) {
     case Intrinsic::not_intrinsic:
       llvm_unreachable("IntrinsicInst not an intrinsic");
@@ -265,6 +275,9 @@ public:
     case Intrinsic::frameaddress:
       processLowLevelPointerIntrinsic(I);
       break;
+
+    // TODO: Need handling for stacksave/restore to prevent re-ordering with
+    // alloca.
 
     default:
       // All other intrinsics are handled by the CallSite code and treated as
@@ -582,7 +595,10 @@ private:
     // other, but they may be re-ordered with respect to accesses through other
     // pointers not based on the result. This is desirable because these
     // low-level intrinsics are for retrieving information about the generated
-    // code, not the source-level code.
+    // code, not the source-level code, so they should not be allowed to impede
+    // optimizations. We also treat the instruction itself as not accessing any
+    // memory, which allows optimizations to move it around or factor it out.
+    // TODO: Figure out if this is safe.
     cacheNewRegion(&I);
   }
 };
