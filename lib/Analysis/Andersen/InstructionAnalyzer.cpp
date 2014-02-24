@@ -267,10 +267,6 @@ public:
     // InstVisitor.
     // TODO: All intrinsics need getModRef handling.
     switch (I.getIntrinsicID()) {
-    case Intrinsic::not_intrinsic:
-      llvm_unreachable("IntrinsicInst not an intrinsic");
-      break;
-
     case Intrinsic::returnaddress:
     case Intrinsic::frameaddress:
       processLowLevelPointerIntrinsic(I);
@@ -279,6 +275,8 @@ public:
     // TODO: Need handling for stacksave/restore to prevent re-ordering with
     // alloca.
 
+    case Intrinsic::not_intrinsic:
+      llvm_unreachable("IntrinsicInst not an intrinsic");
     default:
       // All other intrinsics are handled by the CallSite code and treated as
       // calls to external functions.
