@@ -60,14 +60,14 @@ bool ValueInfo::isNodeHidden() const {
 
 void ValueInfo::fillDebugInfo(DebugInfoFiller *DIF) const {
   for (ResultsMapTy::const_iterator i = Results.begin(), End = Results.end();
-       i != Results.end(); ++i) {
+       i != End; ++i) {
     DIF->fill(i->second, this, i->first);
   }
 }
 
 void ValueInfo::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
   for (ResultsMapTy::const_iterator i = Results.begin(), End = Results.end();
-       i != Results.end(); ++i) {
+       i != End; ++i) {
     i->second->writeEquation(DI, OS);
   }
 }
