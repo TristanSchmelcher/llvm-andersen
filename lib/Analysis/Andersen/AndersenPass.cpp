@@ -149,7 +149,7 @@ bool AndersenPass::isSetIntersectionEmpty(AndersenSetHandle SH1,
 
 bool AndersenPass::isSetEmpty(AndersenSetHandle SH) {
   AnalysisResult *AR = SH;
-  return AndersenEnumerator(AR).enumerate() != 0;
+  return AndersenEnumerator(AR).enumerate() == 0;
 }
 
 AndersenEnumerator AndersenPass::enumerateSet(AndersenSetHandle SH) {
