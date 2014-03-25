@@ -91,7 +91,7 @@ const PointsToSet *AndersenPass::getPointsToSet(AndersenHandle AH) const {
 
 bool AndersenPass::isPointsToSetEmpty(AndersenHandle AH) const {
   AnalysisResult *AR = AH;
-  return !AR || AndersenEnumerator(AR).enumerate() != 0;
+  return !AR || AndersenEnumerator(AR).enumerate() == 0;
 }
 
 AndersenEnumerator AndersenPass::enumeratePointsToSet(AndersenHandle AH) const {
