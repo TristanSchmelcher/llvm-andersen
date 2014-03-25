@@ -14,6 +14,7 @@
 #include "ReversePointsToAlgorithm.h"
 
 #include "AnalysisResult.h"
+#include "Constraints.h"
 
 namespace llvm {
 namespace andersen_internal {
@@ -22,7 +23,7 @@ const LiteralAlgorithmId ReversePointsToAlgorithm::ID("self-reverse");
 
 AnalysisResult *ReversePointsToAlgorithm::run(ValueInfo *VI) {
   AnalysisResult *AR = new AnalysisResult();
-  AR->addValueInfo(VI);
+  AR->addContent(VI, Constraints());
   return AR;
 }
 

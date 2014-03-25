@@ -29,7 +29,7 @@ class SubsetWork : public AnalysisResultWork {
 public:
   SubsetWork(AnalysisResult *AR);
   ~SubsetWork();
-  virtual EnumerationResult enumerate(EnumerationContext *Ctx);
+  virtual EnumerationResult enumerate(EnumerationContext *Ctx, Constraints *C);
   virtual bool prepareForRewrite(AnalysisResult *RewriteTarget) const;
   virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const;
   virtual GraphEdgeDeque getOutgoingEdges() const;

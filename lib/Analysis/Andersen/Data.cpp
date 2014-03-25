@@ -13,7 +13,9 @@
 
 #include "Data.h"
 
+#include "AlgorithmId.h"
 #include "DebugInfo.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -54,7 +56,10 @@ Data::Data(ValueInfo *ExternallyLinkableRegions,
   : ExternallyLinkableRegions(ExternallyLinkableRegions),
     ExternallyAccessibleRegions(ExternallyAccessibleRegions) {}
 
-Data::~Data() {}
+Data::~Data() {
+  DeleteContainerSeconds(PushCallSiteAlgorithmIds);
+  DeleteContainerSeconds(PopCallSiteAlgorithmIds);
+}
 
 GraphEdgeDeque Data::getOutgoingEdges() const {
   GraphEdgeDeque Result;

@@ -26,6 +26,7 @@ namespace llvm {
 namespace andersen_internal {
 
 class AnalysisResult;
+class Constraints;
 class DebugInfo;
 class EnumerationResult;
 class GraphEdge;
@@ -37,7 +38,8 @@ class Enumerator {
 public:
   explicit Enumerator(AnalysisResult *AR, size_t i = 0) : AR(AR), i(i) {}
 
-  EnumerationResult enumerate(int Depth, int LastTransformDepth);
+  EnumerationResult enumerate(int Depth, int LastTransformDepth,
+      Constraints *C);
   GraphEdge toGraphEdge() const;
   void writeFormula(const DebugInfo &DI, raw_ostream &OS) const;
 

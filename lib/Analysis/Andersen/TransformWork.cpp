@@ -1,4 +1,4 @@
-//===- TransformWorkBase.cpp - analysis classes ---------------------------===//
+//===- TransformWork.cpp - analysis classes -------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,55 +7,48 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a base type for transforms that compute the list
-// comprehension of a ValueInfo-to-AnalysisResult function run on the elements
-// of an input AnalysisResult.
+// This file defines a base type for transformations from one set to another
+// set.
 //
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "andersen"
-#include "TransformWorkBase.h"
+#include "TransformWork.h"
 
-#include "AlgorithmId.h"
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
-#include "SubsetWork.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <sstream>
-
 namespace llvm {
 namespace andersen_internal {
 
-TransformWorkBase::TransformWorkBase(AnalysisResult *AR) : E(AR) {}
+TransformWork::TransformWork(AnalysisResult *AR) : E(AR) {}
 
-TransformWorkBase::~TransformWorkBase() {}
+TransformWork::~TransformWork() {}
 
-EnumerationResult TransformWorkBase::enumerate(EnumerationContext *Ctx) {
+EnumerationResult TransformWork::enumerate(EnumerationContext *Ctx,
+    Constraints *C) {
   for (;;) {
     DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
                  << " In " << Ctx->getAnalysisResult() << ": transform "
                  << E.getAnalysisResult() << '[' << E.getPosition() << "]\n");
-    EnumerationResult ER(E.enumerate(Ctx->getNextDepth(), Ctx->getDepth()));
+    EnumerationResult ER(E.enumerate(Ctx->getNextDepth(),
+                                     Ctx->getDepth(),
+                                     C));
     switch (ER.getResultType()) {
     case EnumerationResult::NEXT_VALUE: {
-      AnalysisResult *AR = analyzeValueInfo(ER.getNextValue());
-      if (!AR) {
+      ValueInfo *VI = ER.getNextValue();
+      ER = transformValueInfo(Ctx, C, VI);
+      if (ER.getResultType() == EnumerationResult::COMPLETE) {
         DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
                      << " In " << Ctx->getAnalysisResult() << ": transformed "
                      << E.getAnalysisResult() << '[' << (E.getPosition() - 1)
                      << "] to empty set; continue\n");
         continue;
       }
-      DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
-                   << " In " << Ctx->getAnalysisResult() << ": transformed "
-                   << E.getAnalysisResult() << '[' << (E.getPosition() - 1)
-                   << "] to " << AR << '\n');
-      SubsetWork *SW = Ctx->pushSubset(AR);
-      if (!SW) continue;
-      return SW->enumerate(Ctx);
+      break;
     }
 
     case EnumerationResult::INLINE:
@@ -78,32 +71,17 @@ EnumerationResult TransformWorkBase::enumerate(EnumerationContext *Ctx) {
   }
 }
 
-bool TransformWorkBase::prepareForRewrite(AnalysisResult *RewriteTarget) const {
+bool TransformWork::prepareForRewrite(AnalysisResult *RewriteTarget) const {
   // Redundant transforms in the same AnalysisResult are not possible since each
   // distinct transform step is only ever created once, so we always splice the
   // transforms.
   return true;
 }
 
-void TransformWorkBase::writeFormula(const DebugInfo &DI, raw_ostream &OS)
-    const {
-  getAlgorithmId()->printAlgorithmName(OS);
-  OS << '(';
-  E.writeFormula(DI, OS);
-  OS << ')';
-}
-
-GraphEdgeDeque TransformWorkBase::getOutgoingEdges() const {
+GraphEdgeDeque TransformWork::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   Result.push_back(E.toGraphEdge());
   return Result;
-}
-
-void TransformWorkBase::printNodeLabel(const DebugInfo &DI, raw_ostream &OS)
-    const {
-  OS << "Transform(";
-  getAlgorithmId()->printAlgorithmName(OS);
-  OS << ')';
 }
 
 }

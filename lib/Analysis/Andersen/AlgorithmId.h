@@ -26,10 +26,8 @@ namespace andersen_internal {
 
 class AlgorithmId {
 public:
+  virtual ~AlgorithmId() {}
   virtual void printAlgorithmName(raw_ostream &OS) const = 0;
-
-protected:
-  ~AlgorithmId() {}
 };
 
 }

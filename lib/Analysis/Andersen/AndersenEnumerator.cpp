@@ -16,6 +16,7 @@
 #include "llvm/Analysis/AndersenEnumerator.h"
 
 #include "AnalysisResult.h"
+#include "Constraints.h"
 #include "EnumerationResult.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -28,12 +29,17 @@ namespace llvm {
 using namespace andersen_internal;
 
 ValueInfo *AndersenEnumerator::enumerate() {
+  Constraints C;
+  return enumerate(&C);
+}
+
+ValueInfo *AndersenEnumerator::enumerate(Constraints *C) {
   if (!AR) {
     // Empty set.
     return 0;
   }
   DEBUG(dbgs() << "Begin " << AR << '[' << i << "]\n");
-  EnumerationResult ER(AR->enumerate(0, -1, i));
+  EnumerationResult ER(AR->enumerate(0, -1, C, i));
   switch (ER.getResultType()) {
   case EnumerationResult::NEXT_VALUE:
     DEBUG(dbgs() << "Result: " << ER.getNextValue() << '\n'); 

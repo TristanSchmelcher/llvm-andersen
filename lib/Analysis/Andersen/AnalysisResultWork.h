@@ -28,6 +28,7 @@ namespace llvm {
 namespace andersen_internal {
 
 class AnalysisResult;
+class Constraints;
 class DebugInfo;
 class EnumerationContext;
 class EnumerationResult;
@@ -40,7 +41,8 @@ public:
   virtual ~AnalysisResultWork();
   virtual bool isNodeHidden() const;
 
-  virtual EnumerationResult enumerate(EnumerationContext *Ctx) = 0;
+  virtual EnumerationResult enumerate(EnumerationContext *Ctx,
+      Constraints *C) = 0;
   virtual bool prepareForRewrite(AnalysisResult *RewriteTarget) const = 0;
   virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const = 0;
 };

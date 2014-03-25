@@ -17,12 +17,14 @@
 #include "AnalysisResult.h"
 #include "GraphNode.h"
 #include "ValueInfo.h"
+#include "llvm/ADT/DenseMap.h"
 
 #include <vector>
 
 namespace llvm {
 
 class Function;
+class Instruction;
 class raw_ostream;
 class Value;
 
@@ -55,6 +57,9 @@ public:
   const ValueInfo::Ref ExternallyAccessibleRegions;
   // VIs not associated with any Value (e.g., generated for intrinsics).
   ValueInfoVector AnonymousValueInfos;
+  // Interned dynamically-created algorithm ids.
+  DenseMap<Instruction *, AlgorithmId *> PushCallSiteAlgorithmIds;
+  DenseMap<Instruction *, AlgorithmId *> PopCallSiteAlgorithmIds;
 
   virtual ~Data();
 

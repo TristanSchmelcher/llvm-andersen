@@ -24,8 +24,9 @@
 namespace llvm {
 namespace andersen_internal {
 
-EnumerationResult Enumerator::enumerate(int Depth, int LastTransformDepth) {
-  return AR->enumerate(Depth, LastTransformDepth, i);
+EnumerationResult Enumerator::enumerate(int Depth, int LastTransformDepth,
+    Constraints *C) {
+  return AR->enumerate(Depth, LastTransformDepth, C, i);
 }
 
 GraphEdge Enumerator::toGraphEdge() const {

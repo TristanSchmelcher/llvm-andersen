@@ -1,4 +1,4 @@
-//===- TransformWorkBase.h - analysis classes -----------------------------===//
+//===- CompositionWorkBase.h - analysis classes ---------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,35 +13,30 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TRANSFORMWORKBASE_H
-#define TRANSFORMWORKBASE_H
+#ifndef COMPOSITIONWORKBASE_H
+#define COMPOSITIONWORKBASE_H
 
-#include "AnalysisResultWork.h"
-#include "Enumerator.h"
-
-#include <string>
+#include "TransformWork.h"
 
 namespace llvm {
 namespace andersen_internal {
 
 class AlgorithmId;
+class Constraints;
 class AnalysisResult;
 class ValueInfo;
 
-class TransformWorkBase : public AnalysisResultWork {
-  Enumerator E;
-
+class CompositionWorkBase : public TransformWork {
 public:
-  explicit TransformWorkBase(AnalysisResult *AR);
-  virtual ~TransformWorkBase();
-  virtual EnumerationResult enumerate(EnumerationContext *Ctx);
-  virtual bool prepareForRewrite(AnalysisResult *RewriteTarget) const;
+  explicit CompositionWorkBase(AnalysisResult *AR);
+  virtual ~CompositionWorkBase();
   virtual void writeFormula(const DebugInfo &DI, raw_ostream &OS) const;
-  virtual GraphEdgeDeque getOutgoingEdges() const;
   virtual void printNodeLabel(const DebugInfo &DI, raw_ostream &OS) const;
 
 protected:
-  virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) = 0;
+  virtual EnumerationResult transformValueInfo(EnumerationContext *Ctx,
+      Constraints *C, ValueInfo *VI) const;
+  virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) const = 0;
   virtual const AlgorithmId *getAlgorithmId() const = 0;
 };
 

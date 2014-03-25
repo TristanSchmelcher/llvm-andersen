@@ -8,6 +8,8 @@ add_llvm_library(LLVMAndersen
   AndersenEnumerator.cpp
   AndersenGraphViewer.cpp
   AndersenPass.cpp
+  CompositionWorkBase.cpp
+  Constraints.cpp
   Data.cpp
   DebugInfo.cpp
   Enumerator.cpp
@@ -22,7 +24,7 @@ add_llvm_library(LLVMAndersen
   ReversePointsToAlgorithm.cpp
   StoredValuesPointsToAlgorithm.cpp
   SubsetWork.cpp
-  TransformWorkBase.cpp
+  TransformWork.cpp
   TraversalAlgorithmId.cpp
   ValueInfo.cpp
   )

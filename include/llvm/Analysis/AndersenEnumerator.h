@@ -21,6 +21,7 @@ namespace llvm {
 namespace andersen_internal {
 
 class AnalysisResult;
+class Constraints;
 class ValueInfo;
 
 }
@@ -38,6 +39,8 @@ public:
 
   // Get next VI or null if done.
   andersen_internal::ValueInfo *enumerate();
+
+  andersen_internal::ValueInfo *enumerate(andersen_internal::Constraints *C);
 };
 
 }

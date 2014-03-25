@@ -13,10 +13,10 @@
 
 #include "InstructionAnalyzer.h"
 
+#include "Constraints.h"
 #include "Data.h"
 #include "RelationHandler.h"
 #include "PointsToAlgorithm.h"
-#include "RelationType.h"
 #include "ValueInfo.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/Dominators.h"
@@ -38,27 +38,11 @@ class InstructionAnalyzer::Visitor
   PHINodeWorkVector PHINodeWork;
   Function *CurrentFunction;
   ValueInfo *CurrentFunctionRegion;
+  RelationHandler RH;
 
 public:
-  Data *const D;
-
-  Visitor(ModulePass *MP, Module &M)
-    : MP(MP), D(createData()) {
-    for (Module::global_iterator i = M.global_begin(), End = M.global_end();
-         i != End; ++i) {
-      analyzeValue(&*i);
-    }
-    for (Module::alias_iterator i = M.alias_begin(), End = M.alias_end();
-         i != End; ++i) {
-      analyzeValue(&*i);
-    }
-    for (Module::iterator i = M.begin(), End = M.end(); i != End; ++i) {
-      Function &F(*i);
-      analyzeValue(&F);
-      if (!F.isDeclaration()) {
-        processFunction(F);
-      }
-    }
+  static Data *run(ModulePass *MP, Module &M) {
+    return Visitor(MP, M).RH.D;
   }
 
   void visitReturnInst(ReturnInst &I) {
@@ -68,7 +52,7 @@ public:
     }
     ValueInfo *ReturnedValueInfo = analyzeValue(ReturnValue);
     if (ReturnedValueInfo) {
-      RelationHandler::handleRelation<RETURNED_TO_CALLER>(ReturnedValueInfo,
+      RH.handleRelation<RETURNED_TO_CALLER>(ReturnedValueInfo,
           CurrentFunctionRegion);
     }
   }
@@ -132,6 +116,7 @@ public:
   void visitCallSite(CallSite CS) {
     const Value *CalledValue = CS.getCalledValue();
     ValueInfo *CalledValueInfo = analyzeValue(CalledValue);
+    const Instruction *CallSite = CS.getInstruction();
     for (CallSite::arg_iterator i = CS.arg_begin(), End = CS.arg_end();
          i != End; ++i) {
       const Value *ArgumentValue = *i;
@@ -141,21 +126,20 @@ public:
         // should treat each argument position as independent when it is known
         // that the function pointer type matches the function definition. More
         // generally, we should be field-sensitive when feasible.
-        RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(ArgumentValueInfo,
-            CalledValueInfo);
+        RH.handleRelation<ARGUMENT_TO_CALLEE>(ArgumentValueInfo,
+            CalledValueInfo, CallSite);
       }
     }
     if (!CS.getType()->isVoidTy()) {
       if (CalledValueInfo) {
-        ValueInfo *ReturnedValueInfo = cacheNewValueInfo(CS.getInstruction());
-        RelationHandler::handleRelation<RETURNED_FROM_CALLEE>(ReturnedValueInfo,
-            CalledValueInfo);
+        ValueInfo *ReturnedValueInfo = cacheNewValueInfo(CallSite);
+        RH.handleRelation<RETURNED_FROM_CALLEE>(ReturnedValueInfo,
+            CalledValueInfo, CallSite);
       } else {
-        cacheNil(CS.getInstruction());
+        cacheNil(CallSite);
       }
     }
-    RelationHandler::handleRelation<CALLS>(CurrentFunctionRegion,
-        CalledValueInfo);
+    RH.handleRelation<CALLS>(CurrentFunctionRegion, CalledValueInfo, CallSite);
   }
 
   void visitVAStartInst(VAStartInst &I) {
@@ -165,8 +149,7 @@ public:
     // va_list itself. Thus multiply-indirect loads are treated as potentially
     // aliasing them too.
     ValueInfo *ArgumentsVI = createAnonymousValueInfo();
-    RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentsVI,
-        CurrentFunctionRegion);
+    RH.handleRelation<ARGUMENT_FROM_CALLER>(ArgumentsVI, CurrentFunctionRegion);
     ValueInfo *VAListVI = analyzeValue(I.getArgList());
     if (VAListVI) {
       // Pretend that va_start stores the va_list address to itself.
@@ -286,6 +269,56 @@ public:
   }
 
 private:
+  Visitor(ModulePass *MP, Module &M)
+    : MP(MP), RH(createData()) {
+
+    // Initialize the special VIs' relations.
+    ValueInfo *ExternallyLinkableRegions =
+        RH.D->ExternallyLinkableRegions.getPtr();
+    ValueInfo *ExternallyAccessibleRegions =
+        RH.D->ExternallyAccessibleRegions.getPtr();
+
+    RH.handleRelation<DEPENDS_ON>(ExternallyAccessibleRegions,
+        ExternallyLinkableRegions);
+    // Putting ExternallyAccessibleRegions into every relation with itself makes
+    // it expand to what we want. We use null for the callsites to represent
+    // calling from/to an external function.
+    RH.handleRelation<ARGUMENT_FROM_CALLER>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+    RH.handleRelation<ARGUMENT_TO_CALLEE>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions, 0);
+    RH.handleRelation<CALLS>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions, 0);
+    RH.handleRelation<LOADED_FROM>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+    RH.handleRelation<READS_FROM>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+    RH.handleRelation<RETURNED_FROM_CALLEE>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions, 0);
+    RH.handleRelation<RETURNED_TO_CALLER>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+    RH.handleRelation<STORED_TO>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+    RH.handleRelation<WRITES_TO>(
+        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+
+    for (Module::global_iterator i = M.global_begin(), End = M.global_end();
+         i != End; ++i) {
+      analyzeValue(&*i);
+    }
+    for (Module::alias_iterator i = M.alias_begin(), End = M.alias_end();
+         i != End; ++i) {
+      analyzeValue(&*i);
+    }
+    for (Module::iterator i = M.begin(), End = M.end(); i != End; ++i) {
+      Function &F(*i);
+      analyzeValue(&F);
+      if (!F.isDeclaration()) {
+        processFunction(F);
+      }
+    }
+  }
+
   static Data *createData() {
     // All global regions that are externally accessible by way of linkage. This
     // is the set of all internally-defined global regions with external linkage
@@ -302,28 +335,6 @@ private:
     // placeholder created above also represents externally-defined non-global
     // regions, which are indistinguishable.)
     ValueInfo *ExternallyAccessibleRegions = createValueInfo(0);
-    RelationHandler::handleRelation<DEPENDS_ON>(ExternallyAccessibleRegions,
-        ExternallyLinkableRegions);
-    // Putting ExternallyAccessibleRegions into every relation with itself makes
-    // it expand to what we want.
-    RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<CALLS>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<LOADED_FROM>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<READS_FROM>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<RETURNED_FROM_CALLEE>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<RETURNED_TO_CALLER>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<STORED_TO>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<WRITES_TO>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
 
     return new Data(ExternallyLinkableRegions, ExternallyAccessibleRegions);
   }
@@ -331,20 +342,16 @@ private:
   void processLoad(ValueInfo *LoadedValueInfo, ValueInfo *AddressAnalysis) {
     assert(AddressAnalysis);
     assert(LoadedValueInfo);
-    RelationHandler::handleRelation<LOADED_FROM>(LoadedValueInfo,
-        AddressAnalysis);
-    RelationHandler::handleRelation<READS_FROM>(CurrentFunctionRegion,
-        AddressAnalysis);
+    RH.handleRelation<LOADED_FROM>(LoadedValueInfo, AddressAnalysis);
+    RH.handleRelation<READS_FROM>(CurrentFunctionRegion, AddressAnalysis);
   }
 
   void processStore(ValueInfo *StoredValueInfo, ValueInfo *AddressAnalysis) {
     assert(AddressAnalysis);
     if (StoredValueInfo) {
-      RelationHandler::handleRelation<STORED_TO>(StoredValueInfo,
-          AddressAnalysis);
+      RH.handleRelation<STORED_TO>(StoredValueInfo, AddressAnalysis);
     }
-    RelationHandler::handleRelation<WRITES_TO>(CurrentFunctionRegion,
-        AddressAnalysis); 
+    RH.handleRelation<WRITES_TO>(CurrentFunctionRegion, AddressAnalysis); 
   }
 
   void processFunction(Function &F) {
@@ -372,8 +379,7 @@ private:
            i != End; ++i) {
         ValueInfo *OperandAnalysis = analyzeValue(*i);
         if (OperandAnalysis) {
-          RelationHandler::handleRelation<DEPENDS_ON>(PHIAnalysis,
-              OperandAnalysis);
+          RH.handleRelation<DEPENDS_ON>(PHIAnalysis, OperandAnalysis);
         }
       }
     }
@@ -381,12 +387,12 @@ private:
   }
 
   bool analyzed(const Value *V) {
-    return D->ValueInfos.count(V);
+    return RH.D->ValueInfos.count(V);
   }
 
   static ValueInfo *makeRegion(ValueInfo *VI) {
     VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()
-        ->addValueInfo(VI);
+        ->addContent(VI, Constraints());
     return VI;
   }
 
@@ -401,7 +407,7 @@ private:
   ValueInfo *cache(const Value *V, ValueInfo *VI) {
     assert(V);
     assert(!analyzed(V));
-    D->ValueInfos[V] = VI;
+    RH.D->ValueInfos[V] = VI;
     return VI;
   }
 
@@ -420,7 +426,7 @@ private:
   ValueInfo *getGlobalRegionInfo(const GlobalValue *G) {
     assert(!G->isDeclaration());
     assert(!isa<GlobalAlias>(G));
-    ValueInfo::Ref &VI = D->GlobalRegionInfos[G];
+    ValueInfo::Ref &VI = RH.D->GlobalRegionInfos[G];
     ValueInfo *Out;
     if (VI) {
       Out = VI.getPtr();
@@ -433,14 +439,14 @@ private:
 
   ValueInfo *createAnonymousValueInfo() {
     ValueInfo *VI = createValueInfo(0);
-    D->AnonymousValueInfos.push_back(VI);
+    RH.D->AnonymousValueInfos.push_back(VI);
     return VI;
   }
 
   ValueInfo *analyzeValue(const Value *V) {
     assert(V);
-    ValueInfoMap::const_iterator i = D->ValueInfos.find(V);
-    if (i != D->ValueInfos.end()) {
+    ValueInfoMap::const_iterator i = RH.D->ValueInfos.find(V);
+    if (i != RH.D->ValueInfos.end()) {
       // Previously analyzed.
       return i->second.getPtr();
     }
@@ -472,7 +478,7 @@ private:
   ValueInfo *analyzeGlobalValue(const GlobalValue *G) {
     if (G->isDeclaration()) {
       assert(!G->hasLocalLinkage());  // Verifier ensures this
-      return cache(G, D->ExternallyLinkableRegions.getPtr());
+      return cache(G, RH.D->ExternallyLinkableRegions.getPtr());
     } else {
       ValueInfo *VI;
       if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(G)) {
@@ -482,8 +488,8 @@ private:
         VI = analyzeGlobalRegion(G);
       }
       if (VI && !G->hasLocalLinkage()) {
-        RelationHandler::handleRelation<DEPENDS_ON>(
-            D->ExternallyLinkableRegions.getPtr(), VI);
+        RH.handleRelation<DEPENDS_ON>(RH.D->ExternallyLinkableRegions.getPtr(),
+            VI);
       }
       return VI;
     }
@@ -495,15 +501,15 @@ private:
       // Even when not overridable, we have to make a new ValueInfo because
       // alias chains can have cycles.
       ValueInfo *VI = cacheNewValueInfo(GA);
-      RelationHandler::handleRelation<DEPENDS_ON>(VI, analyzeValue(Aliasee));
+      RH.handleRelation<DEPENDS_ON>(VI, analyzeValue(Aliasee));
       if (GA->mayBeOverridden()) {
-        RelationHandler::handleRelation<DEPENDS_ON>(
-            VI, D->ExternallyLinkableRegions.getPtr());
+        RH.handleRelation<DEPENDS_ON>(VI,
+            RH.D->ExternallyLinkableRegions.getPtr());
       }
       return VI;
     } else if (GA->mayBeOverridden()) {
       // TODO: What does it mean for an alias to alias nothing?
-      return cache(GA, D->ExternallyLinkableRegions.getPtr());
+      return cache(GA, RH.D->ExternallyLinkableRegions.getPtr());
     } else {
       // TODO: What does it mean for an alias to alias nothing?
       return cacheNil(GA);
@@ -516,9 +522,9 @@ private:
     if (G->mayBeOverridden()) {
       // It either points to this region or an externally-linkable region.
       VI = cacheNewValueInfo(G);
-      RelationHandler::handleRelation<DEPENDS_ON>(VI, RegionVI);
-      RelationHandler::handleRelation<DEPENDS_ON>(
-          VI, D->ExternallyLinkableRegions.getPtr());
+      RH.handleRelation<DEPENDS_ON>(VI, RegionVI);
+      RH.handleRelation<DEPENDS_ON>(VI,
+          RH.D->ExternallyLinkableRegions.getPtr());
     } else {
       // It can only point to this region.
       VI = cache(G, RegionVI);
@@ -530,8 +536,7 @@ private:
         // Since Andersen's algorithm is flow-insensitive, the effect of an
         // initializer is the same as that of a store instruction, except that
         // it can only store to the definition of the symbol in this module.
-        RelationHandler::handleRelation<STORED_TO>(InitializerValueInfo,
-            RegionVI);
+        RH.handleRelation<STORED_TO>(InitializerValueInfo, RegionVI);
       }
     }
     return VI;
@@ -539,7 +544,7 @@ private:
 
   ValueInfo *analyzeArgument(const Argument *A) {
     ValueInfo *ArgumentValueInfo = cacheNewValueInfo(A);
-    RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(ArgumentValueInfo,
+    RH.handleRelation<ARGUMENT_FROM_CALLER>(ArgumentValueInfo,
         CurrentFunctionRegion);
     return ArgumentValueInfo;
   }
@@ -566,7 +571,7 @@ private:
       Result = cacheNewValueInfo(U);
       for (ValueInfoVector::const_iterator i = Set.begin(), End = Set.end();
            i != End; ++i) {
-        RelationHandler::handleRelation<DEPENDS_ON>(Result, *i);
+        RH.handleRelation<DEPENDS_ON>(Result, *i);
       }
       break;
     }
@@ -602,7 +607,7 @@ private:
 };
 
 Data *InstructionAnalyzer::run(ModulePass *MP, Module &M) {
-  return Visitor(MP, M).D;
+  return Visitor::run(MP, M);
 }
 
 }

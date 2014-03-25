@@ -14,6 +14,7 @@
 #define DEBUG_TYPE "andersen"
 #include "AnalysisResult.h"
 
+#include "Constraints.h"
 #include "DebugInfo.h"
 #include "EnumerationContext.h"
 #include "EnumerationResult.h"
@@ -29,14 +30,49 @@
 namespace llvm {
 namespace andersen_internal {
 
+namespace {
+
+// Predicate that "that" implies "C". 
+class Implies {
+  const Constraints *const C;
+
+ public:
+  Implies(const Constraints *C) : C(C) {}
+
+  bool operator()(const Constraints& that) const {
+    return that.implies(*C);
+  }
+};
+
+}
+
 AnalysisResult::AnalysisResult() : EnumerationDepth(-1) {}
 
 AnalysisResult::~AnalysisResult() {
   assert(!isEnumerating());
 }
 
-bool AnalysisResult::addValueInfo(ValueInfo *VI) {
-  return Set.insert(VI);
+bool AnalysisResult::addContent(ValueInfo *VI, const Constraints &C) {
+  ConstraintsVector &CV(Contents[VI]);
+  // If this constraint implies an existing one, then it's superfluous.
+  // Otherwise, any existing constraints that imply this one are now
+  // superfluous.
+  for (ConstraintsVector::iterator i = CV.begin(), End = CV.end(); i != End;
+       ++i) {
+    if (C.implies(*i)) {
+      return false;
+    } else if (i->implies(C)) {
+      // This element cannot imply any other existing elements, so C cannot
+      // imply any existing elements either, so we can insert it. Remove this
+      // element and any others that imply it, as they are superfluous.
+      CV.erase(std::remove_if(i, End, Implies(&C)), End);
+      break;
+    }
+  }
+  // It's new.
+  CV.push_back(C);
+  EnumerationHistory.push_back(EnumerationHistoryVector::value_type(VI, C));
+  return true;
 }
 
 bool AnalysisResult::prepareForSubset(AnalysisResult *Subset) {
@@ -50,8 +86,8 @@ bool AnalysisResult::prepareForSubset(AnalysisResult *Subset) {
 }
 
 EnumerationResult AnalysisResult::enumerate(int Depth, int LastTransformDepth,
-    size_t &i) {
-  assert(i <= Set.size());
+    Constraints *C, size_t &i) {
+  assert(i <= EnumerationHistory.size());
   DEBUG(dbgs() << Depth << ':' << LastTransformDepth << " Enter " << this << '['
                << i << "]\n");
   // If not enumerating, EnumerationDepth is -1. If no last transform,
@@ -63,10 +99,13 @@ EnumerationResult AnalysisResult::enumerate(int Depth, int LastTransformDepth,
     return EnumerationResult::makeRewriteResult(this);
   }
   // Else check for cached result.
-  if (i < Set.size()) {
+  if (i < EnumerationHistory.size()) {
     DEBUG(dbgs() << Depth << ':' << LastTransformDepth << " Leave " << this
-                 << '[' << i << "]: cached " << Set[i] << '\n');
-    return EnumerationResult::makeNextValueResult(Set[i++]);
+                 << '[' << i << "]: cached " << EnumerationHistory[i].first
+                 << '\n');
+    const EnumerationHistoryVector::value_type& Result(EnumerationHistory[i++]);
+    *C = Result.second;
+    return EnumerationResult::makeNextValueResult(Result.first);
   }
   // Else need to compute the next element.
   if (isEnumerating()) {
@@ -80,11 +119,11 @@ EnumerationResult AnalysisResult::enumerate(int Depth, int LastTransformDepth,
   EnumerationContext Ctx(this, Depth, LastTransformDepth);
   AnalysisResult *RetryCancellationPoint = 0;
   while (Ctx.Pos != Work.end()) {
-    EnumerationResult ER = Ctx.Pos->enumerate(&Ctx);
+    EnumerationResult ER(Ctx.Pos->enumerate(&Ctx, C));
     switch (ER.getResultType()) {
     case EnumerationResult::NEXT_VALUE: {
       ValueInfo *VI = ER.getNextValue();
-      if (addValueInfo(VI)) {
+      if (addContent(VI, *C)) {
         DEBUG(dbgs() << Depth << ':' << LastTransformDepth << " Leave " << this
                      << '[' << i << "]: computed " << VI << '\n');
         ++i;
@@ -128,7 +167,7 @@ EnumerationResult AnalysisResult::enumerate(int Depth, int LastTransformDepth,
       // Move all other work to the rewrite target and replace this work list
       // with a reference to it.
       AnalysisResult *RewriteTarget = ER.getRewriteTarget();
-      Ctx.Pos = Work.erase(Ctx.Pos);
+      Ctx.pop();
       if (RewriteTarget != this) {
         assert(RewriteTarget->EnumerationDepth < EnumerationDepth);
         // Erase any work that shouldn't be moved.
@@ -155,7 +194,7 @@ EnumerationResult AnalysisResult::enumerate(int Depth, int LastTransformDepth,
     }
 
     case EnumerationResult::COMPLETE:
-      Ctx.Pos = Work.erase(Ctx.Pos);
+      Ctx.pop();
       break;
 
     default:
@@ -194,6 +233,7 @@ void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
   DI.printAnalysisResultName(this, OS);
   OS << " = ";
   bool first = true;
+/*
   if (!Set.empty()) {
     OS << '{';
     ValueInfoSetVector::const_iterator i = Set.begin(), End = Set.end();
@@ -205,7 +245,7 @@ void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
       DI.printValueInfoName(*i, OS);
     } while (++i != End);
     OS << '}';
-  }
+  }*/
   for (AnalysisResultWorkList::const_iterator i = Work.begin(),
                                               End = Work.end();
        i != End; ++i) {
@@ -225,12 +265,13 @@ void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
 GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   size_t Pos = 0;
+/*
   for (ValueInfoSetVector::const_iterator i = Set.begin(), End = Set.end();
        i != End; ++i, ++Pos) {
     std::ostringstream OSS;
     OSS << Pos;
     Result.push_back(GraphEdge(*i, OSS.str()));
-  }
+  }*/
   for (AnalysisResultWorkList::const_iterator i = Work.begin(),
                                               End = Work.end();
        i != End; ++i, ++Pos) {

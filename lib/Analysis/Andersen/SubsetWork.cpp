@@ -28,7 +28,8 @@ SubsetWork::SubsetWork(AnalysisResult *AR) : E(AR) {}
 
 SubsetWork::~SubsetWork() {}
 
-EnumerationResult SubsetWork::enumerate(EnumerationContext *Ctx) {
+EnumerationResult SubsetWork::enumerate(EnumerationContext *Ctx,
+    Constraints *C) {
   if (Ctx->canInline()) {
     DEBUG(dbgs() << Ctx->getDepth() << ':' << Ctx->getLastTransformDepth()
                  << " In " << Ctx->getAnalysisResult() << ": inlining "
@@ -40,7 +41,8 @@ EnumerationResult SubsetWork::enumerate(EnumerationContext *Ctx) {
                << E.getAnalysisResult() << '[' << E.getPosition() << "]\n");
   for (;;) {
     EnumerationResult ER(E.enumerate(Ctx->getNextDepth(),
-                                     Ctx->getLastTransformDepth()));
+                                     Ctx->getLastTransformDepth(),
+                                     C));
     if (ER.getResultType() != EnumerationResult::INLINE) {
       return ER;
     }

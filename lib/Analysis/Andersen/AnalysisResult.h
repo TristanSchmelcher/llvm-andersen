@@ -15,11 +15,16 @@
 #define ANALYSISRESULT_H
 
 #include "AnalysisResultWork.h"
+#include "Constraints.h"
 #include "GraphNode.h"
 #include "SubsetWork.h"
-#include "TransformWorkBase.h"
+#include "TransformWork.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallVector.h"
+
+#include <utility>
+#include <vector>
 
 namespace llvm {
 
@@ -33,15 +38,21 @@ namespace andersen_internal {
 class DebugInfo;
 class EnumerationResult;
 class ValueInfo;
-typedef SetVector<ValueInfo *> ValueInfoSetVector;
+typedef SmallVector<Constraints, 1> ConstraintsVector;
+typedef DenseMap<ValueInfo *, ConstraintsVector> ContentsMap;
 
 class AnalysisResult : public GraphNode {
   friend class EnumerationContext;
   friend class ScopedSetEnumerating;
 
   int EnumerationDepth;
-  ValueInfoSetVector Set;
   AnalysisResultWorkList Work;
+  ContentsMap Contents;
+
+  typedef std::vector<std::pair<ValueInfo *, Constraints> >
+      EnumerationHistoryVector;
+  EnumerationHistoryVector EnumerationHistory;
+
   typedef DenseSet<AnalysisResult *> AnalysisResultSet;
   AnalysisResultSet Subsets;
 
@@ -49,11 +60,12 @@ public:
   AnalysisResult();
   virtual ~AnalysisResult();
 
-  bool addValueInfo(ValueInfo *VI);
+  bool addContent(ValueInfo *VI, const Constraints &C);
   // Prepare for possibly adding "Subset" to the work list as a
   // SubsetWork. Returns true if it should be added, else false.
   bool prepareForSubset(AnalysisResult *Subset);
-  EnumerationResult enumerate(int Depth, int LastTransformDepth, size_t &i);
+  EnumerationResult enumerate(int Depth, int LastTransformDepth,
+      Constraints *C, size_t &i);
   void writeEquation(const DebugInfo &DI, raw_ostream &OS) const;
 
   // INSTRUCTION_ANALYSIS_PHASE only.
@@ -64,11 +76,15 @@ public:
   }
 
   // INSTRUCTION_ANALYSIS_PHASE only.
-  void appendUniqueTransform(TransformWorkBase *Entry) {
+  void appendUniqueTransform(TransformWork *Entry) {
     Work.push_back(Entry);
   }
 
-  const ValueInfoSetVector &getSetContentsSoFar() const { return Set; }
+  const ContentsMap &getContentsSoFar() const { return Contents; }
+
+  size_t getNumValuesEnumeratedSoFar() const {
+    return EnumerationHistory.size();
+  }
 
   bool isDone() const { return Work.empty(); }
 

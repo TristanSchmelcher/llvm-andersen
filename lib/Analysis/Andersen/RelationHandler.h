@@ -15,18 +15,50 @@
 #ifndef RELATIONHANDLER_H
 #define RELATIONHANDLER_H
 
-#include "RelationType.h"
+namespace llvm {
+
+class Instruction;
+
+}
 
 namespace llvm {
 namespace andersen_internal {
 
+class Data;
 class ValueInfo;
 
-struct RelationHandler {
+enum BinaryRelation {
+  ARGUMENT_FROM_CALLER,
+  DEPENDS_ON,
+  LOADED_FROM,
+  RETURNED_TO_CALLER,
+  STORED_TO,
+  READS_FROM,
+  WRITES_TO
+};
+
+enum TrinaryRelation {
+  ARGUMENT_TO_CALLEE,
+  RETURNED_FROM_CALLEE,
+  CALLS
+};
+
+class RelationHandler {
+public:
+  Data *const D;
+
+  explicit RelationHandler(Data *D) : D(D) {}
+
   // Generates AnalysisResult entries to handle the relation RT between Src and
   // Dst.
-  template<RelationType RT>
+  template<BinaryRelation RT>
   static void handleRelation(ValueInfo *Src, ValueInfo *Dst);
+
+  // Generates AnalysisResult entries to handle the relation RT between Src and
+  // Dst for a given callsite.
+  template<TrinaryRelation RT>
+  void handleRelation(ValueInfo *Src, ValueInfo *Dst,
+      const Instruction *CallSite);
 };
 
 }

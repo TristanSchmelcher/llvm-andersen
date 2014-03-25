@@ -80,6 +80,11 @@ public:
       return 0;
     }
   }
+
+  void pop() {
+    assert(Pos != AR->Work.end());
+    Pos = AR->Work.erase(Pos);
+  }
 };
 
 }

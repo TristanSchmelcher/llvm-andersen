@@ -17,18 +17,7 @@
 namespace llvm {
 namespace andersen_internal {
 
-enum RelationType {
-  ARGUMENT_FROM_CALLER,
-  ARGUMENT_TO_CALLEE,
-  DEPENDS_ON,
-  LOADED_FROM,
-  RETURNED_FROM_CALLEE,
-  RETURNED_TO_CALLER,
-  STORED_TO,
-  CALLS,
-  READS_FROM,
-  WRITES_TO
-};
+
 
 }
 }

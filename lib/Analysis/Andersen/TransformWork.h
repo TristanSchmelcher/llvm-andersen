@@ -7,39 +7,38 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines a template type for transforms that compute the list
-// comprehension of a ValueInfo-to-AnalysisResult function run on the elements
-// of an input AnalysisResult.
+// This file declares a base type for transformations from one set to another
+// set.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef TRANSFORMWORK_H
 #define TRANSFORMWORK_H
 
-#include "Phase.h"
-#include "TransformWorkBase.h"
-#include "ValueInfo.h"
-
-#include <string>
+#include "AnalysisResultWork.h"
+#include "Enumerator.h"
 
 namespace llvm {
 namespace andersen_internal {
 
 class AnalysisResult;
+class Constraints;
+class ValueInfo;
 
-template<typename AlgorithmTy>
-class TransformWork : public TransformWorkBase {
+class TransformWork : public AnalysisResultWork {
+protected:
+  Enumerator E;
+
 public:
-  explicit TransformWork(AnalysisResult *AR) : TransformWorkBase(AR) {}
-
-  virtual const AlgorithmId *getAlgorithmId() const {
-    return &AlgorithmTy::ID;
-  }
+  explicit TransformWork(AnalysisResult *AR);
+  virtual ~TransformWork();
+  virtual EnumerationResult enumerate(EnumerationContext *Ctx, Constraints *C);
+  virtual bool prepareForRewrite(AnalysisResult *RewriteTarget) const;
+  virtual GraphEdgeDeque getOutgoingEdges() const;
 
 protected:
-  virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) {
-    return VI->getAlgorithmResult<AlgorithmTy, ENUMERATION_PHASE>();
-  }
+  virtual EnumerationResult transformValueInfo(EnumerationContext *Ctx,
+      Constraints *C, ValueInfo *VI) const = 0;
 };
 
 }
