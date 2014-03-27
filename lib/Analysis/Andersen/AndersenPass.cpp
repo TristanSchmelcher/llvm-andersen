@@ -133,7 +133,7 @@ bool AndersenPass::isSetIntersectionEmpty(AndersenSetHandle SH1,
       break;
     }
     ContentsMap::const_iterator i = PointsToSet1->find(Next);
-    if (i != PointsToSet1->end()) {
+    if (i == PointsToSet1->end()) {
       continue;
     }
     const ConstraintsVector &CV(i->second);
