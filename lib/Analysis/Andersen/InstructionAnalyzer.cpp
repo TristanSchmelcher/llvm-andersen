@@ -283,8 +283,6 @@ private:
     // Putting ExternallyAccessibleRegions into every relation with itself makes
     // it expand to what we want. We use null for the callsites to represent
     // calling from/to an external function.
-    RH.handleRelation<ARGUMENT_FROM_CALLER>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RH.handleRelation<ARGUMENT_TO_CALLEE>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions, 0);
     RH.handleRelation<CALLS>(
@@ -295,12 +293,17 @@ private:
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RH.handleRelation<RETURNED_FROM_CALLEE>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions, 0);
-    RH.handleRelation<RETURNED_TO_CALLER>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RH.handleRelation<STORED_TO>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RH.handleRelation<WRITES_TO>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+    // Special case for the function definition relations, which only work for
+    // region VIs. Here ExternallyLinkableRegions represents externally-defined
+    // functions.
+    RH.handleRelation<ARGUMENT_FROM_CALLER>(
+        ExternallyAccessibleRegions, ExternallyLinkableRegions);
+    RH.handleRelation<RETURNED_TO_CALLER>(
+        ExternallyAccessibleRegions, ExternallyLinkableRegions);
 
     for (Module::global_iterator i = M.global_begin(), End = M.global_end();
          i != End; ++i) {
@@ -322,18 +325,18 @@ private:
   static Data *createData() {
     // All global regions that are externally accessible by way of linkage. This
     // is the set of all internally-defined global regions with external linkage
-    // plus a placeholder for any externally-defined global regions, which is
-    // needed to ensure the points-to set is non-empty in the unlikely event
-    // that there are no internally-defined global regions with external linkage
-    // in this module. We simply create this as a region so as to use itself as
-    // the placeholder.
+    // plus a placeholder for all externally-defined global regions. We simply
+    // create this as a region so as to use itself as the placeholder. Unlike
+    // normal regions, its points-to set will contain both itself and other
+    // VIs.
     ValueInfo *ExternallyLinkableRegions = createRegion(0);
 
     // All regions that are externally accessible in any manner. This is the
     // members of the above set plus all internally-defined regions that can be
-    // accessed by dereferencing or calling them. (In this context, the
-    // placeholder created above also represents externally-defined non-global
-    // regions, which are indistinguishable.)
+    // accessed by dereferencing or calling them or arguments to
+    // externally-defined functions. (In this context, the placeholder created
+    // above also represents externally-defined non-global regions, which are
+    // indistinguishable.)
     ValueInfo *ExternallyAccessibleRegions = createValueInfo(0);
 
     return new Data(ExternallyLinkableRegions, ExternallyAccessibleRegions);
