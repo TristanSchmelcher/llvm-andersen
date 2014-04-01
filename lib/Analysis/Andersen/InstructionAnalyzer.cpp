@@ -240,37 +240,38 @@ private:
   static Data *createData() {
     // All global regions that are externally accessible by way of linkage. This
     // is the set of all internally-defined global regions with external linkage
-    // plus a placeholder for any externally-defined global regions, which is
-    // needed to ensure the points-to set is non-empty in the unlikely event
-    // that there are no internally-defined global regions with external linkage
-    // in this module. We simply create this as a region so as to use itself as
-    // the placeholder.
+    // plus a placeholder for all externally-defined global regions. We simply
+    // create this as a region so as to use itself as the placeholder. Unlike
+    // normal regions, its points-to set will contain both itself and other
+    // VIs.
     ValueInfo *ExternallyLinkableRegions = createRegion(0);
 
     // All regions that are externally accessible in any manner. This is the
     // members of the above set plus all internally-defined regions that can be
-    // accessed by dereferencing or calling them. (In this context, the
-    // placeholder created above also represents externally-defined non-global
-    // regions, which are indistinguishable.)
+    // accessed by dereferencing or calling them or arguments to
+    // externally-defined functions. (In this context, the placeholder created
+    // above also represents externally-defined non-global regions, which are
+    // indistinguishable.)
     ValueInfo *ExternallyAccessibleRegions = createValueInfo(0);
     RelationHandler::handleRelation<DEPENDS_ON>(ExternallyAccessibleRegions,
         ExternallyLinkableRegions);
     // Putting ExternallyAccessibleRegions into every relation with itself makes
     // it expand to what we want.
-    RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RelationHandler::handleRelation<ARGUMENT_TO_CALLEE>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RelationHandler::handleRelation<LOADED_FROM>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RelationHandler::handleRelation<RETURNED_FROM_CALLEE>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RelationHandler::handleRelation<RETURNED_TO_CALLER>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RelationHandler::handleRelation<STORED_TO>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+    // Special case for the function definition relations, which only work for
+    // region VIs. Here ExternallyLinkableRegions represents externally-defined
+    // functions.
     RelationHandler::handleRelation<ARGUMENT_FROM_CALLER>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
+        ExternallyAccessibleRegions, ExternallyLinkableRegions);
+    RelationHandler::handleRelation<RETURNED_TO_CALLER>(
+        ExternallyAccessibleRegions, ExternallyLinkableRegions);
 
     return new Data(ExternallyLinkableRegions, ExternallyAccessibleRegions);
   }
