@@ -282,28 +282,31 @@ private:
         ExternallyLinkableRegions);
     // Putting ExternallyAccessibleRegions into every relation with itself makes
     // it expand to what we want. We use null for the callsites to represent
-    // calling from/to an external function.
+    // calling from an externally-defined function.
     RH.handleRelation<ARGUMENT_TO_CALLEE>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions, 0);
-    RH.handleRelation<CALLS>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions, 0);
     RH.handleRelation<LOADED_FROM>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RH.handleRelation<READS_FROM>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
     RH.handleRelation<RETURNED_FROM_CALLEE>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions, 0);
     RH.handleRelation<STORED_TO>(
         ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    RH.handleRelation<WRITES_TO>(
-        ExternallyAccessibleRegions, ExternallyAccessibleRegions);
-    // Special case for the function definition relations, which only work for
-    // region VIs. Here ExternallyLinkableRegions represents externally-defined
-    // functions.
+    // Special case for the function definition argument/return relations: the
+    // "dst" VI must be a region. Here ExternallyLinkableRegions represents
+    // externally-defined functions.
     RH.handleRelation<ARGUMENT_FROM_CALLER>(
         ExternallyAccessibleRegions, ExternallyLinkableRegions);
     RH.handleRelation<RETURNED_TO_CALLER>(
         ExternallyAccessibleRegions, ExternallyLinkableRegions);
+    // Special case for the function definition mod/ref relations: the "src" VI
+    // must be a region. Again, ExternallyLinkableRegions represents
+    // externally-defined functions.
+    RH.handleRelation<CALLS>(
+        ExternallyLinkableRegions, ExternallyAccessibleRegions, 0);
+    RH.handleRelation<READS_FROM>(
+        ExternallyLinkableRegions, ExternallyAccessibleRegions);
+    RH.handleRelation<WRITES_TO>(
+        ExternallyLinkableRegions, ExternallyAccessibleRegions);
 
     for (Module::global_iterator i = M.global_begin(), End = M.global_end();
          i != End; ++i) {
