@@ -233,19 +233,20 @@ void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
   DI.printAnalysisResultName(this, OS);
   OS << " = ";
   bool first = true;
-/*
-  if (!Set.empty()) {
+  if (!EnumerationHistory.empty()) {
     OS << '{';
-    ValueInfoSetVector::const_iterator i = Set.begin(), End = Set.end();
+    EnumerationHistoryVector::const_iterator i = EnumerationHistory.begin(),
+                                             End = EnumerationHistory.end();
     do {
       if (!first) {
         OS << ", ";
       }
       first = false;
-      DI.printValueInfoName(*i, OS);
+      DI.printValueInfoName(i->first, OS);
+      // TODO: Print constraints.
     } while (++i != End);
     OS << '}';
-  }*/
+  }
   for (AnalysisResultWorkList::const_iterator i = Work.begin(),
                                               End = Work.end();
        i != End; ++i) {
@@ -262,6 +263,7 @@ void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
   OS << '\n';
 }
 
+// TODO: Delete graphing support; it is not useful.
 GraphEdgeDeque AnalysisResult::getOutgoingEdges() const {
   GraphEdgeDeque Result;
   size_t Pos = 0;
