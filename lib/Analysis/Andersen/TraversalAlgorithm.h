@@ -36,7 +36,7 @@ private:
     static AnalysisResult *run(ValueInfo *VI) {
       AnalysisResult *AR = new AnalysisResult();
       AR->appendUniqueTransform(new CompositionWork<SecondHopAlgorithm>(
-          VI->getAlgorithmResult<FirstHopAlgorithm, RunPhase>()));
+          VI->getAlgorithmResult<RunPhase>(FirstHopAlgorithm())));
       return AR;
     }
   };

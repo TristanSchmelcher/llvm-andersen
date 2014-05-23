@@ -72,14 +72,9 @@ void ValueInfo::writeEquations(const DebugInfo &DI, raw_ostream &OS) const {
   }
 }
 
-AnalysisResult *ValueInfo::getOrCreateAlgorithmResult(const AlgorithmId *Id,
-    AlgorithmFn Fn) {
-  AnalysisResult *&AR = Results[Id];
-  if (!AR) {
-    AR = (*Fn)(this);
-    assert(AR);
-  }
-  return AR;
+AnalysisResult **ValueInfo::getOrCreateAlgorithmResultInternal(
+    const AlgorithmId *Id) {
+  return &Results[Id];
 }
 
 AnalysisResult *ValueInfo::getAlgorithmResultOrNull(const AlgorithmId *Id)
@@ -89,13 +84,6 @@ AnalysisResult *ValueInfo::getAlgorithmResultOrNull(const AlgorithmId *Id)
     return 0;
   }
   return i->second;
-}
-
-void ValueInfo::addInstructionAnalysisWorkInternal(const AlgorithmId *Id1,
-    AlgorithmFn Fn1, ValueInfo *that, const AlgorithmId *Id2,
-    AlgorithmFn Fn2) {
-  getOrCreateAlgorithmResult(Id1, Fn1)->appendSubset(
-      that->getOrCreateAlgorithmResult(Id2, Fn2));
 }
 
 }

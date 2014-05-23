@@ -51,8 +51,8 @@ inline void ForAlgorithm<ActualParametersPointsToAlgorithm>
     ::handleRelation<ARGUMENT_TO_CALLEE>(Data *D, ValueInfo *Src,
         ValueInfo *Dst, const Instruction *CallSite) {
   // Add work to push callsite annotation.
-  Dst->addInstructionAnalysisWork<ActualParametersPointsToAlgorithm,
-      PointsToAlgorithm>(Src);
+  Dst->addInstructionAnalysisWork(ActualParametersPointsToAlgorithm(),
+      Src, PointsToAlgorithm());
 }
 
 // ActualReturnValuePointsToAlgorithm
@@ -61,8 +61,8 @@ template<>
 inline void ForAlgorithm<ActualReturnValuePointsToAlgorithm>
     ::handleRelation<RETURNED_TO_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do; callsite is popped by RETURNED_FROM_CALLEE.
-  Dst->addInstructionAnalysisWork<ActualReturnValuePointsToAlgorithm,
-      PointsToAlgorithm>(Src);
+  Dst->addInstructionAnalysisWork(ActualReturnValuePointsToAlgorithm(),
+      Src, PointsToAlgorithm());
 }
 
 // FormalParametersReversePointsToAlgorithm
@@ -71,8 +71,8 @@ template<>
 inline void ForAlgorithm<FormalParametersReversePointsToAlgorithm>
     ::handleRelation<ARGUMENT_FROM_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do; callsite is popped by ARGUMENT_TO_CALLEE.
-  Dst->addInstructionAnalysisWork<FormalParametersReversePointsToAlgorithm,
-      ReversePointsToAlgorithm>(Src);
+  Dst->addInstructionAnalysisWork(FormalParametersReversePointsToAlgorithm(),
+      Src, ReversePointsToAlgorithm());
 }
 
 // FormalReturnValueReversePointsToAlgorithm
@@ -82,8 +82,8 @@ inline void ForAlgorithm<FormalReturnValueReversePointsToAlgorithm>
     ::handleRelation<RETURNED_FROM_CALLEE>(Data *D, ValueInfo *Src,
         ValueInfo *Dst, const Instruction *CallSite) {
   // Add work to push callsite annotation.
-  Dst->addInstructionAnalysisWork<FormalReturnValueReversePointsToAlgorithm,
-      ReversePointsToAlgorithm>(Src);
+  Dst->addInstructionAnalysisWork(FormalReturnValueReversePointsToAlgorithm(),
+      Src, ReversePointsToAlgorithm());
 }
 
 // LoadedValuesReversePointsToAlgorithm
@@ -92,8 +92,8 @@ template<>
 inline void ForAlgorithm<LoadedValuesReversePointsToAlgorithm>
     ::handleRelation<LOADED_FROM>(ValueInfo *Src, ValueInfo *Dst) {
   // Add work to drop callsite annotations.
-  Dst->addInstructionAnalysisWork<LoadedValuesReversePointsToAlgorithm,
-      ReversePointsToAlgorithm>(Src);
+  Dst->addInstructionAnalysisWork(LoadedValuesReversePointsToAlgorithm(),
+      Src, ReversePointsToAlgorithm());
 }
 
 // ModifiedValuesPointsToAlgorithm
@@ -103,10 +103,11 @@ inline void ForAlgorithm<ModifiedValuesPointsToAlgorithm>
     ::handleRelation<CALLS>(Data *D, ValueInfo *Src, ValueInfo *Dst,
         const Instruction *CallSite) {
   // Add work to pop callsite.
-  Src->addInstructionAnalysisWork<
-      ModifiedValuesPointsToAlgorithm,
+  Src->addInstructionAnalysisWork(
+      ModifiedValuesPointsToAlgorithm(),
+      Dst,
       TwoHopTraversal<PointsToAlgorithm,
-                      ModifiedValuesPointsToAlgorithm>::Algorithm>(Dst);
+                      ModifiedValuesPointsToAlgorithm>::Algorithm());
 }
 
 template<>
@@ -114,8 +115,8 @@ template<>
 inline void ForAlgorithm<ModifiedValuesPointsToAlgorithm>
     ::handleRelation<WRITES_TO>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do.
-  Src->addInstructionAnalysisWork<ModifiedValuesPointsToAlgorithm,
-      PointsToAlgorithm>(Dst);
+  Src->addInstructionAnalysisWork(ModifiedValuesPointsToAlgorithm(),
+      Dst, PointsToAlgorithm());
 }
 
 // PointsToAlgorithm
@@ -124,10 +125,11 @@ template<>
 inline void ForAlgorithm<PointsToAlgorithm>
     ::handleRelation<ARGUMENT_FROM_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do; callsite has been pushed by ARGUMENT_TO_CALLEE.
-  Src->addInstructionAnalysisWork<
-      PointsToAlgorithm,
+  Src->addInstructionAnalysisWork(
+      PointsToAlgorithm(),
+      Dst,
       TwoHopTraversal<ReversePointsToAlgorithm,
-                      ActualParametersPointsToAlgorithm>::Algorithm>(Dst);
+                      ActualParametersPointsToAlgorithm>::Algorithm());
 }
 
 template<>
@@ -135,8 +137,8 @@ template<>
 inline void ForAlgorithm<PointsToAlgorithm>
     ::handleRelation<DEPENDS_ON>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do.
-  Src->addInstructionAnalysisWork<PointsToAlgorithm,
-      PointsToAlgorithm>(Dst);
+  Src->addInstructionAnalysisWork(PointsToAlgorithm(),
+      Dst, PointsToAlgorithm());
 }
 
 template<>
@@ -144,11 +146,12 @@ template<>
 inline void ForAlgorithm<PointsToAlgorithm>
     ::handleRelation<LOADED_FROM>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do; callsites have been dropped by STORED_TO.
-  Src->addInstructionAnalysisWork<
-      PointsToAlgorithm,
+  Src->addInstructionAnalysisWork(
+      PointsToAlgorithm(),
+      Dst,
       ThreeHopTraversal<PointsToAlgorithm,
                         ReversePointsToAlgorithm,
-                        StoredValuesPointsToAlgorithm>::Algorithm>(Dst);
+                        StoredValuesPointsToAlgorithm>::Algorithm());
 }
 
 template<>
@@ -157,10 +160,11 @@ inline void ForAlgorithm<PointsToAlgorithm>
     ::handleRelation<RETURNED_FROM_CALLEE>(Data *D, ValueInfo *Src,
         ValueInfo *Dst, const Instruction *CallSite) {
   // Add work to pop callsite annotation.
-  Src->addInstructionAnalysisWork<
-      PointsToAlgorithm,
+  Src->addInstructionAnalysisWork(
+      PointsToAlgorithm(),
+      Dst,
       TwoHopTraversal<PointsToAlgorithm,
-                      ActualReturnValuePointsToAlgorithm>::Algorithm>(Dst);
+                      ActualReturnValuePointsToAlgorithm>::Algorithm());
 }
 
 // ReferencedValuesPointsToAlgorithm
@@ -170,10 +174,11 @@ inline void ForAlgorithm<ReferencedValuesPointsToAlgorithm>
     ::handleRelation<CALLS>(Data *D, ValueInfo *Src, ValueInfo *Dst,
         const Instruction *CallSite) {
   // Add work to pop callsite.
-  Src->addInstructionAnalysisWork<
-      ReferencedValuesPointsToAlgorithm,
+  Src->addInstructionAnalysisWork(
+      ReferencedValuesPointsToAlgorithm(),
+      Dst,
       TwoHopTraversal<PointsToAlgorithm,
-                      ReferencedValuesPointsToAlgorithm>::Algorithm>(Dst);
+                      ReferencedValuesPointsToAlgorithm>::Algorithm());
 }
 
 template<>
@@ -181,8 +186,8 @@ template<>
 inline void ForAlgorithm<ReferencedValuesPointsToAlgorithm>
     ::handleRelation<READS_FROM>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do.
-  Src->addInstructionAnalysisWork<ReferencedValuesPointsToAlgorithm,
-      PointsToAlgorithm>(Dst);
+  Src->addInstructionAnalysisWork(ReferencedValuesPointsToAlgorithm(),
+      Dst, PointsToAlgorithm());
 }
 
 // ReversePointsToAlgorithm
@@ -192,11 +197,11 @@ inline void ForAlgorithm<ReversePointsToAlgorithm>
     ::handleRelation<ARGUMENT_TO_CALLEE>(Data *D, ValueInfo *Src,
         ValueInfo *Dst, const Instruction *CallSite) {
   // Add work to pop callsite annotation.
-  Src->addInstructionAnalysisWork<
-      ReversePointsToAlgorithm,
+  Src->addInstructionAnalysisWork(
+      ReversePointsToAlgorithm(),
+      Dst,
       TwoHopTraversal<PointsToAlgorithm,
-                      FormalParametersReversePointsToAlgorithm>::Algorithm>(
-          Dst);
+                      FormalParametersReversePointsToAlgorithm>::Algorithm());
 }
 
 template<>
@@ -204,8 +209,8 @@ template<>
 inline void ForAlgorithm<ReversePointsToAlgorithm>
     ::handleRelation<DEPENDS_ON>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do.
-  Dst->addInstructionAnalysisWork<ReversePointsToAlgorithm,
-      ReversePointsToAlgorithm>(Src);
+  Dst->addInstructionAnalysisWork(ReversePointsToAlgorithm(),
+      Src, ReversePointsToAlgorithm());
 }
 
 template<>
@@ -213,11 +218,12 @@ template<>
 inline void ForAlgorithm<ReversePointsToAlgorithm>
     ::handleRelation<RETURNED_TO_CALLER>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do; callsite is pushed by RETURNED_FROM_CALLEE.
-  Src->addInstructionAnalysisWork<
-      ReversePointsToAlgorithm,
+  Src->addInstructionAnalysisWork(
+      ReversePointsToAlgorithm(),
+      Dst,
       TwoHopTraversal<
           ReversePointsToAlgorithm,
-          FormalReturnValueReversePointsToAlgorithm>::Algorithm>(Dst);
+          FormalReturnValueReversePointsToAlgorithm>::Algorithm());
 }
 
 template<>
@@ -225,12 +231,13 @@ template<>
 inline void ForAlgorithm<ReversePointsToAlgorithm>
     ::handleRelation<STORED_TO>(ValueInfo *Src, ValueInfo *Dst) {
   // Nothing special to do; callsites have been dropped by LOADED_FROM.
-  Src->addInstructionAnalysisWork<
-      ReversePointsToAlgorithm,
+  Src->addInstructionAnalysisWork(
+      ReversePointsToAlgorithm(),
+      Dst,
       ThreeHopTraversal<
           PointsToAlgorithm,
           ReversePointsToAlgorithm,
-          LoadedValuesReversePointsToAlgorithm>::Algorithm>(Dst);
+          LoadedValuesReversePointsToAlgorithm>::Algorithm());
 }
 
 // StoredValuesPointsToAlgorithm
@@ -239,8 +246,8 @@ template<>
 inline void ForAlgorithm<StoredValuesPointsToAlgorithm>
     ::handleRelation<STORED_TO>(ValueInfo *Src, ValueInfo *Dst) {
   // Add work to drop callsite annotations.
-  Dst->addInstructionAnalysisWork<StoredValuesPointsToAlgorithm,
-      PointsToAlgorithm>(Src);
+  Dst->addInstructionAnalysisWork(StoredValuesPointsToAlgorithm(),
+      Src, PointsToAlgorithm());
 }
 
 }

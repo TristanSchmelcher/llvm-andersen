@@ -397,7 +397,7 @@ private:
   }
 
   static ValueInfo *makeRegion(ValueInfo *VI) {
-    VI->getAlgorithmResult<PointsToAlgorithm, INSTRUCTION_ANALYSIS_PHASE>()
+    VI->getAlgorithmResult<INSTRUCTION_ANALYSIS_PHASE>(PointsToAlgorithm())
         ->addContent(VI, Constraints());
     return VI;
   }

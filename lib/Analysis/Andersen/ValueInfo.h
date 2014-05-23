@@ -62,22 +62,22 @@ public:
   void fillDebugInfo(DebugInfoFiller *DIF) const;
   void writeEquations(const DebugInfo &DI, raw_ostream &OS) const;
 
-  template<typename AlgorithmTy, Phase CurrentPhase>
-  AnalysisResult *getAlgorithmResult() {
+  template<Phase CurrentPhase, typename AlgorithmTy>
+  AnalysisResult *getAlgorithmResult(const AlgorithmTy &Algorithm) {
     return GetAlgorithmResultHelper<
         AlgorithmTy::template IsEmptyIfMissing<CurrentPhase>::value>
-            ::template getAlgorithmResult<AlgorithmTy>(this);
+            ::getAlgorithmResult(this, Algorithm);
   }
 
   template<typename AlgorithmTy1, typename AlgorithmTy2>
-  void addInstructionAnalysisWork(ValueInfo *that) {
+  void addInstructionAnalysisWork(const AlgorithmTy1 &Algorithm1,
+      ValueInfo *that, const AlgorithmTy2 &Algorithm2) {
     assert(!AlgorithmTy1::template IsEmptyIfMissing<
         INSTRUCTION_ANALYSIS_PHASE>::value);
     assert(!AlgorithmTy2::template IsEmptyIfMissing<
         INSTRUCTION_ANALYSIS_PHASE>::value);
-    addInstructionAnalysisWorkInternal(&AlgorithmTy1::ID,
-        &AlgorithmTy1::run, that, &AlgorithmTy2::ID,
-        &AlgorithmTy2::run);
+    getOrCreateAlgorithmResult(Algorithm1)->appendSubset(
+        that->getOrCreateAlgorithmResult(Algorithm2));
   }
 
 private:
@@ -86,29 +86,34 @@ private:
   template<bool IsEmptyIfMissing>
   struct GetAlgorithmResultHelper;
 
-  AnalysisResult *getOrCreateAlgorithmResult(const AlgorithmId *Id,
-      AlgorithmFn Fn);
-  AnalysisResult *getAlgorithmResultOrNull(const AlgorithmId *Id) const;
+  template<typename AlgorithmTy>
+  AnalysisResult *getOrCreateAlgorithmResult(const AlgorithmTy& Algorithm) {
+    AnalysisResult **AR = getOrCreateAlgorithmResultInternal(&Algorithm.ID);
+    if (!*AR) {
+      *AR = Algorithm.run(this);
+    }
+    return *AR;
+  }
 
-  void addInstructionAnalysisWorkInternal(const AlgorithmId *Id1,
-      AlgorithmFn Fn1, ValueInfo *that, const AlgorithmId *Id2,
-      AlgorithmFn Fn2);
+  AnalysisResult **getOrCreateAlgorithmResultInternal(const AlgorithmId *Id);
+  AnalysisResult *getAlgorithmResultOrNull(const AlgorithmId *Id) const;
 };
 
 template<>
 struct ValueInfo::GetAlgorithmResultHelper<false> {
   template<typename AlgorithmTy>
-  static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
-    return VI->getOrCreateAlgorithmResult(&AlgorithmTy::ID,
-        &AlgorithmTy::run);
+  static AnalysisResult *getAlgorithmResult(ValueInfo *VI,
+                                            const AlgorithmTy& Algorithm) {
+    return VI->getOrCreateAlgorithmResult(Algorithm);
   }
 };
 
 template<>
 struct ValueInfo::GetAlgorithmResultHelper<true> {
   template<typename AlgorithmTy>
-  static AnalysisResult *getAlgorithmResult(ValueInfo *VI) {
-    return VI->getAlgorithmResultOrNull(&AlgorithmTy::ID);
+  static AnalysisResult *getAlgorithmResult(ValueInfo *VI,
+                                            const AlgorithmTy& Algorithm) {
+    return VI->getAlgorithmResultOrNull(&Algorithm.ID);
   }
 };
 

@@ -38,7 +38,7 @@ public:
 
 protected:
   virtual AnalysisResult *analyzeValueInfo(ValueInfo *VI) const {
-    return VI->getAlgorithmResult<AlgorithmTy, ENUMERATION_PHASE>();
+    return VI->getAlgorithmResult<ENUMERATION_PHASE>(AlgorithmTy());
   }
 };
 

@@ -88,7 +88,7 @@ AndersenSetHandle AndersenPass::getHandleToPointsToSet(AndersenValueHandle VH) {
     // We determined this points to nothing at instruction analysis time.
     return 0;
   }
-  return VI->getAlgorithmResult<PointsToAlgorithm, ENUMERATION_PHASE>();
+  return VI->getAlgorithmResult<ENUMERATION_PHASE>(PointsToAlgorithm());
 }
 
 AndersenSetHandle AndersenPass::getHandleToFunctionPointerReadSet(
@@ -98,10 +98,9 @@ AndersenSetHandle AndersenPass::getHandleToFunctionPointerReadSet(
     // We determined this points to nothing at instruction analysis time.
     return 0;
   }
-  return VI->getAlgorithmResult<
+  return VI->getAlgorithmResult<ENUMERATION_PHASE>(
       TwoHopTraversal<PointsToAlgorithm,
-                      ReferencedValuesPointsToAlgorithm>::Algorithm,
-      ENUMERATION_PHASE>();
+                      ReferencedValuesPointsToAlgorithm>::Algorithm());
 }
 
 AndersenSetHandle AndersenPass::getHandleToFunctionPointerWriteSet(
@@ -111,10 +110,9 @@ AndersenSetHandle AndersenPass::getHandleToFunctionPointerWriteSet(
     // We determined this points to nothing at instruction analysis time.
     return 0;
   }
-  return VI->getAlgorithmResult<
+  return VI->getAlgorithmResult<ENUMERATION_PHASE>(
       TwoHopTraversal<PointsToAlgorithm,
-                      ModifiedValuesPointsToAlgorithm>::Algorithm,
-      ENUMERATION_PHASE>();
+                      ModifiedValuesPointsToAlgorithm>::Algorithm());
 }
 
 bool AndersenPass::isSetIntersectionEmpty(AndersenSetHandle SH1,
