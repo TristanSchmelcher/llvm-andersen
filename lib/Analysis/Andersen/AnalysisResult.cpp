@@ -20,6 +20,7 @@
 #include "EnumerationResult.h"
 #include "SubsetWork.h"
 #include "ValueInfo.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -243,7 +244,30 @@ void AnalysisResult::writeEquation(const DebugInfo &DI, raw_ostream &OS) const {
       }
       first = false;
       DI.printValueInfoName(i->first, OS);
-      // TODO: Print constraints.
+      const Constraints::CallStackVector &CallStackContext(
+          i->second.CallStackContext);
+      if (!CallStackContext.empty()) {
+        OS << " @ {";
+        // Deliberately shadowing previous variables.
+        bool first = true;  
+        Constraints::CallStackVector::const_iterator
+            i = CallStackContext.begin(),
+            End = CallStackContext.end();
+        do {
+          if (!first) {
+            OS << ", ";
+          }
+          first = false;
+          if (!*i) {
+            // The null call point represents calls from externally-defined
+            // functions.
+            OS << "ExternallyLinkableRegions";
+          } else {
+            DI.printValueName(*i, OS);
+          }
+        } while (++i != End);
+        OS << '}';
+      }
     } while (++i != End);
     OS << '}';
   }
