@@ -15,6 +15,7 @@
 
 #include "AlgorithmId.h"
 #include "DebugInfo.h"
+#include "PushPopCallSiteAlgorithmId.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -57,8 +58,7 @@ Data::Data(ValueInfo *ExternallyLinkableRegions,
     ExternallyAccessibleRegions(ExternallyAccessibleRegions) {}
 
 Data::~Data() {
-  DeleteContainerSeconds(PushCallSiteAlgorithmIds);
-  DeleteContainerSeconds(PopCallSiteAlgorithmIds);
+  DeleteContainerSeconds(PushPopCallSiteAlgorithmIds);
 }
 
 GraphEdgeDeque Data::getOutgoingEdges() const {

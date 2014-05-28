@@ -16,8 +16,6 @@
 
 #include "llvm/Support/raw_ostream.h"
 
-#include <sstream>
-
 namespace llvm {
 namespace andersen_internal {
 

@@ -30,7 +30,7 @@ struct Constraints {
   // Constraint on the call stack context. The elements are call or invoke
   // instructions in order of invocation. (i.e., caller must be the last
   // element, its caller must be the second-last element, etc.)
-  SmallVector<Instruction *, 1> CallStackContext;
+  SmallVector<const Instruction *, 1> CallStackContext;
 
   // Determine whether the satisfaction of "this" implies the satisfaction of
   // "that".

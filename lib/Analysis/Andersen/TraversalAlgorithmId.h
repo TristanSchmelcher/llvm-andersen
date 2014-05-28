@@ -17,8 +17,6 @@
 
 #include "AlgorithmId.h"
 
-#include <string>
-
 namespace llvm {
 namespace andersen_internal {
 

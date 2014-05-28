@@ -19,6 +19,7 @@
 #include "ValueInfo.h"
 #include "llvm/ADT/DenseMap.h"
 
+#include <utility>
 #include <vector>
 
 namespace llvm {
@@ -35,6 +36,7 @@ namespace andersen_internal {
 
 class DebugInfo;
 class DebugInfoFiller;
+class PushPopCallSiteAlgorithmId;
 
 // TODO: Should this be a ValueMap?
 typedef DenseMap<const Value *, ValueInfo::Ref> ValueInfoMap;
@@ -58,8 +60,8 @@ public:
   // VIs not associated with any Value (e.g., generated for intrinsics).
   ValueInfoVector AnonymousValueInfos;
   // Interned dynamically-created algorithm ids.
-  DenseMap<Instruction *, AlgorithmId *> PushCallSiteAlgorithmIds;
-  DenseMap<Instruction *, AlgorithmId *> PopCallSiteAlgorithmIds;
+  DenseMap<std::pair<const char *, const Instruction *>,
+           PushPopCallSiteAlgorithmId *> PushPopCallSiteAlgorithmIds;
 
   virtual ~Data();
 

@@ -16,11 +16,13 @@
 
 #include "ActualParametersPointsToAlgorithm.h"
 #include "ActualReturnValuePointsToAlgorithm.h"
+#include "DropCallSitesTransformAlgorithm.h"
 #include "FormalParametersReversePointsToAlgorithm.h"
 #include "FormalReturnValueReversePointsToAlgorithm.h"
 #include "LoadedValuesReversePointsToAlgorithm.h"
 #include "ModifiedValuesPointsToAlgorithm.h"
 #include "PointsToAlgorithm.h"
+#include "PushPopCallSiteTransformAlgorithm.h"
 #include "ReferencedValuesPointsToAlgorithm.h"
 #include "ReversePointsToAlgorithm.h"
 #include "StoredValuesPointsToAlgorithm.h"
@@ -50,9 +52,9 @@ template<>
 inline void ForAlgorithm<ActualParametersPointsToAlgorithm>
     ::handleRelation<ARGUMENT_TO_CALLEE>(Data *D, ValueInfo *Src,
         ValueInfo *Dst, const Instruction *CallSite) {
-  // Add work to push callsite annotation.
   Dst->addInstructionAnalysisWork(ActualParametersPointsToAlgorithm(),
-      Src, PointsToAlgorithm());
+      Src, PushPopCallSiteTransformAlgorithm<PointsToAlgorithm, PUSH>(
+          D, CallSite));
 }
 
 // ActualReturnValuePointsToAlgorithm
@@ -81,9 +83,9 @@ template<>
 inline void ForAlgorithm<FormalReturnValueReversePointsToAlgorithm>
     ::handleRelation<RETURNED_FROM_CALLEE>(Data *D, ValueInfo *Src,
         ValueInfo *Dst, const Instruction *CallSite) {
-  // Add work to push callsite annotation.
   Dst->addInstructionAnalysisWork(FormalReturnValueReversePointsToAlgorithm(),
-      Src, ReversePointsToAlgorithm());
+      Src, PushPopCallSiteTransformAlgorithm<ReversePointsToAlgorithm, PUSH>(
+          D, CallSite));
 }
 
 // LoadedValuesReversePointsToAlgorithm
@@ -91,9 +93,9 @@ template<>
 template<>
 inline void ForAlgorithm<LoadedValuesReversePointsToAlgorithm>
     ::handleRelation<LOADED_FROM>(ValueInfo *Src, ValueInfo *Dst) {
-  // Add work to drop callsite annotations.
   Dst->addInstructionAnalysisWork(LoadedValuesReversePointsToAlgorithm(),
-      Src, ReversePointsToAlgorithm());
+      Src,
+      DropCallSitesTransformAlgorithm<ReversePointsToAlgorithm>());
 }
 
 // ModifiedValuesPointsToAlgorithm
@@ -102,12 +104,13 @@ template<>
 inline void ForAlgorithm<ModifiedValuesPointsToAlgorithm>
     ::handleRelation<CALLS>(Data *D, ValueInfo *Src, ValueInfo *Dst,
         const Instruction *CallSite) {
-  // Add work to pop callsite.
   Src->addInstructionAnalysisWork(
       ModifiedValuesPointsToAlgorithm(),
       Dst,
-      TwoHopTraversal<PointsToAlgorithm,
-                      ModifiedValuesPointsToAlgorithm>::Algorithm());
+      PushPopCallSiteTransformAlgorithm<
+          TwoHopTraversal<PointsToAlgorithm,
+                          ModifiedValuesPointsToAlgorithm>::Algorithm,
+          POP>(D, CallSite));
 }
 
 template<>
@@ -159,12 +162,13 @@ template<>
 inline void ForAlgorithm<PointsToAlgorithm>
     ::handleRelation<RETURNED_FROM_CALLEE>(Data *D, ValueInfo *Src,
         ValueInfo *Dst, const Instruction *CallSite) {
-  // Add work to pop callsite annotation.
   Src->addInstructionAnalysisWork(
       PointsToAlgorithm(),
       Dst,
-      TwoHopTraversal<PointsToAlgorithm,
-                      ActualReturnValuePointsToAlgorithm>::Algorithm());
+      PushPopCallSiteTransformAlgorithm<
+          TwoHopTraversal<PointsToAlgorithm,
+                          ActualReturnValuePointsToAlgorithm>::Algorithm,
+          POP>(D, CallSite));
 }
 
 // ReferencedValuesPointsToAlgorithm
@@ -173,12 +177,13 @@ template<>
 inline void ForAlgorithm<ReferencedValuesPointsToAlgorithm>
     ::handleRelation<CALLS>(Data *D, ValueInfo *Src, ValueInfo *Dst,
         const Instruction *CallSite) {
-  // Add work to pop callsite.
   Src->addInstructionAnalysisWork(
       ReferencedValuesPointsToAlgorithm(),
       Dst,
-      TwoHopTraversal<PointsToAlgorithm,
-                      ReferencedValuesPointsToAlgorithm>::Algorithm());
+      PushPopCallSiteTransformAlgorithm<
+          TwoHopTraversal<PointsToAlgorithm,
+                          ReferencedValuesPointsToAlgorithm>::Algorithm,
+          POP>(D, CallSite));
 }
 
 template<>
@@ -196,12 +201,13 @@ template<>
 inline void ForAlgorithm<ReversePointsToAlgorithm>
     ::handleRelation<ARGUMENT_TO_CALLEE>(Data *D, ValueInfo *Src,
         ValueInfo *Dst, const Instruction *CallSite) {
-  // Add work to pop callsite annotation.
   Src->addInstructionAnalysisWork(
       ReversePointsToAlgorithm(),
       Dst,
-      TwoHopTraversal<PointsToAlgorithm,
-                      FormalParametersReversePointsToAlgorithm>::Algorithm());
+      PushPopCallSiteTransformAlgorithm<
+          TwoHopTraversal<PointsToAlgorithm,
+                          FormalParametersReversePointsToAlgorithm>::Algorithm,
+          POP>(D, CallSite));
 }
 
 template<>
@@ -245,9 +251,9 @@ template<>
 template<>
 inline void ForAlgorithm<StoredValuesPointsToAlgorithm>
     ::handleRelation<STORED_TO>(ValueInfo *Src, ValueInfo *Dst) {
-  // Add work to drop callsite annotations.
   Dst->addInstructionAnalysisWork(StoredValuesPointsToAlgorithm(),
-      Src, PointsToAlgorithm());
+      Src,
+      DropCallSitesTransformAlgorithm<PointsToAlgorithm>());
 }
 
 }

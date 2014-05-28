@@ -12,6 +12,8 @@ add_llvm_library(LLVMAndersen
   Constraints.cpp
   Data.cpp
   DebugInfo.cpp
+  DropCallSitesAlgorithmId.cpp
+  DropCallSitesTransformWork.cpp
   Enumerator.cpp
   FormalParametersReversePointsToAlgorithm.cpp
   FormalReturnValueReversePointsToAlgorithm.cpp
@@ -20,6 +22,8 @@ add_llvm_library(LLVMAndersen
   LiteralAlgorithmId.cpp
   LoadedValuesReversePointsToAlgorithm.cpp
   PointsToAlgorithm.cpp
+  PushPopCallSiteAlgorithmId.cpp
+  PushPopCallSiteTransformWork.cpp
   RelationHandler.cpp
   ReversePointsToAlgorithm.cpp
   StoredValuesPointsToAlgorithm.cpp
