@@ -149,6 +149,7 @@ AliasAnalysis::ModRefResult
 AndersenAliasAnalysis::getModRefInfo(ImmutableCallSite CS,
                                      const Location &Loc) {
   ModRefResult Result = NoModRef;
+  // TODO: Need to handle constraints here.
   AndersenValueHandle F = AP->getHandleToValue(CS.getCalledValue());
   AndersenSetHandle Reads = AP->getHandleToFunctionPointerReadSet(F);
   AndersenSetHandle Writes = AP->getHandleToFunctionPointerWriteSet(F);
@@ -175,6 +176,7 @@ AndersenAliasAnalysis::getModRefInfo(ImmutableCallSite CS1,
   // - Mod if CS1 writes to memory read or written by CS2.
   // - ModRef if CS1 might read or write memory written to by CS2.
   ModRefResult Result = NoModRef;
+  // TODO: Need to handle constraints here.
   AndersenValueHandle F1 = AP->getHandleToValue(CS1.getCalledValue());
   AndersenValueHandle F2 = AP->getHandleToValue(CS2.getCalledValue());
   AndersenSetHandle Reads1 = AP->getHandleToFunctionPointerReadSet(F1);

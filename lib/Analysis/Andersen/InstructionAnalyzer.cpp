@@ -30,10 +30,10 @@
 namespace llvm {
 namespace andersen_internal {
 
-class InstructionAnalyzer::Visitor
-  : public InstVisitor<InstructionAnalyzer::Visitor> {
+class InstructionAnalyzer::Visitor : public InstVisitor<Visitor> {
   typedef SmallVector<std::pair<const PHINode *, ValueInfo *>, 3>
       PHINodeWorkVector;
+  typedef void (Visitor::*IntrinsicFunctionModelFn)();
   ModulePass *const MP;
   PHINodeWorkVector PHINodeWork;
   Function *CurrentFunction;
@@ -263,7 +263,7 @@ public:
     default:
       // All other intrinsics are handled by the CallSite code and treated as
       // calls to external functions.
-      InstVisitor<InstructionAnalyzer::Visitor>::visitIntrinsicInst(I);
+      InstVisitor<Visitor>::visitIntrinsicInst(I);
       break;
     }
   }
@@ -318,10 +318,27 @@ private:
     }
     for (Module::iterator i = M.begin(), End = M.end(); i != End; ++i) {
       Function &F(*i);
-      analyzeValue(&F);
+      CurrentFunction = &F;
+      ValueInfo *VI = analyzeValue(&F);
       if (!F.isDeclaration()) {
+        initFunctionContext(getGlobalRegionInfo(&F));
         processFunction(F);
+      } else if (IntrinsicFunctionModelFn ModelIntrinsic =
+                 getIntrinsicFunctionModel(F)) {
+        initFunctionContext(VI);
+        (this->*ModelIntrinsic)();
+      } else {
+        initFunctionContext(RH.D->ExternallyLinkableRegions.getPtr());
       }
+    }
+  }
+
+  void initFunctionContext(ValueInfo *FunctionRegion) {
+    CurrentFunctionRegion = FunctionRegion;
+    for (Function::arg_iterator i = CurrentFunction->arg_begin(),
+                                End = CurrentFunction->arg_end();
+         i != End; ++i) {
+      analyzeValue(&*i);
     }
   }
 
@@ -361,12 +378,6 @@ private:
   }
 
   void processFunction(Function &F) {
-    CurrentFunction = &F;
-    CurrentFunctionRegion = getGlobalRegionInfo(&F);
-    for (Function::arg_iterator i = F.arg_begin(), End = F.arg_end(); i != End;
-         ++i) {
-      analyzeValue(&*i);
-    }
     // Visit the basic blocks in a depth-first traversal of the dominator tree.
     // This ensures that we visit each instruction before each non-PHI use of
     // it.
@@ -484,6 +495,21 @@ private:
   ValueInfo *analyzeGlobalValue(const GlobalValue *G) {
     if (G->isDeclaration()) {
       assert(!G->hasLocalLinkage());  // Verifier ensures this
+      const Function *F = dyn_cast<Function>(G);
+      if (F && F->isIntrinsic()) {
+        // Since intrinsics have known behaviour distinct from different
+        // intrinsics, we treat them as imaginary definitions of distinct,
+        // non-overridable functions. They are externally accessible, but not
+        // externally linkable because Verifier prohibits aliasing an intrinsic.
+        // TODO: None of the intrinsics that we model can leak data from one
+        // calling context to another, but potentially some of the others can,
+        // hence the need to treat them as externally accessible. But since
+        // their address can't be taken, they can never actually show up in an
+        // externally-provided pointer.
+        ValueInfo *VI = cacheNewRegion(F);
+        RH.handleRelation<DEPENDS_ON>(ExternallyAccessibleRegions, VI);
+        return VI;
+      }
       return cache(G, RH.D->ExternallyLinkableRegions.getPtr());
     } else {
       ValueInfo *VI;
@@ -609,6 +635,18 @@ private:
     // memory, which allows optimizations to move it around or factor it out.
     // TODO: Figure out if this is safe.
     cacheNewRegion(&I);
+  }
+
+  IntrinsicFunctionModelFn getIntrinsicFunctionModel(const Function &F) {
+    switch (F.getIntrinsicID()) {
+    //case Intrinsic::vastart: return &Visitor::modelVAStart;
+    default:
+      return 0;  // Don't have a model for it.
+    }
+  }
+
+  void modelVAStart() {
+    // TODO
   }
 };
 
